@@ -108,6 +108,17 @@ export default function App() {
     fetchTransactions();
     fetchBudgets();
     fetchCategories();
+
+    // Android SMS Listener
+    if (typeof window !== 'undefined' && (window as any).Capacitor) {
+      const { registerPlugin } = (window as any).Capacitor;
+      const SpendWise = (window as any).SpendWise || registerPlugin('SpendWise');
+
+      SpendWise.addListener('onSMSReceived', (data: { sender: string; body: string }) => {
+        setSmsText(data.body);
+        setShowSMSModal(true);
+      });
+    }
   }, []);
 
   const fetchTransactions = async () => {

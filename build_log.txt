@@ -1,0 +1,21 @@
+
+> react-example@0.0.0 build
+> vite build
+
+[36mvite v6.4.1 [32mbuilding for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 4 modules transformed.
+Γ£ù Build failed in 231ms
+error during build:
+[@tailwindcss/vite:generate:build] Cannot apply unknown utility class `shadow-[0_8px_32px_0_rgba(31,`
+file: C:/Users/JEEVA S/OneDrive/Desktop/Expense-tracker/index.css
+    at onInvalidCandidate (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:21:1511)
+    at $e (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:16:36740)
+    at file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:21:355
+    at Ar (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:3:1733)
+    at I (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:3:1377)
+    at Ce (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:21:172)
+    at Gi (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:38:294)
+    at async ao (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:38:631)
+    at async vf (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/tailwindcss/dist/chunk-L5IEUH3R.mjs:38:1406)
+    at async uu (file:///C:/Users/JEEVA%20S/OneDrive/Desktop/Expense-tracker/node_modules/@tailwindcss/node/dist/index.mjs:10:3458)
