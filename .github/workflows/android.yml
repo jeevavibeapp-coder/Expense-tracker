@@ -15,12 +15,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install Dependencies
         run: |
           rm -f package-lock.json
-          npm install --no-package-lock
+          npm install --legacy-peer-deps --no-package-lock
 
       - name: Build React App
         run: npm run build
