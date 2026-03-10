@@ -37,6 +37,45 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS recurring_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL,
+    category TEXT NOT NULL,
+    type TEXT CHECK(type IN ('income', 'expense')) NOT NULL,
+    frequency TEXT CHECK(frequency IN ('daily', 'weekly', 'monthly', 'yearly')) NOT NULL,
+    next_date TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Process recurring transactions
+function processRecurring() {
+  const due = db.prepare("SELECT * FROM recurring_transactions WHERE next_date <= date('now')").all() as any[];
+  if (due.length === 0) return;
+
+  const insertTx = db.prepare("INSERT INTO transactions (description, amount, category, type, date) VALUES (?, ?, ?, ?, ?)");
+  const updateNext = db.prepare("UPDATE recurring_transactions SET next_date = ? WHERE id = ?");
+
+  db.transaction(() => {
+    for (const r of due) {
+      // Insert the actual transaction
+      insertTx.run(r.description, r.amount, r.category, r.type, r.next_date);
+
+      // Calculate next date
+      let nextDate = new Date(r.next_date);
+      if (r.frequency === 'daily') nextDate.setDate(nextDate.getDate() + 1);
+      else if (r.frequency === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
+      else if (r.frequency === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
+      else if (r.frequency === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
+
+      const nextDateString = nextDate.toISOString().split('T')[0];
+      updateNext.run(nextDateString, r.id);
+    }
+  })();
+}
+
 // Seed default categories if empty
 const categoryCount = db.prepare("SELECT COUNT(*) as count FROM categories").get() as { count: number };
 if (categoryCount.count === 0) {
@@ -95,6 +134,7 @@ async function startServer() {
   });
 
   app.get("/api/transactions", (req, res) => {
+    processRecurring();
     const transactions = db.prepare("SELECT * FROM transactions ORDER BY date DESC").all();
     res.json(transactions);
   });
@@ -104,13 +144,41 @@ async function startServer() {
     const info = db.prepare(
       "INSERT INTO transactions (description, amount, category, type, date) VALUES (?, ?, ?, ?, ?)"
     ).run(description, amount, category, type, date);
-    
+
     const newTransaction = db.prepare("SELECT * FROM transactions WHERE id = ?").get(info.lastInsertRowid);
     res.status(201).json(newTransaction);
   });
 
+  app.put("/api/transactions/:id", (req, res) => {
+    const { description, amount, category, type, date } = req.body;
+    db.prepare(
+      "UPDATE transactions SET description = ?, amount = ?, category = ?, type = ?, date = ? WHERE id = ?"
+    ).run(description, amount, category, type, date, req.params.id);
+    const updated = db.prepare("SELECT * FROM transactions WHERE id = ?").get(req.params.id);
+    res.json(updated);
+  });
+
   app.delete("/api/transactions/:id", (req, res) => {
     db.prepare("DELETE FROM transactions WHERE id = ?").run(req.params.id);
+    res.status(204).end();
+  });
+
+  app.get("/api/recurring", (req, res) => {
+    const r = db.prepare("SELECT * FROM recurring_transactions").all();
+    res.json(r);
+  });
+
+  app.post("/api/recurring", (req, res) => {
+    const { description, amount, category, type, frequency, start_date } = req.body;
+    const info = db.prepare(
+      "INSERT INTO recurring_transactions (description, amount, category, type, frequency, next_date) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(description, amount, category, type, frequency, start_date);
+    const newR = db.prepare("SELECT * FROM recurring_transactions WHERE id = ?").get(info.lastInsertRowid);
+    res.status(201).json(newR);
+  });
+
+  app.delete("/api/recurring/:id", (req, res) => {
+    db.prepare("DELETE FROM recurring_transactions WHERE id = ?").run(req.params.id);
     res.status(204).end();
   });
 

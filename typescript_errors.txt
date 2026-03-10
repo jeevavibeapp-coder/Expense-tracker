@@ -1,0 +1,5 @@
+App.tsx(332,60): error TS2339: Property 'name' does not exist on type 'unknown'.
+App.tsx(332,89): error TS2339: Property 'name' does not exist on type 'unknown'.
+components/BudgetsTab.tsx(86,58): error TS2304: Cannot find name 'cn'.
+components/BudgetsTab.tsx(98,56): error TS2304: Cannot find name 'cn'.
+components/DashboardTab.tsx(191,130): error TS2552: Cannot find name 'format'. Did you mean 'FormData'?
