@@ -16,12 +16,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
 
       - name: Install Dependencies
         run: |
           rm -f package-lock.json
-          npm install
+          npm install --no-package-lock
 
       - name: Build React App
         run: npm run build
