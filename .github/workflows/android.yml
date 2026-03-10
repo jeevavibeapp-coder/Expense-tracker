@@ -31,6 +31,9 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Build Android APK
         run: |
           npx cap sync android
