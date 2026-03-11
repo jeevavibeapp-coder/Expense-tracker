@@ -23,16 +23,16 @@ jobs:
       - name: Build React App
         run: npm run build
 
-      - name: Set up JDK 17        # ← 17 use பண்ணு, 21 இல்ல
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
-      - name: Setup Android SDK    # ← இது missing ஆ இருந்துச்சு!
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK 35  # ← 36 வேண்டாம், 35 stable
+      - name: Install Android SDK 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
@@ -43,7 +43,7 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
