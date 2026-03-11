@@ -18,28 +18,32 @@ jobs:
           node-version: 22
 
       - name: Install Dependencies
-        run: |
-          rm -f package-lock.json
-          npm install --legacy-peer-deps --no-package-lock
+        run: npm install --legacy-peer-deps
 
       - name: Build React App
         run: npm run build
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17        # ← 17 use பண்ணு, 21 இல்ல
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
+
+      - name: Setup Android SDK    # ← இது missing ஆ இருந்துச்சு!
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35  # ← 36 வேண்டாம், 35 stable
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Android APK
+      - name: Sync Capacitor & Build APK
         run: |
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
