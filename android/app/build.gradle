@@ -16,9 +16,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        spendwise {
+            storeFile file('spendwise.jks')
+            storePassword 'spendwise'
+            keyAlias 'spendwise'
+            keyPassword 'spendwise'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.spendwise
+        }
         release {
             minifyEnabled false
+            signingConfig signingConfigs.spendwise
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
