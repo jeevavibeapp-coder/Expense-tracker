@@ -48,6 +48,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { cn, formatCurrency } from './utils';
 import { Transaction, Budget, Category } from './types';
 import { Sector } from 'recharts';
+import * as store from './store';
 
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -123,8 +124,7 @@ export default function App() {
 
   const fetchTransactions = async () => {
     try {
-      const res = await fetch('/api/transactions');
-      const data = await res.json();
+      const data = store.getTransactions();
       setTransactions(data);
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
@@ -135,13 +135,12 @@ export default function App() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('/api/categories');
-      const data = await res.json();
+      const data = store.getCategories();
       setCategories(data);
       if (data.length > 0) {
         setFormData(prev => ({
           ...prev,
-          category: (data as Category[]).find((c: Category) => c.type === prev.type)?.name || (data as Category[])[0].name
+          category: data.find((c: Category) => c.type === prev.type)?.name || data[0].name
         }));
       }
     } catch (error) {
@@ -151,8 +150,7 @@ export default function App() {
 
   const fetchBudgets = async () => {
     try {
-      const res = await fetch('/api/budgets');
-      const data = await res.json();
+      const data = store.getBudgets();
       setBudgets(data);
     } catch (error) {
       console.error('Failed to fetch budgets:', error);
@@ -161,23 +159,16 @@ export default function App() {
 
   const handleSetBudget = async (category: string, amount: number) => {
     try {
-      const res = await fetch('/api/budgets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, amount }),
+      const updatedBudget = store.setBudget(category, amount);
+      setBudgets(prev => {
+        const index = prev.findIndex(b => b.category === category);
+        if (index > -1) {
+          const newBudgets = [...prev];
+          newBudgets[index] = updatedBudget;
+          return newBudgets;
+        }
+        return [...prev, updatedBudget];
       });
-      if (res.ok) {
-        const updatedBudget = await res.json();
-        setBudgets(prev => {
-          const index = prev.findIndex(b => b.category === category);
-          if (index > -1) {
-            const newBudgets = [...prev];
-            newBudgets[index] = updatedBudget;
-            return newBudgets;
-          }
-          return [...prev, updatedBudget];
-        });
-      }
     } catch (error) {
       console.error('Failed to set budget:', error);
     }
@@ -186,10 +177,8 @@ export default function App() {
   const handleDeleteCategory = async (id: number) => {
     if (!confirm('Are you sure you want to delete this category?')) return;
     try {
-      const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setCategories(prev => prev.filter(c => c.id !== id));
-      }
+      store.deleteCategory(id);
+      setCategories(prev => prev.filter(c => c.id !== id));
     } catch (error) {
       console.error('Failed to delete category:', error);
     }
@@ -197,20 +186,15 @@ export default function App() {
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!categoryFormData.name.trim()) return;
     try {
-      const res = await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(categoryFormData),
-      });
-      if (res.ok) {
-        const newCategory = await res.json();
-        setCategories(prev => [...prev, newCategory]);
-        setShowAddCategoryModal(false);
-        setCategoryFormData({ name: '', type: 'expense', color: '#6366f1' });
-      }
-    } catch (error) {
+      const newCategory = store.addCategory(categoryFormData);
+      setCategories(prev => [...prev, newCategory]);
+      setShowAddCategoryModal(false);
+      setCategoryFormData({ name: '', type: 'expense', color: '#6366f1' });
+    } catch (error: any) {
       console.error('Failed to add category:', error);
+      alert(error?.message || 'Failed to add category');
     }
   };
 
@@ -246,25 +230,38 @@ export default function App() {
     e.preventDefault();
     if (!formData.description || !formData.amount) return;
     try {
-      const method = editingTransaction ? 'PUT' : 'POST';
-      const url = editingTransaction ? `/api/transactions/${editingTransaction.id}` :
-        (formData.isRecurring ? '/api/recurring' : '/api/transactions');
+      const amount = parseFloat(formData.amount);
+      if (isNaN(amount)) return;
 
-      const body = { ...formData, amount: parseFloat(formData.amount) };
-      if (formData.isRecurring && !editingTransaction) {
-        (body as any).start_date = formData.date;
+      if (editingTransaction) {
+        store.updateTransaction(editingTransaction.id, {
+          description: formData.description,
+          amount,
+          category: formData.category,
+          type: formData.type,
+          date: formData.date,
+        });
+      } else if (formData.isRecurring) {
+        store.addRecurring({
+          description: formData.description,
+          amount,
+          category: formData.category,
+          type: formData.type,
+          frequency: formData.frequency,
+          start_date: formData.date,
+        });
+      } else {
+        store.addTransaction({
+          description: formData.description,
+          amount,
+          category: formData.category,
+          type: formData.type,
+          date: formData.date,
+        });
       }
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (res.ok) {
-        fetchTransactions();
-        closeTransactionModal();
-      }
+      fetchTransactions();
+      closeTransactionModal();
     } catch (error) {
       console.error('Failed to save transaction:', error);
     }
@@ -272,9 +269,16 @@ export default function App() {
 
   const parseSMS = async () => {
     if (!smsText.trim()) return;
+    const apiKey = process.env.GEMINI_API_KEY || '';
+    if (!apiKey) {
+      alert('AI parsing is not configured. Please enter the transaction details manually.');
+      setShowSMSModal(false);
+      setShowAddModal(true);
+      return;
+    }
     setIsParsing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Extract transaction details from this SMS: "${smsText}". 
@@ -316,7 +320,7 @@ export default function App() {
   const deleteTransaction = async (id: number) => {
     if (!confirm('Are you sure you want to delete this transaction?')) return;
     try {
-      await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+      store.deleteTransaction(id);
       setTransactions(transactions.filter(t => t.id !== id));
     } catch (error) {
       console.error('Failed to delete transaction:', error);
