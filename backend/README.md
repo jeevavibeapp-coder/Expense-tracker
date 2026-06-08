@@ -9,6 +9,22 @@ decision (auto-save / confirm / manual).
 Everything is computed from the user's **own** data — there is no seeded or
 mock transaction data anywhere.
 
+## Web app
+
+A server-rendered **Jinja2 + HTMX** web UI ships with the backend (no separate
+frontend build). Run the server and open `http://localhost:8000/`:
+
+- Sign up / sign in (cookie session over the same JWT auth)
+- Dashboard with stats, insights, top merchants and category/trend breakdowns
+- Transactions: add with a **live confidence preview** as you type a payee,
+  inline merchant confirmation, search, delete
+- SMS Import that parses a bank/UPI message and shows the engine's decision
+  (auto-save / confirm / manual) with the confidence breakdown
+- Fraud alerts and settings (confidence thresholds, currency, theme)
+
+Forms work without JavaScript; HTMX progressively enhances them. The JSON API
+stays available under `/api/v1`, with interactive docs at `/docs`.
+
 ## Highlights
 
 - **Merchant resolution & confidence scoring** — weighted signals totalling 100:

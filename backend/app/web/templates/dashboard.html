@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Dashboard · {{ app_name }}{% endblock %}
+{% block heading %}Dashboard{% endblock %}
+{% block content %}
+{% set cur = d.currency %}
+<div class="grid cards">
+  <div class="card stat"><span class="label">Balance</span><span class="value">{{ cur }} {{ m.money(d.balance) }}</span></div>
+  <div class="card stat"><span class="label">Income</span><span class="value income">{{ cur }} {{ m.money(d.total_income) }}</span></div>
+  <div class="card stat"><span class="label">Expense</span><span class="value expense">{{ cur }} {{ m.money(d.total_expense) }}</span></div>
+  <div class="card stat"><span class="label">This month</span><span class="value">{{ cur }} {{ m.money(d.monthly_spend) }}</span></div>
+</div>
+
+<div class="grid cards" style="margin-top:16px">
+  <div class="card stat"><span class="label">Today</span><span class="value">{{ cur }} {{ m.money(d.daily_spend) }}</span></div>
+  <div class="card stat"><span class="label">This week</span><span class="value">{{ cur }} {{ m.money(d.weekly_spend) }}</span></div>
+  <div class="card stat"><span class="label">Pending confirmations</span><span class="value">{{ d.pending_confirmations }}</span></div>
+  <div class="card stat"><span class="label">Open fraud alerts</span><span class="value {{ 'expense' if d.open_fraud_alerts else '' }}">{{ d.open_fraud_alerts }}</span></div>
+</div>
+
+<div class="grid cols-2" style="margin-top:16px">
+  <div class="card">
+    <h3>Insights</h3>
+    <ul class="insights">
+      {% for line in d.insights %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Top merchants</h3>
+    {% if d.top_merchants %}
+      <table>
+        {% for mch in d.top_merchants %}
+        <tr><td>{{ mch.name }}</td><td class="amt">{{ cur }} {{ m.money(mch.value) }}</td></tr>
+        {% endfor %}
+      </table>
+    {% else %}<p class="muted">No spending yet.</p>{% endif %}
+  </div>
+</div>
+
+<div class="grid cols-2" style="margin-top:16px">
+  <div class="card">
+    <h3>By category</h3>
+    {% if d.category_breakdown %}
+      <table>
+        {% for c in d.category_breakdown %}
+        <tr><td>{{ c.name }}</td><td class="amt">{{ cur }} {{ m.money(c.value) }}</td></tr>
+        {% endfor %}
+      </table>
+    {% else %}<p class="muted">No categorised spending yet.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h3>Monthly trend</h3>
+    {% if d.trend %}
+      <table>
+        <tr><th>Month</th><th class="amt">Income</th><th class="amt">Expense</th></tr>
+        {% for t in d.trend %}
+        <tr><td>{{ t.period }}</td><td class="amt income">{{ m.money(t.income) }}</td><td class="amt expense">{{ m.money(t.expense) }}</td></tr>
+        {% endfor %}
+      </table>
+    {% else %}<p class="muted">Not enough history yet.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

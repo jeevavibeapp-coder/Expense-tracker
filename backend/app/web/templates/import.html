@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}SMS Import · {{ app_name }}{% endblock %}
+{% block heading %}SMS Import{% endblock %}
+{% block content %}
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Paste a bank / UPI SMS</h3>
+    <p class="muted">The parser extracts amount, merchant, reference and date, then the engine resolves the real merchant.</p>
+    <form method="post" action="/import/parse" hx-post="/import/parse" hx-target="#parse-out" hx-swap="innerHTML">
+      <div class="field">
+        <textarea name="sms" rows="5" placeholder="Rs.450.00 debited from a/c **1234 on 05-Jan-2024 to ZOMATO Ref 883120114455 UPI"></textarea>
+      </div>
+      <button class="btn" type="submit">Parse</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>Result</h3>
+    <div id="parse-out"><p class="muted">Parsed details will appear here.</p></div>
+  </div>
+</div>
+{% endblock %}
