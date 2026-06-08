@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus,
@@ -109,15 +110,18 @@ export default function App() {
     fetchBudgets();
     fetchCategories();
 
-    // Android SMS Listener
-    if (typeof window !== 'undefined' && (window as any).Capacitor) {
-      const { registerPlugin } = (window as any).Capacitor;
-      const SpendWise = (window as any).SpendWise || registerPlugin('SpendWise');
-
-      SpendWise.addListener('onSMSReceived', (data: { sender: string; body: string }) => {
-        setSmsText(data.body);
-        setShowSMSModal(true);
-      });
+    // Android SMS Listener — only on a native device, and never allowed to
+    // crash the app if the plugin is unavailable.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const SpendWise = registerPlugin<any>('SpendWise');
+        SpendWise.addListener('onSMSReceived', (data: { sender: string; body: string }) => {
+          setSmsText(data.body);
+          setShowSMSModal(true);
+        });
+      } catch (err) {
+        console.error('SMS listener unavailable:', err);
+      }
     }
   }, []);
 
