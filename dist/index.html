@@ -4,19 +4,16 @@
 <head>
   <meta charset="UTF-8" />
   <script>
-    // Minimal shims so Node-oriented libraries don't throw inside the
-    // Android WebView (which has no `process`/`global`/`Buffer`).
-    window.global = window.global || window;
-    window.process = window.process || {
-      env: {}, platform: 'browser', arch: '', version: '', versions: {},
-      nextTick: function (cb) { setTimeout(cb, 0); }, emit: function () { }, on: function () { }
-    };
     // Surface startup errors on screen instead of showing a blank page.
     window.addEventListener('error', function (e) {
       var root = document.getElementById('root');
       if (root && !root.hasChildNodes()) {
-        root.innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#e11d48;font-size:14px;white-space:pre-wrap;">App failed to start:\n' +
-          ((e && e.message) ? e.message : 'Unknown error') + '</div>';
+        var detail = (e && e.message ? e.message : 'Unknown error') +
+          '\n' + (e && e.filename ? e.filename.split('/').pop() : '') +
+          ':' + (e && e.lineno) + ':' + (e && e.colno) +
+          '\n' + (e && e.error && e.error.stack ? e.error.stack : '');
+        root.innerHTML = '<div style="padding:24px;font-family:monospace;color:#e11d48;font-size:12px;white-space:pre-wrap;word-break:break-word;">App failed to start:\n' +
+          detail + '</div>';
       }
     });
   </script>
@@ -28,8 +25,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>SpendWise | Smart Expense Tracker</title>
-  <script type="module" crossorigin src="./assets/index-BaxpE5e_.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BdquqaYG.css">
+  <script type="module" crossorigin src="./assets/index-BM4uMdHg.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-UBPuPOiG.css">
 </head>
 
 <body>
