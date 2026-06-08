@@ -3,6 +3,23 @@
 
 <head>
   <meta charset="UTF-8" />
+  <script>
+    // Minimal shims so Node-oriented libraries don't throw inside the
+    // Android WebView (which has no `process`/`global`/`Buffer`).
+    window.global = window.global || window;
+    window.process = window.process || {
+      env: {}, platform: 'browser', arch: '', version: '', versions: {},
+      nextTick: function (cb) { setTimeout(cb, 0); }, emit: function () { }, on: function () { }
+    };
+    // Surface startup errors on screen instead of showing a blank page.
+    window.addEventListener('error', function (e) {
+      var root = document.getElementById('root');
+      if (root && !root.hasChildNodes()) {
+        root.innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#e11d48;font-size:14px;white-space:pre-wrap;">App failed to start:\n' +
+          ((e && e.message) ? e.message : 'Unknown error') + '</div>';
+      }
+    });
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#4f46e5" />
   <link rel="manifest" href="/manifest.json" />

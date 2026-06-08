@@ -44,7 +44,6 @@ import { eachWeekOfInterval } from 'date-fns/eachWeekOfInterval';
 import { isSameDay } from 'date-fns/isSameDay';
 import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameWeek } from 'date-fns/isSameWeek';
-import { GoogleGenAI, Type } from "@google/genai";
 import { cn, formatCurrency } from './utils';
 import { Transaction, Budget, Category } from './types';
 import { Sector } from 'recharts';
@@ -278,6 +277,9 @@ export default function App() {
     }
     setIsParsing(true);
     try {
+      // Loaded on demand so the Node-oriented SDK never runs at app startup
+      // (keeps the initial bundle WebView-safe).
+      const { GoogleGenAI, Type } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
