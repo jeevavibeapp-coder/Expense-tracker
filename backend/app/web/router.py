@@ -316,6 +316,59 @@ def fraud_update(request: Request, alert_id: uuid.UUID, status: str = Form(...),
     return templates.TemplateResponse("fraud.html", ctx)
 
 
+# ── Categories ───────────────────────────────────────────────────────────────
+@router.get("/categories", response_class=HTMLResponse)
+def categories_page(request: Request, user: models.User = Depends(deps.require_user),
+                    db: Session = Depends(get_db)):
+    cats = CategoryRepository(db).list(user.id, include_archived=True)
+    return templates.TemplateResponse("categories.html", _ctx(
+        request, user, categories=cats, active="categories"))
+
+
+@router.post("/categories", response_class=HTMLResponse)
+def categories_create(request: Request, name: str = Form(...), type: str = Form("expense"),
+                      color: str = Form("#6366f1"), icon: str = Form("Tag"),
+                      user: models.User = Depends(deps.require_user),
+                      db: Session = Depends(get_db)):
+    name = name.strip()
+    error = ""
+    if not name:
+        error = "Enter a category name."
+    elif type not in ("income", "expense"):
+        type = "expense"
+    if not error:
+        exists = any(c.name.lower() == name.lower()
+                     for c in CategoryRepository(db).list(user.id, include_archived=True))
+        if exists:
+            error = "A category with that name already exists."
+        else:
+            db.add(models.Category(user_id=user.id, name=name, type=type,
+                                   color=color[:16] or "#6366f1", icon=icon[:40] or "Tag"))
+            db.commit()
+    cats = CategoryRepository(db).list(user.id, include_archived=True)
+    ctx = _ctx(request, user, categories=cats, active="categories", error=error,
+               flash="" if error else "Category added.")
+    if _is_htmx(request):
+        return templates.TemplateResponse("_category_list.html", ctx)
+    return templates.TemplateResponse("categories.html", ctx)
+
+
+@router.post("/categories/{category_id}/delete", response_class=HTMLResponse)
+def categories_delete(request: Request, category_id: uuid.UUID,
+                      user: models.User = Depends(deps.require_user),
+                      db: Session = Depends(get_db)):
+    repo = CategoryRepository(db)
+    cat = repo.get_for_user(user.id, category_id)
+    if cat:
+        repo.delete(cat)
+        db.commit()
+    ctx = _ctx(request, user, categories=repo.list(user.id, include_archived=True),
+               active="categories", flash="Category deleted.")
+    if _is_htmx(request):
+        return templates.TemplateResponse("_category_list.html", ctx)
+    return templates.TemplateResponse("categories.html", ctx)
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, user: models.User = Depends(deps.require_user),

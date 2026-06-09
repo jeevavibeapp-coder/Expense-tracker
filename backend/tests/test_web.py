@@ -85,6 +85,23 @@ def test_fraud_and_settings_pages(client):
     assert "Settings saved" in upd.text and "USD" in upd.text
 
 
+def test_categories_page_and_crud(client):
+    _signup(client, "cat@example.com")
+    page = client.get("/categories")
+    assert page.status_code == 200
+    assert "Food &amp; Dining" in page.text or "Food & Dining" in page.text
+    added = client.post("/categories", data={
+        "name": "Coffee Runs", "type": "expense", "color": "#123456", "icon": "Coffee",
+    }, follow_redirects=True)
+    assert added.status_code == 200
+    assert "Coffee Runs" in added.text
+    # Duplicate is rejected.
+    dup = client.post("/categories", data={
+        "name": "Coffee Runs", "type": "expense", "color": "#123456", "icon": "Coffee",
+    }, follow_redirects=True)
+    assert "already exists" in dup.text
+
+
 def test_logout_clears_session(client):
     _signup(client, "out@example.com")
     client.post("/logout", follow_redirects=False)
