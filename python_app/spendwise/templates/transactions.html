@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Transactions · {{ app_name }}{% endblock %}
+{% block heading %}Transactions{% endblock %}
+{% block content %}
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Add transaction</h3>
+    <form method="post" action="/transactions">
+      <div class="row">
+        <div class="field"><label>Amount</label><input id="amt" name="amount" type="number" step="0.01" min="0" required></div>
+        <div class="field"><label>Type</label>
+          <select name="type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
+      </div>
+      <div class="field"><label>Merchant / payee</label>
+        <input id="merchant" name="merchant" autocomplete="off">
+        <div id="resolve-preview"></div></div>
+      <div class="row">
+        <div class="field"><label>Category</label>
+          <select name="category_id"><option value="">— none —</option>
+            {% for c in categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Date</label><input name="occurred_at" type="date"></div>
+      </div>
+      <div class="field"><label>Notes</label><input name="notes"></div>
+      <button class="btn" type="submit">Add</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>Search</h3>
+    <form method="get" action="/transactions">
+      <div class="field"><input name="q" value="{{ q }}" placeholder="Search merchant, notes, reference…"></div>
+      <button class="btn-ghost" type="submit">Search</button>
+      {% if q %}<a class="btn-ghost" href="/transactions">Clear</a>{% endif %}
+    </form>
+    <p class="muted" style="margin-top:14px">Pending and review items show a confirm box — confirming teaches the engine so it resolves that merchant automatically next time.</p>
+  </div>
+</div>
+
+<h2 class="section-title">{{ total }} transaction{{ '' if total == 1 else 's' }}</h2>
+<div class="card">
+  {% if transactions %}
+  <table>
+    <tr><th>Date</th><th>Merchant</th><th>Notes</th><th>Status</th><th>Conf.</th><th class="amt">Amount</th><th></th></tr>
+    {% for t in transactions %}
+    <tr>
+      <td>{{ t['occurred_at'][:10] }}</td>
+      <td><strong>{{ t['merchant_name'] or t['raw_merchant'] or '—' }}</strong>
+        {% if t['raw_merchant'] and t['merchant_name'] and t['raw_merchant'] != t['merchant_name'] %}<br><small>from “{{ t['raw_merchant'] }}”</small>{% endif %}
+        {% if t['status'] in ('pending_confirmation', 'needs_review') %}
+        <form method="post" action="/transactions/{{ t['id'] }}/confirm" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <input name="merchant" placeholder="Real merchant" value="{{ t['merchant_name'] or '' }}" style="max-width:160px" required>
+          <button class="btn-ghost btn-sm" type="submit">Confirm</button>
+        </form>{% endif %}
+      </td>
+      <td class="muted">{{ t['notes'] or '' }}</td>
+      <td>{{ m.status_pill(t['status']) }}</td>
+      <td>{{ m.confidence_badge(t['confidence']) }}</td>
+      <td class="amt {{ t['type'] }}">{{ '+' if t['type'] == 'income' else '-' }}{{ m.money(t['amount']) }}</td>
+      <td><form class="inline-form" method="post" action="/transactions/{{ t['id'] }}/delete"
+              onsubmit="return confirm('Delete this transaction?')">
+          <button class="btn-ghost btn-sm btn-danger" type="submit">✕</button></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">No transactions yet. Add one above, or import an SMS.</div>{% endif %}
+</div>
+
+<script>
+// Live confidence preview (same-origin; works offline inside the app).
+(function () {
+  var merchant = document.getElementById('merchant');
+  var amt = document.getElementById('amt');
+  var out = document.getElementById('resolve-preview');
+  if (!merchant) return;
+  var timer = null;
+  function preview() {
+    var name = merchant.value.trim();
+    if (!name) { out.innerHTML = ''; return; }
+    var body = new URLSearchParams({ merchant: name, amount: (amt.value || '') });
+    fetch('/transactions/resolve', { method: 'POST', body: body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+      .then(function (r) { return r.text(); })
+      .then(function (html) { out.innerHTML = html; })
+      .catch(function () {});
+  }
+  merchant.addEventListener('input', function () {
+    clearTimeout(timer); timer = setTimeout(preview, 400);
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Fraud Alerts · {{ app_name }}{% endblock %}
+{% block heading %}Fraud Alerts{% endblock %}
+{% block content %}
+<div class="card">
+  {% if alerts %}
+  <table>
+    <tr><th>Severity</th><th>Type</th><th>Message</th><th>Status</th><th></th></tr>
+    {% for a in alerts %}
+    <tr>
+      <td class="sev-{{ a['severity'] }}">{{ a['severity']|capitalize }}</td>
+      <td>{{ a['alert_type'].replace('_', ' ')|capitalize }}</td>
+      <td>{{ a['message'] }}</td>
+      <td><span class="pill {{ 'pill-warn' if a['status'] == 'open' else 'pill-ok' }}">{{ a['status']|capitalize }}</span></td>
+      <td>
+        {% if a['status'] == 'open' %}
+        <form class="inline-form" method="post" action="/fraud/{{ a['id'] }}/status">
+          <input type="hidden" name="status" value="dismissed"><button class="btn-ghost btn-sm" type="submit">Dismiss</button></form>
+        <form class="inline-form" method="post" action="/fraud/{{ a['id'] }}/status">
+          <input type="hidden" name="status" value="resolved"><button class="btn-ghost btn-sm" type="submit">Resolve</button></form>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">No fraud alerts. The engine watches for duplicates, high-value outliers and unusual spending.</div>{% endif %}
+</div>
+{% endblock %}

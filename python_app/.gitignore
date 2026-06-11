@@ -1,0 +1,14 @@
+# Virtualenv (must never be committed — Chaquopy would try to compile it)
+.venv/
+venv/
+
+# Python caches / artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Local databases
+*.db
+*.sqlite3
+spendwise.db

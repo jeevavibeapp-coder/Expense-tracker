@@ -1,0 +1,31 @@
+name: python-app-ci
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "python_app/**"
+      - ".github/workflows/python-app-ci.yml"
+  pull_request:
+    paths:
+      - "python_app/**"
+      - ".github/workflows/python-app-ci.yml"
+
+defaults:
+  run:
+    working-directory: python_app
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python_app/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run test suite
+        run: pytest -q

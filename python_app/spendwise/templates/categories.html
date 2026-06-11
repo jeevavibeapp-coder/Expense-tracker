@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Categories · {{ app_name }}{% endblock %}
+{% block heading %}Categories{% endblock %}
+{% block content %}
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Add category</h3>
+    <form method="post" action="/categories">
+      <div class="field"><label>Name</label><input name="name" required></div>
+      <div class="row">
+        <div class="field"><label>Type</label>
+          <select name="type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
+        <div class="field"><label>Colour</label><input name="color" type="color" value="#6366f1"></div>
+      </div>
+      <button class="btn" type="submit">Add category</button>
+    </form>
+  </div>
+  <div class="card"><h3>About categories</h3>
+    <p class="muted">Categories organise your spending and feed the engine's category-pattern signal when resolving merchants. A standard set is created with your account; add your own here.</p></div>
+</div>
+<h2 class="section-title">Your categories</h2>
+<div class="card">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if categories %}
+  <table>
+    <tr><th>Name</th><th>Type</th><th>Colour</th><th></th></tr>
+    {% for c in categories %}
+    <tr>
+      <td><strong>{{ c['name'] }}</strong></td>
+      <td>{% if c['type'] == 'income' %}<span class="pill pill-ok">Income</span>{% else %}<span class="pill pill-review">Expense</span>{% endif %}</td>
+      <td><span style="display:inline-block;width:16px;height:16px;border-radius:4px;vertical-align:middle;background:{{ c['color'] }}"></span> <small>{{ c['color'] }}</small></td>
+      <td><form class="inline-form" method="post" action="/categories/{{ c['id'] }}/delete"
+            onsubmit="return confirm('Delete this category? Transactions keep their data.')">
+          <button class="btn-ghost btn-sm btn-danger" type="submit">✕</button></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">No categories yet — add one above.</div>{% endif %}
+</div>
+{% endblock %}

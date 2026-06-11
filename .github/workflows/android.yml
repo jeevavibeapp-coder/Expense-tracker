@@ -31,6 +31,14 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Set up Python
+        # Chaquopy's buildPython runs pip at build time; it must be on PATH
+        # before the Gradle build. Python 3.11 satisfies Chaquopy 16.1.0
+        # (requires buildPython >= 3.8).
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 

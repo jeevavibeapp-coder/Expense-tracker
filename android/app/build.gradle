@@ -1,4 +1,6 @@
 apply plugin: 'com.android.application'
+// Chaquopy must be applied AFTER com.android.application.
+apply plugin: 'com.chaquo.python'
 
 android {
     namespace = "com.jeevavibeapp.spendwise"
@@ -14,6 +16,35 @@ android {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+
+        // Chaquopy: ship a native Python runtime for all common ABIs so the
+        // embedded Flask server runs on any device/emulator.
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+
+        // Chaquopy: pure-Python runtime dependency (Flask pulls Werkzeug,
+        // Jinja2, click, itsdangerous, markupsafe — all pure Python).
+        python {
+            // buildPython: the host Python used at build time to run pip.
+            // CI provides "python3" on PATH via actions/setup-python (3.11).
+            // Chaquopy requires buildPython >= 3.8. (Single-arg form: a command
+            // resolved on PATH; the two-arg form is "<command>", "<flag>", not a
+            // list of fallbacks, so we pass just one command here.)
+            buildPython "python3"
+            pip {
+                install "Flask"
+            }
+        }
+    }
+
+    // Chaquopy: point the Python source set at the repo's package directory so
+    // `spendwise` (and `spendwise.android_entry`) become importable on-device.
+    // Path is relative to android/app/ -> /home/user/Expense-tracker/python_app
+    sourceSets {
+        main {
+            python.srcDir "../../python_app"
         }
     }
     signingConfigs {
