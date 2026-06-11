@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}SMS Import · {{ app_name }}{% endblock %}
+{% block heading %}SMS Import{% endblock %}
+{% block content %}
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Paste a bank / UPI SMS</h3>
+    <p class="muted">The parser extracts amount, merchant, reference and date, then the engine resolves the real merchant.</p>
+    <form id="parse-form" method="post" action="/import/parse">
+      <div class="field">
+        <textarea name="sms" rows="5" placeholder="Rs.450.00 debited from a/c **1234 on 05-Jan-2024 to ZOMATO Ref 883120114455 UPI"></textarea>
+      </div>
+      <button class="btn" type="submit">Parse</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>Result</h3>
+    <div id="parse-out"><p class="muted">Parsed details will appear here.</p></div>
+  </div>
+</div>
+<script>
+(function () {
+  var form = document.getElementById('parse-form');
+  var out = document.getElementById('parse-out');
+  function post(url, formEl) {
+    return fetch(url, { method: 'POST', body: new URLSearchParams(new FormData(formEl)),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }).then(function (r) { return r.text(); });
+  }
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    post('/import/parse', form).then(function (html) {
+      out.innerHTML = html;
+      var createForm = document.getElementById('create-form');
+      if (createForm) {
+        createForm.addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          post('/import/create', createForm).then(function (h) { out.innerHTML = h; });
+        });
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

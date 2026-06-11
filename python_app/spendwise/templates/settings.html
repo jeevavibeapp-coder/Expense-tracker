@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Settings · {{ app_name }}{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  <form method="post" action="/settings">
+    <div class="row">
+      <div class="field"><label>Currency</label><input name="currency" value="{{ s['currency'] }}" maxlength="8"></div>
+      <div class="field"><label>Theme</label>
+        <select name="theme">
+          {% for opt in ['system','light','dark'] %}
+          <option value="{{ opt }}" {{ 'selected' if s['theme'] == opt else '' }}>{{ opt|capitalize }}</option>{% endfor %}
+        </select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Auto-save threshold (≥ this confidence auto-saves)</label>
+        <input name="auto_save_threshold" type="number" min="0" max="100" value="{{ s['auto_save_threshold'] }}"></div>
+      <div class="field"><label>Confirm threshold (≥ this asks to confirm)</label>
+        <input name="confirm_threshold" type="number" min="0" max="100" value="{{ s['confirm_threshold'] }}"></div>
+    </div>
+    <div class="field"><label>High-value alert amount (optional)</label>
+      <input name="high_value_amount" type="number" step="0.01" min="0"
+             value="{{ '%.2f'|format(s['high_value_amount']) if s['high_value_amount'] is not none else '' }}" placeholder="e.g. 25000">
+      <small>Transactions at or above this amount raise a fraud alert.</small></div>
+    <button class="btn" type="submit">Save settings</button>
+  </form>
+</div>
+{% endblock %}

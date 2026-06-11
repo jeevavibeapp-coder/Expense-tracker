@@ -2,6 +2,8 @@ name: Build Android APK
 
 on:
   push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
@@ -29,11 +31,19 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Set up Python
+        # Chaquopy's buildPython runs pip at build time; it must be on PATH
+        # before the Gradle build. Python 3.11 satisfies Chaquopy 16.1.0
+        # (requires buildPython >= 3.8).
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -43,10 +53,16 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug assembleRelease
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: android/app/build/outputs/apk/release/app-release.apk

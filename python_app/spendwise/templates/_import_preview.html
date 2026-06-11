@@ -1,0 +1,33 @@
+{% import "_macros.html" as m %}
+{% if parsed.matched %}
+<form id="create-form" method="post" action="/import/create">
+  <div class="row">
+    <div class="field"><label>Amount</label>
+      <input name="amount" type="number" step="0.01" value="{{ '%.2f'|format(parsed.amount) if parsed.amount is not none else '' }}" required></div>
+    <div class="field"><label>Type</label>
+      <select name="type">
+        <option value="expense" {{ 'selected' if parsed.type == 'expense' else '' }}>Expense</option>
+        <option value="income" {{ 'selected' if parsed.type == 'income' else '' }}>Income</option>
+      </select></div>
+  </div>
+  <div class="field"><label>Raw merchant (from SMS)</label><input name="raw_merchant" value="{{ parsed.raw_merchant or '' }}"></div>
+  <div class="row">
+    <div class="field"><label>Reference</label><input name="reference_number" value="{{ parsed.reference_number or '' }}"></div>
+    <div class="field"><label>Date</label>
+      <input name="occurred_at" type="date" value="{{ parsed.occurred_at.strftime('%Y-%m-%d') if parsed.occurred_at else '' }}"></div>
+  </div>
+  {% if preview and preview.best %}
+  <div class="card" style="background:var(--surface-2); padding:12px; margin-bottom:12px">
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+      <span class="muted">Resolves to</span><strong>{{ preview.best.merchant_name }}</strong>
+      {{ m.confidence_badge(preview.best.confidence) }}{{ m.decision_label(preview.decision) }}
+    </div>
+    {{ m.breakdown_bars(preview.breakdown) }}
+  </div>
+  {% else %}<p class="muted">First time seeing this merchant — it’ll be saved for review and learned once you confirm it.</p>{% endif %}
+  <button class="btn" type="submit">Save transaction</button>
+</form>
+{% else %}
+<div class="error">Couldn’t recognise a transaction in that message.</div>
+<p class="muted">Make sure it includes an amount (e.g. “Rs.450”) and a merchant.</p>
+{% endif %}
