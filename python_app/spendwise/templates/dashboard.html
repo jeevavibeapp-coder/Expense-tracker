@@ -5,20 +5,42 @@
 {% block subhead %}<div class="sub">Here's your money today</div>{% endblock %}
 {% block content %}
 {% set cur = d.currency %}
-<div class="screen stack stagger">
+<div class="screen stack">
 
-  {# Balance hero #}
-  <div class="hero">
+  {# Balance hero — premium card #}
+  <div class="hero reveal">
+    <div class="hero-top"><span class="hero-brand">SPENDWISE</span><span class="card-chip"></span></div>
     <div class="label">Total balance</div>
-    <div class="balance num"><span class="cur">{{ cur }}</span>{{ m.money(d.balance) }}</div>
+    <div class="balance num"><span class="cur">{{ cur }}</span><span data-countup>{{ m.money(d.balance) }}</span></div>
     <div class="hero-row">
       <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ cur }} {{ m.money_k(d.total_income) }}</div></div>
       <div class="hero-pill"><div class="k">↑ Spent</div><div class="v num">{{ cur }} {{ m.money_k(d.total_expense) }}</div></div>
     </div>
   </div>
 
+  {# Money health score #}
+  {% set rate = ((d.total_income - d.total_expense) / d.total_income * 100) if d.total_income > 0 else 0 %}
+  {% set rate = [[rate, 0]|max, 100]|min %}
+  {% set arc = rate / 100 * 263.894 %}
+  {% set tag = ('Healthy','var(--income)') if rate >= 30 else (('On track','var(--warn)') if rate >= 10 else ('Watch spending','var(--expense)')) %}
+  <div class="card score-row reveal">
+    <svg class="ring" viewBox="0 0 120 120" width="90" height="90" style="flex:0 0 90px">
+      <defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#36d39a"/><stop offset="1" stop-color="#5b8cff"/></linearGradient></defs>
+      <circle class="track" cx="60" cy="60" r="42" fill="none" stroke-width="12"/>
+      <circle cx="60" cy="60" r="42" fill="none" stroke="url(#g2)" stroke-width="12" stroke-linecap="round"
+        transform="rotate(-90 60 60)" stroke-dasharray="{{ '%.2f'|format(arc) }} {{ '%.2f'|format(263.894 - arc) }}"/>
+      <text class="ring-center" x="60" y="58" text-anchor="middle">{{ rate|round|int }}%</text>
+      <text class="ring-sub" x="60" y="71" text-anchor="middle">SAVED</text>
+    </svg>
+    <div style="flex:1">
+      <div style="font-weight:700; font-size:15px">Money health</div>
+      <span class="score-tag" style="background:{{ tag[1] }}22; color:{{ tag[1] }}; margin-top:6px">{{ tag[0] }}</span>
+      <div class="mut" style="font-size:12.5px; margin-top:8px">You keep {{ rate|round|int }}% of your income. Aim for 20%+.</div>
+    </div>
+  </div>
+
   {# Period strip #}
-  <div class="card" style="display:flex; justify-content:space-between; text-align:center; padding:16px 8px">
+  <div class="card reveal" style="display:flex; justify-content:space-between; text-align:center; padding:16px 8px">
     {% for k, v in [('Today', d.daily_spend), ('This week', d.weekly_spend), ('This month', d.monthly_spend)] %}
     <div style="flex:1">
       <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.03em">{{ k }}</div>
@@ -64,7 +86,7 @@
 
   {# Spending by category — donut #}
   <div class="section-h"><h2>Where your money goes</h2></div>
-  <div class="card">
+  <div class="card reveal">
     {% if d.category_breakdown %}
     {% set total = d.category_breakdown | sum(attribute='value') %}
     {% set circ = 263.894 %}
@@ -106,7 +128,7 @@
   {% if d.top_merchants %}
   <div class="section-h"><h2>Top merchants</h2><a href="/transactions">See all</a></div>
   {% set mmax = d.top_merchants[0].value %}
-  <div class="tx-list">
+  <div class="tx-list reveal">
     {% for mch in d.top_merchants[:5] %}
     <div class="tx">
       {{ m.avatar(mch.name) }}
@@ -123,7 +145,7 @@
   {# Trend bars #}
   {% if d.trend and d.trend|length > 1 %}
   <div class="section-h"><h2>Income vs spending</h2></div>
-  <div class="card">
+  <div class="card reveal">
     {% set tmax = (d.trend | map(attribute='income') | max, d.trend | map(attribute='expense') | max) | max %}
     <div class="bars">
       {% for t in d.trend %}

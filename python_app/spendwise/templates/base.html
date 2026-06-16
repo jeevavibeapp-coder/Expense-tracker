@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0a0a0f">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </head>
 <body>
 {% import "_macros.html" as m %}

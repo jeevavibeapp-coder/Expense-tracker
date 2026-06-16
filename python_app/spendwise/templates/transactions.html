@@ -123,6 +123,7 @@
       if (!name) { out.innerHTML = ''; return; }
       if (ctrl) ctrl.abort();
       ctrl = new AbortController();
+      out.innerHTML = '<div class="skeleton line" style="margin-top:10px;width:70%"></div>';
       fetch('/transactions/resolve', { method: 'POST', signal: ctrl.signal,
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ merchant: name, amount: amt.value || '' }) })

@@ -285,7 +285,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             category_id=request.form.get("category_id") or None,
             merchant=request.form.get("merchant", ""), notes=request.form.get("notes", "") or None,
             occurred_at=parse_date(request.form.get("occurred_at", "")), source="manual")
-        return redirect(url_for("transactions"))
+        return redirect(url_for("transactions", added=1))
 
     @app.post("/transactions/resolve")
     def transactions_resolve():
@@ -327,7 +327,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                                            category_id=cat, occurred_at=occ,
                                            is_correction=is_correction)
             g.conn.commit()
-        return redirect(url_for("transactions"))
+        return redirect(url_for("transactions", confirmed=1))
 
     @app.post("/transactions/<tx_id>/delete")
     def transactions_delete(tx_id):
