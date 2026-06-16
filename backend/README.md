@@ -1,0 +1,124 @@
+# Expense Tracker — Backend (Smart Merchant Context)
+
+A FastAPI service for expense tracking whose distinguishing feature is a
+**merchant resolution + learning engine**: it turns raw UPI/SMS counterparty
+strings (e.g. `UPI/RAJESH/9876@okhdfc`) into the real business you actually
+transacted with (e.g. `Starbucks`), with a transparent confidence score and a
+decision (auto-save / confirm / manual).
+
+Everything is computed from the user's **own** data — there is no seeded or
+mock transaction data anywhere.
+
+## Web app
+
+A server-rendered **Jinja2 + HTMX** web UI ships with the backend (no separate
+frontend build). Run the server and open `http://localhost:8000/`:
+
+- Sign up / sign in (cookie session over the same JWT auth)
+- Dashboard with stats, insights, top merchants and category/trend breakdowns
+- Transactions: add with a **live confidence preview** as you type a payee,
+  inline merchant confirmation, search, delete
+- SMS Import that parses a bank/UPI message and shows the engine's decision
+  (auto-save / confirm / manual) with the confidence breakdown
+- Fraud alerts and settings (confidence thresholds, currency, theme)
+
+Forms work without JavaScript; HTMX progressively enhances them. The JSON API
+stays available under `/api/v1`, with interactive docs at `/docs`.
+
+## Highlights
+
+- **Merchant resolution & confidence scoring** — weighted signals totalling 100:
+  Past Mapping (40), Amount Pattern (20), Category Pattern (15),
+  Correction History (15), Time Pattern (10). Thresholds are per-user
+  (defaults: ≥80 auto-save, 50–79 confirm, <50 manual).
+- **Learning engine** — every confirmation/correction updates a raw-name →
+  merchant mapping with running amount statistics, an hour-of-day histogram and
+  confirmation/correction counts, so predictions improve over time.
+- **Deterministic SMS/UPI parser** — extracts amount, direction, merchant,
+  reference and date with no external AI dependency.
+- **Fraud detection** — duplicate charges, high-value outliers (z-score over the
+  user's own distribution), abnormal daily spend, first-seen-merchant spikes.
+- **Analytics dashboard** — daily/weekly/monthly spend, category & merchant
+  breakdowns, trends and plain-language insights.
+- **Auth** — JWT access + rotating refresh tokens, bcrypt hashing, password
+  reset, per-IP rate limiting, audit logging.
+- **Receipts** — upload/preview/delete with a pluggable storage backend
+  (local filesystem or S3/MinIO).
+- **Offline sync** — idempotent, client-id–keyed transaction creation for a
+  mobile app that works offline.
+- **Clean architecture** — API → services → repositories → models, with
+  portable UUID PKs so the same code runs on PostgreSQL (prod) and SQLite (tests).
+
+## Quick start
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env            # adjust SECRET_KEY etc.
+
+# Run migrations (PostgreSQL via DATABASE_URL, or SQLite for local dev)
+alembic upgrade head
+
+uvicorn app.main:app --reload
+# Interactive docs at http://localhost:8000/docs
+```
+
+### Full stack with Docker
+
+```bash
+cd backend
+docker compose up --build
+# API → http://localhost:8000 , MinIO console → http://localhost:9001
+```
+
+## Testing
+
+```bash
+cd backend
+pytest -q                # 33 tests, runs on in-memory SQLite, no services needed
+pytest --cov=app         # with coverage
+```
+
+## Project layout
+
+```
+backend/
+  app/
+    api/v1/endpoints/   # HTTP layer (auth, transactions, merchants, receipts, …)
+    core/               # config, database, security, deps, rate limiting
+    models/             # SQLAlchemy ORM models (portable GUID PKs)
+    schemas/            # Pydantic request/response contracts
+    repositories/       # data-access objects (repository pattern)
+    services/           # business logic
+      merchant_engine.py    # resolution + confidence scoring
+      learning_engine.py    # persists & improves merchant knowledge
+      fraud.py              # anomaly detection
+      sms_parser.py         # SMS/UPI parsing
+      dashboard_service.py  # analytics aggregation
+      transaction_service.py# orchestration (resolve → decide → learn → fraud)
+      storage.py            # local / S3 receipt storage
+    workers/            # Celery app + background tasks
+  alembic/              # migrations
+  tests/                # pytest suite
+```
+
+## How the confidence score works
+
+For a raw name the engine scores every previously-learned candidate merchant:
+
+| Signal              | Max | Basis                                                        |
+|---------------------|-----|-------------------------------------------------------------|
+| Past Mapping        | 40  | Confirmations (minus corrections) — trust in the mapping    |
+| Amount Pattern      | 20  | Closeness of this amount to the merchant's learned average  |
+| Category Pattern    | 15  | Match between supplied category and the learned category    |
+| Correction History  | 15  | Confirmation/correction ratio for the mapping               |
+| Time Pattern        | 10  | Fit of the hour-of-day to the merchant's histogram          |
+
+The top candidate's total drives the decision (auto-save / confirm / manual).
+Confirmations and corrections feed back into the learning engine, so a name the
+user corrects once is resolved confidently next time.
+
+> Note: Alembic autogenerated migrations that use the portable `GUID` column
+> need `import app.core.database` added to the migration file (the initial
+> migration already includes it).

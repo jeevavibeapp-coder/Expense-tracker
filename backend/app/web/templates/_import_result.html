@@ -1,0 +1,17 @@
+{% import "_macros.html" as m %}
+<div class="flash">Transaction saved.</div>
+<div class="card" style="background:var(--surface-2); padding:14px">
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+    {{ m.decision_label(result.decision) }}
+    {% if result.resolved_merchant %}<strong>{{ result.resolved_merchant }}</strong>{% endif %}
+    {% if result.confidence is not none %}{{ m.confidence_badge(result.confidence) }}{% endif %}
+  </div>
+  {% if breakdown %}{{ m.breakdown_bars(breakdown) }}{% endif %}
+  {% if result.fraud_alert_ids %}
+    <p class="error" style="margin-top:10px">⚠ {{ result.fraud_alert_ids|length }} fraud alert(s) raised — see <a href="/fraud">Fraud Alerts</a>.</p>
+  {% endif %}
+  {% if result.decision in ('confirmation_required', 'manual_required') %}
+    <p class="muted" style="margin-top:8px">Confirm the merchant on the <a href="/transactions">Transactions</a> page to teach the engine.</p>
+  {% endif %}
+</div>
+<p style="margin-top:12px"><a class="btn-ghost" href="/import">Import another</a> <a class="btn-ghost" href="/transactions">View transactions</a></p>

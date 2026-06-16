@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Transactions · {{ app_name }}{% endblock %}
+{% block heading %}Transactions{% endblock %}
+{% block content %}
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Add transaction</h3>
+    <form method="post" action="/transactions" hx-post="/transactions" hx-target="#tx-panel" hx-swap="outerHTML">
+      <div class="row">
+        <div class="field"><label>Amount</label><input name="amount" type="number" step="0.01" min="0" required></div>
+        <div class="field"><label>Type</label>
+          <select name="type"><option value="expense">Expense</option><option value="income">Income</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Merchant / payee</label>
+        <input name="merchant" autocomplete="off"
+               hx-post="/transactions/resolve" hx-trigger="keyup changed delay:400ms"
+               hx-include="[name='amount']" hx-target="#resolve-preview" hx-swap="innerHTML">
+        <div id="resolve-preview"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Category</label>
+          <select name="category_id">
+            <option value="">— none —</option>
+            {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field"><label>Date</label><input name="occurred_at" type="date"></div>
+      </div>
+      <div class="field"><label>Notes</label><input name="notes"></div>
+      <button class="btn" type="submit">Add</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Search</h3>
+    <form method="get" action="/transactions">
+      <div class="field"><input name="q" value="{{ q }}" placeholder="Search merchant, notes, reference…"></div>
+      <button class="btn-ghost" type="submit">Search</button>
+      {% if q %}<a class="btn-ghost" href="/transactions">Clear</a>{% endif %}
+    </form>
+    <p class="muted" style="margin-top:14px">Pending and review items show a confirm box — confirming teaches the engine so it resolves that merchant automatically next time.</p>
+  </div>
+</div>
+
+<h2 class="section-title">{{ total }} transaction{{ '' if total == 1 else 's' }}</h2>
+{% include "_tx_panel.html" %}
+{% endblock %}

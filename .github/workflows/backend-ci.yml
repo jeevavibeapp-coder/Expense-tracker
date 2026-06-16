@@ -1,0 +1,55 @@
+name: backend-ci
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: expense
+          POSTGRES_PASSWORD: expense
+          POSTGRES_DB: expense
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U expense"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run test suite (SQLite)
+        run: pytest -q --cov=app --cov-report=term-missing
+
+      - name: Verify migrations apply on PostgreSQL
+        env:
+          DATABASE_URL: postgresql+psycopg2://expense:expense@localhost:5432/expense
+          SECRET_KEY: ci-secret-key-not-for-production
+        run: alembic upgrade head

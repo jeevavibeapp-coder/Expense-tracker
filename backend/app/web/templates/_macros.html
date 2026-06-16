@@ -1,0 +1,45 @@
+{% macro money(value) -%}
+{{ '%.2f'|format(value|float) }}
+{%- endmacro %}
+
+{% macro confidence_badge(score) -%}
+  {% if score is none %}
+    <span class="badge badge-muted">—</span>
+  {% else %}
+    {% set cls = 'badge-high' if score >= 80 else ('badge-mid' if score >= 50 else 'badge-low') %}
+    <span class="badge {{ cls }}" title="Engine confidence">{{ score }}%</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro status_pill(status) -%}
+  {% if status == 'confirmed' %}<span class="pill pill-ok">Confirmed</span>
+  {% elif status == 'pending_confirmation' %}<span class="pill pill-warn">Confirm?</span>
+  {% elif status == 'needs_review' %}<span class="pill pill-review">Review</span>
+  {% else %}<span class="pill">{{ status }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro decision_label(decision) -%}
+  {% if decision == 'auto_saved' %}<span class="pill pill-ok">Auto-saved</span>
+  {% elif decision == 'confirmation_required' %}<span class="pill pill-warn">Needs confirmation</span>
+  {% elif decision == 'manual_required' %}<span class="pill pill-review">Manual entry</span>
+  {% else %}<span class="pill">{{ decision }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro breakdown_bars(b) -%}
+  {% if b %}
+  <div class="breakdown">
+    {% for label, val, max in [
+        ('Past mapping', b.past_mapping, 40),
+        ('Amount pattern', b.amount_pattern, 20),
+        ('Category', b.category_pattern, 15),
+        ('Correction history', b.correction_history, 15),
+        ('Time pattern', b.time_pattern, 10)] %}
+      <div class="bd-row">
+        <span class="bd-label">{{ label }}</span>
+        <span class="bd-track"><span class="bd-fill" style="width: {{ (val / max * 100)|round(0, 'floor') }}%"></span></span>
+        <span class="bd-val">{{ '%.0f'|format(val) }}/{{ max }}</span>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{%- endmacro %}

@@ -1,0 +1,25 @@
+<div id="category-list" class="card">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if categories %}
+  <table>
+    <tr><th>Name</th><th>Type</th><th>Colour</th><th></th></tr>
+    {% for c in categories %}
+    <tr>
+      <td><strong>{{ c.name }}</strong></td>
+      <td>{% if c.type == 'income' %}<span class="pill pill-ok">Income</span>{% else %}<span class="pill pill-review">Expense</span>{% endif %}</td>
+      <td><span style="display:inline-block;width:16px;height:16px;border-radius:4px;vertical-align:middle;background:{{ c.color }}"></span> <small>{{ c.color }}</small></td>
+      <td>
+        <form class="inline-form" method="post" action="/categories/{{ c.id }}/delete"
+              hx-post="/categories/{{ c.id }}/delete" hx-target="#category-list" hx-swap="outerHTML"
+              hx-confirm="Delete this category? Transactions keep their data.">
+          <button class="btn-ghost btn-sm btn-danger" type="submit">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">No categories yet — add one above.</div>
+  {% endif %}
+</div>

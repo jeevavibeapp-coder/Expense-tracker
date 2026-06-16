@@ -1,0 +1,43 @@
+{% import "_macros.html" as m %}
+<div id="tx-panel" class="card">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if transactions %}
+  <table>
+    <tr><th>Date</th><th>Merchant</th><th>Category</th><th>Status</th><th>Conf.</th><th class="amt">Amount</th><th></th></tr>
+    {% for t in transactions %}
+    <tr>
+      <td>{{ t.occurred_at.strftime('%Y-%m-%d') }}</td>
+      <td>
+        <strong>{{ t.merchant_name or t.raw_merchant or '—' }}</strong>
+        {% if t.raw_merchant and t.merchant_name and t.raw_merchant != t.merchant_name %}
+          <br><small>from “{{ t.raw_merchant }}”</small>
+        {% endif %}
+        {% if t.status in ('pending_confirmation', 'needs_review') %}
+          <form class="inline-confirm" method="post" action="/transactions/{{ t.id }}/confirm"
+                hx-post="/transactions/{{ t.id }}/confirm" hx-target="#tx-panel" hx-swap="outerHTML"
+                style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            <input name="merchant" placeholder="Real merchant" value="{{ t.merchant_name or '' }}"
+                   style="max-width:160px" required>
+            <button class="btn-ghost btn-sm" type="submit">Confirm</button>
+          </form>
+        {% endif %}
+      </td>
+      <td class="muted">{{ t.notes or '' }}</td>
+      <td>{{ m.status_pill(t.status) }}</td>
+      <td>{{ m.confidence_badge(t.confidence) }}</td>
+      <td class="amt {{ t.type }}">{{ '+' if t.type == 'income' else '-' }}{{ m.money(t.amount) }}</td>
+      <td>
+        <form class="inline-form" method="post" action="/transactions/{{ t.id }}/delete"
+              hx-post="/transactions/{{ t.id }}/delete" hx-target="#tx-panel" hx-swap="outerHTML"
+              hx-confirm="Delete this transaction?">
+          <button class="btn-ghost btn-sm btn-danger" type="submit">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">No transactions yet. Add one above, or import an SMS.</div>
+  {% endif %}
+</div>

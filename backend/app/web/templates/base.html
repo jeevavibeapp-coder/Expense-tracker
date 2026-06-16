@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ (s.theme if s is defined and s else 'system') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <!-- HTMX progressively enhances forms; everything still works without it. -->
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body>
+{% if user %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">💸 {{ app_name }}</div>
+    <nav>
+      {% set nav = [
+        ('dashboard', '/dashboard', 'Dashboard'),
+        ('transactions', '/transactions', 'Transactions'),
+        ('import', '/import', 'SMS Import'),
+        ('categories', '/categories', 'Categories'),
+        ('fraud', '/fraud', 'Fraud Alerts'),
+        ('settings', '/settings', 'Settings')] %}
+      {% for key, href, label in nav %}
+        <a href="{{ href }}" class="nav-link {{ 'active' if active == key else '' }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar-foot">
+      <div class="who">{{ user.full_name }}<small>{{ user.email }}</small></div>
+      <form method="post" action="/logout"><button class="btn-ghost" type="submit">Sign out</button></form>
+    </div>
+  </aside>
+  <main class="content">
+    <header class="topbar">
+      <button class="hamburger" onclick="document.body.classList.toggle('nav-open')" aria-label="Menu">☰</button>
+      <h1>{% block heading %}{% endblock %}</h1>
+    </header>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+  {% block auth %}{% endblock %}
+{% endif %}
+</body>
+</html>
