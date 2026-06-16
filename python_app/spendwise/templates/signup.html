@@ -1,21 +1,21 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block auth %}
-<div class="auth-wrap">
-  <div class="auth-card">
-    <div class="brand">💸 {{ app_name }}</div>
-    <p class="sub">Create your account.</p>
-    {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <form method="post" action="/signup">
-      <div class="field"><label for="full_name">Full name</label>
-        <input id="full_name" name="full_name" value="{{ full_name or '' }}" required autofocus></div>
-      <div class="field"><label for="email">Email</label>
-        <input id="email" name="email" type="email" value="{{ email or '' }}" required></div>
-      <div class="field"><label for="password">Password</label>
-        <input id="password" name="password" type="password" minlength="8" required>
-        <small>At least 8 characters.</small></div>
-      <button class="btn" type="submit">Create account</button>
-    </form>
-    <p class="auth-alt">Already have an account? <a href="/login">Sign in</a></p>
-  </div>
+<div class="auth">
+  <div class="logo">{{ m.icon('wallet') }}</div>
+  <h1>Create account</h1>
+  <p class="sub">Track spending, catch fraud, and let the engine learn your merchants.</p>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post" action="/signup">
+    <div class="field"><label class="lbl">Full name</label>
+      <input name="full_name" autocomplete="name" value="{{ full_name or '' }}" required autofocus></div>
+    <div class="field"><label class="lbl">Email</label>
+      <input name="email" type="email" autocomplete="email" value="{{ email or '' }}" required></div>
+    <div class="field"><label class="lbl">Password</label>
+      <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+      <div class="mut" style="font-size:12px; margin-top:6px">At least 8 characters.</div></div>
+    <button class="btn" type="submit">Create account</button>
+  </form>
+  <p class="auth-alt">Already have an account? <a href="/login">Sign in</a></p>
 </div>
 {% endblock %}

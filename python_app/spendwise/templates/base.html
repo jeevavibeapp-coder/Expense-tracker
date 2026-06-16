@@ -1,42 +1,58 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ (s.theme if s is defined and s else 'system') }}">
+<html lang="en" data-theme="{{ theme | default('system') }}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <meta name="theme-color" content="#0a0a0f">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
+{% import "_macros.html" as m %}
 {% if user %}
-<div class="app-shell">
-  <aside class="sidebar">
-    <div class="brand">💸 {{ app_name }}</div>
-    <nav>
-      {% set nav = [
-        ('dashboard', '/dashboard', 'Dashboard'),
-        ('transactions', '/transactions', 'Transactions'),
-        ('import', '/import', 'SMS Import'),
-        ('categories', '/categories', 'Categories'),
-        ('fraud', '/fraud', 'Fraud Alerts'),
-        ('settings', '/settings', 'Settings')] %}
-      {% for key, href, label in nav %}
-        <a href="{{ href }}" class="nav-link {{ 'active' if active == key else '' }}">{{ label }}</a>
-      {% endfor %}
-    </nav>
-    <div class="sidebar-foot">
-      <div class="who">{{ user['full_name'] }}<small>{{ user['email'] }}</small></div>
-      {% if not single_user %}
-      <form method="post" action="/logout"><button class="btn-ghost" type="submit">Sign out</button></form>
-      {% endif %}
+<div class="app">
+  <header class="appbar">
+    <span class="avatar">{{ user['full_name'] | initials }}</span>
+    <div style="flex:1">
+      <h1>{% block heading %}{{ app_name }}{% endblock %}</h1>
+      {% block subhead %}{% endblock %}
     </div>
-  </aside>
-  <main class="content">
-    <header class="topbar">
-      <button class="hamburger" onclick="document.body.classList.toggle('nav-open')" aria-label="Menu">☰</button>
-      <h1>{% block heading %}{% endblock %}</h1>
-    </header>
-    {% block content %}{% endblock %}
-  </main>
+    <div class="appbar-actions">
+      <a class="icon-btn" href="/settings" aria-label="Settings">{{ m.icon('gear') }}</a>
+    </div>
+  </header>
+
+  <main>{% block content %}{% endblock %}</main>
+
+  {# ── Bottom navigation ── #}
+  <nav class="tabbar">
+    <a class="tab {{ 'active' if active == 'dashboard' }}" href="/dashboard">{{ m.icon('home') }}<span>Home</span></a>
+    <a class="tab {{ 'active' if active == 'transactions' }}" href="/transactions">
+      {{ m.icon('activity') }}<span>Activity</span>
+      {% if nav_review %}<span class="nbadge">{{ nav_review }}</span>{% endif %}</a>
+    <span class="tab-spacer"></span>
+    <a class="tab {{ 'active' if active == 'categories' }}" href="/categories">{{ m.icon('grid') }}<span>Budgets</span></a>
+    <a class="tab {{ 'active' if active == 'fraud' }}" href="/fraud">
+      {{ m.icon('shield') }}<span>Alerts</span>
+      {% if nav_fraud %}<span class="nbadge">{{ nav_fraud }}</span>{% endif %}</a>
+  </nav>
+  <a class="fab" href="#fab-sheet" aria-label="Add">{{ m.icon('plus') }}</a>
+
+  {# ── FAB action chooser (pure-CSS :target sheet) ── #}
+  <span id="fab-sheet" class="sheet-target"></span>
+  <a class="scrim" href="#" aria-label="Close"></a>
+  <div class="sheet" role="dialog" aria-label="Add">
+    <div class="grip"></div>
+    <h3>Add to SpendWise</h3>
+    <a class="sheet-action" href="/transactions#add">
+      <span class="si">{{ m.icon('plus') }}</span>
+      <div><div class="st">Add transaction</div><div class="sd">Log an expense or income</div></div>
+    </a>
+    <a class="sheet-action" href="/import">
+      <span class="si">{{ m.icon('sms') }}</span>
+      <div><div class="st">Import from SMS</div><div class="sd">Paste a bank / UPI message</div></div>
+    </a>
+  </div>
 </div>
 {% else %}
   {% block auth %}{% endblock %}

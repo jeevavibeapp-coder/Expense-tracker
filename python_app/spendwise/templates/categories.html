@@ -1,41 +1,66 @@
 {% extends "base.html" %}
-{% block title %}Categories · {{ app_name }}{% endblock %}
+{% import "_macros.html" as m %}
+{% block title %}Budgets · {{ app_name }}{% endblock %}
 {% block heading %}Categories{% endblock %}
 {% block content %}
-<div class="grid cols-2">
-  <div class="card">
-    <h3>Add category</h3>
-    <form method="post" action="/categories">
-      <div class="field"><label>Name</label><input name="name" required></div>
-      <div class="row">
-        <div class="field"><label>Type</label>
-          <select name="type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
-        <div class="field"><label>Colour</label><input name="color" type="color" value="#6366f1"></div>
-      </div>
-      <button class="btn" type="submit">Add category</button>
-    </form>
-  </div>
-  <div class="card"><h3>About categories</h3>
-    <p class="muted">Categories organise your spending and feed the engine's category-pattern signal when resolving merchants. A standard set is created with your account; add your own here.</p></div>
-</div>
-<h2 class="section-title">Your categories</h2>
-<div class="card">
+<div class="screen stack">
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
-  {% if categories %}
-  <table>
-    <tr><th>Name</th><th>Type</th><th>Colour</th><th></th></tr>
-    {% for c in categories %}
-    <tr>
-      <td><strong>{{ c['name'] }}</strong></td>
-      <td>{% if c['type'] == 'income' %}<span class="pill pill-ok">Income</span>{% else %}<span class="pill pill-review">Expense</span>{% endif %}</td>
-      <td><span style="display:inline-block;width:16px;height:16px;border-radius:4px;vertical-align:middle;background:{{ c['color'] }}"></span> <small>{{ c['color'] }}</small></td>
-      <td><form class="inline-form" method="post" action="/categories/{{ c['id'] }}/delete"
-            onsubmit="return confirm('Delete this category? Transactions keep their data.')">
-          <button class="btn-ghost btn-sm btn-danger" type="submit">✕</button></form></td>
-    </tr>
+
+  {% set expense = categories | selectattr('type','equalto','expense') | list %}
+  {% set income = categories | selectattr('type','equalto','income') | list %}
+
+  <div class="section-h"><h2>Spending</h2><a href="#newcat">+ New</a></div>
+  {% if expense %}
+  <div class="cat-grid">
+    {% for c in expense %}
+    <div class="cat-card">
+      <span class="cat-ico" style="background:{{ c['color'] }}22; color:{{ c['color'] }}">{{ m.icon('tag') }}</span>
+      <div class="cat-name">{{ c['name'] }}</div>
+      <div class="cat-val">Expense</div>
+      <form method="post" action="/categories/{{ c['id'] }}/delete" onsubmit="return confirm('Delete this category?')"
+            style="position:absolute; top:10px; right:10px">
+        <button class="icon-btn" style="width:28px;height:28px;border:none;background:transparent;color:var(--text-3)" aria-label="Delete">{{ m.icon('x') }}</button>
+      </form>
+    </div>
     {% endfor %}
-  </table>
-  {% else %}<div class="empty">No categories yet — add one above.</div>{% endif %}
+  </div>
+  {% else %}<div class="empty"><div class="ei">{{ m.icon('grid') }}</div><p>No spending categories yet.</p></div>{% endif %}
+
+  {% if income %}
+  <div class="section-h"><h2>Income</h2></div>
+  <div class="cat-grid">
+    {% for c in income %}
+    <div class="cat-card">
+      <span class="cat-ico" style="background:{{ c['color'] }}22; color:{{ c['color'] }}">{{ m.icon('income') }}</span>
+      <div class="cat-name">{{ c['name'] }}</div>
+      <div class="cat-val">Income</div>
+      <form method="post" action="/categories/{{ c['id'] }}/delete" onsubmit="return confirm('Delete this category?')"
+            style="position:absolute; top:10px; right:10px">
+        <button class="icon-btn" style="width:28px;height:28px;border:none;background:transparent;color:var(--text-3)" aria-label="Delete">{{ m.icon('x') }}</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <a class="btn btn-soft" href="#newcat" style="text-align:center; margin-top:18px">+ New category</a>
+</div>
+
+{# Add category sheet #}
+<span id="newcat" class="sheet-target"></span>
+<a class="scrim" href="#" aria-label="Close"></a>
+<div class="sheet" role="dialog" aria-label="New category">
+  <div class="grip"></div>
+  <h3>New category</h3>
+  <form method="post" action="/categories">
+    <div class="field"><label class="lbl">Name</label><input name="name" placeholder="e.g. Coffee" required></div>
+    <div class="seg" style="margin-bottom:14px">
+      <label><input type="radio" name="type" value="expense" checked><span>Expense</span></label>
+      <label><input type="radio" name="type" value="income"><span>Income</span></label>
+    </div>
+    <div class="field"><label class="lbl">Colour</label><input name="color" type="color" value="#7c5cff"></div>
+    <button class="btn" type="submit">Add category</button>
+  </form>
 </div>
 {% endblock %}

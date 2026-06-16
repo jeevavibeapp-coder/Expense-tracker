@@ -1,38 +1,147 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}Dashboard · {{ app_name }}{% endblock %}
-{% block heading %}Dashboard{% endblock %}
+{% block title %}Home · {{ app_name }}{% endblock %}
+{% block heading %}Hi, {{ user['full_name'].split()[0] }}{% endblock %}
+{% block subhead %}<div class="sub">Here's your money today</div>{% endblock %}
 {% block content %}
 {% set cur = d.currency %}
-<div class="grid cards">
-  <div class="card stat"><span class="label">Balance</span><span class="value">{{ cur }} {{ m.money(d.balance) }}</span></div>
-  <div class="card stat"><span class="label">Income</span><span class="value income">{{ cur }} {{ m.money(d.total_income) }}</span></div>
-  <div class="card stat"><span class="label">Expense</span><span class="value expense">{{ cur }} {{ m.money(d.total_expense) }}</span></div>
-  <div class="card stat"><span class="label">This month</span><span class="value">{{ cur }} {{ m.money(d.monthly_spend) }}</span></div>
-</div>
-<div class="grid cards" style="margin-top:16px">
-  <div class="card stat"><span class="label">Today</span><span class="value">{{ cur }} {{ m.money(d.daily_spend) }}</span></div>
-  <div class="card stat"><span class="label">This week</span><span class="value">{{ cur }} {{ m.money(d.weekly_spend) }}</span></div>
-  <div class="card stat"><span class="label">Pending confirmations</span><span class="value">{{ d.pending_confirmations }}</span></div>
-  <div class="card stat"><span class="label">Open fraud alerts</span><span class="value {{ 'expense' if d.open_fraud_alerts else '' }}">{{ d.open_fraud_alerts }}</span></div>
-</div>
-<div class="grid cols-2" style="margin-top:16px">
-  <div class="card"><h3>Insights</h3>
-    <ul class="insights">{% for line in d.insights %}<li>{{ line }}</li>{% endfor %}</ul></div>
-  <div class="card"><h3>Top merchants</h3>
-    {% if d.top_merchants %}<table>
-      {% for mch in d.top_merchants %}<tr><td>{{ mch.name }}</td><td class="amt">{{ cur }} {{ m.money(mch.value) }}</td></tr>{% endfor %}
-    </table>{% else %}<p class="muted">No spending yet.</p>{% endif %}</div>
-</div>
-<div class="grid cols-2" style="margin-top:16px">
-  <div class="card"><h3>By category</h3>
-    {% if d.category_breakdown %}<table>
-      {% for c in d.category_breakdown %}<tr><td>{{ c.name }}</td><td class="amt">{{ cur }} {{ m.money(c.value) }}</td></tr>{% endfor %}
-    </table>{% else %}<p class="muted">No categorised spending yet.</p>{% endif %}</div>
-  <div class="card"><h3>Monthly trend</h3>
-    {% if d.trend %}<table>
-      <tr><th>Month</th><th class="amt">Income</th><th class="amt">Expense</th></tr>
-      {% for t in d.trend %}<tr><td>{{ t.period }}</td><td class="amt income">{{ m.money(t.income) }}</td><td class="amt expense">{{ m.money(t.expense) }}</td></tr>{% endfor %}
-    </table>{% else %}<p class="muted">Not enough history yet.</p>{% endif %}</div>
+<div class="screen stack stagger">
+
+  {# Balance hero #}
+  <div class="hero">
+    <div class="label">Total balance</div>
+    <div class="balance num"><span class="cur">{{ cur }}</span>{{ m.money(d.balance) }}</div>
+    <div class="hero-row">
+      <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ cur }} {{ m.money_k(d.total_income) }}</div></div>
+      <div class="hero-pill"><div class="k">↑ Spent</div><div class="v num">{{ cur }} {{ m.money_k(d.total_expense) }}</div></div>
+    </div>
+  </div>
+
+  {# Period strip #}
+  <div class="card" style="display:flex; justify-content:space-between; text-align:center; padding:16px 8px">
+    {% for k, v in [('Today', d.daily_spend), ('This week', d.weekly_spend), ('This month', d.monthly_spend)] %}
+    <div style="flex:1">
+      <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.03em">{{ k }}</div>
+      <div class="num" style="font-size:18px; font-weight:800; margin-top:4px">{{ m.money_k(v) }}</div>
+    </div>
+    {% if not loop.last %}<div style="width:1px; background:var(--hairline)"></div>{% endif %}
+    {% endfor %}
+  </div>
+
+  {# Review queue teaser #}
+  {% if d.pending_confirmations %}
+  <a href="/transactions" class="queue" style="display:block">
+    <div style="display:flex; align-items:center; gap:12px">
+      <span class="ai" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 42px">{{ m.icon('sparkles') }}</span>
+      <div style="flex:1">
+        <h3>{{ d.pending_confirmations }} to review</h3>
+        <div class="mut" style="font-size:13px">Confirm merchants so the engine learns them</div>
+      </div>
+      <span class="faint">{{ m.icon('chevron') }}</span>
+    </div>
+  </a>
+  {% endif %}
+
+  {# Fraud teaser #}
+  {% if d.open_fraud_alerts %}
+  <a href="/fraud" class="alert high" style="text-decoration:none">
+    <span class="ai" style="background:var(--expense-soft); color:var(--expense)">{{ m.icon('shield') }}</span>
+    <div class="am"><div class="at">{{ d.open_fraud_alerts }} security alert{{ '' if d.open_fraud_alerts == 1 else 's' }}</div>
+      <div class="ad">Unusual activity needs your attention</div></div>
+    <span class="faint">{{ m.icon('chevron') }}</span>
+  </a>
+  {% endif %}
+
+  {# Insights #}
+  {% if d.insights %}
+  <div class="section-h"><h2>Insights</h2></div>
+  <div class="stack">
+    {% for line in d.insights[:4] %}
+    <div class="insight"><span class="ii" style="color:var(--primary-2)">{{ m.icon('sparkles') }}</span><p>{{ line }}</p></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Spending by category — donut #}
+  <div class="section-h"><h2>Where your money goes</h2></div>
+  <div class="card">
+    {% if d.category_breakdown %}
+    {% set total = d.category_breakdown | sum(attribute='value') %}
+    {% set circ = 263.894 %}
+    {% set ns = namespace(off=0) %}
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 120 120" width="112" height="112">
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#8b5cff"/><stop offset="1" stop-color="#5b8cff"/></linearGradient></defs>
+        <circle class="track" cx="60" cy="60" r="42" fill="none" stroke-width="15"/>
+        <g transform="rotate(-90 60 60)">
+        {% for c in d.category_breakdown[:6] %}
+          {% set seg = (c.value / total * circ) if total else 0 %}
+          <circle cx="60" cy="60" r="42" fill="none" stroke-width="15" stroke-linecap="round"
+            stroke="{{ c.name|avatar_color }}"
+            stroke-dasharray="{{ '%.2f'|format([seg-2,0.1]|max) }} {{ '%.2f'|format(circ-[seg-2,0.1]|max) }}"
+            stroke-dashoffset="{{ '%.2f'|format(-ns.off) }}"/>
+          {% set ns.off = ns.off + seg %}
+        {% endfor %}
+        </g>
+        <text class="ring-center" x="60" y="57" text-anchor="middle">{{ m.money_k(total) }}</text>
+        <text class="ring-sub" x="60" y="71" text-anchor="middle">{{ cur }} · SPENT</text>
+      </svg>
+      <div style="flex:1">
+        {% for c in d.category_breakdown[:5] %}
+        <div style="display:flex; align-items:center; gap:8px; padding:5px 0">
+          <span style="width:9px;height:9px;border-radius:50%;background:{{ c.name|avatar_color }};flex:0 0 9px"></span>
+          <span style="flex:1; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.name }}</span>
+          <span class="num mut" style="font-size:12.5px; font-weight:700">{{ (c.value/total*100)|round|int }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="empty"><div class="ei">{{ m.icon('grid') }}</div><p>No categorised spending yet.</p></div>
+    {% endif %}
+  </div>
+
+  {# Top merchants #}
+  {% if d.top_merchants %}
+  <div class="section-h"><h2>Top merchants</h2><a href="/transactions">See all</a></div>
+  {% set mmax = d.top_merchants[0].value %}
+  <div class="tx-list">
+    {% for mch in d.top_merchants[:5] %}
+    <div class="tx">
+      {{ m.avatar(mch.name) }}
+      <div class="tx-main">
+        <div class="tx-name">{{ mch.name }}</div>
+        <div class="cat-bar" style="margin-top:7px"><i style="width:{{ (mch.value/mmax*100)|round|int }}%; background:{{ mch.name|avatar_color }}"></i></div>
+      </div>
+      <div class="tx-amt num">{{ cur }} {{ m.money_k(mch.value) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Trend bars #}
+  {% if d.trend and d.trend|length > 1 %}
+  <div class="section-h"><h2>Income vs spending</h2></div>
+  <div class="card">
+    {% set tmax = (d.trend | map(attribute='income') | max, d.trend | map(attribute='expense') | max) | max %}
+    <div class="bars">
+      {% for t in d.trend %}
+      <div class="bar-col">
+        <div style="display:flex; gap:3px; align-items:flex-end; width:100%; height:100%; justify-content:center">
+          <span class="bar" style="height:{{ (t.income/tmax*100)|round|int if tmax else 0 }}%; max-width:11px"></span>
+          <span class="bar exp" style="height:{{ (t.expense/tmax*100)|round|int if tmax else 0 }}%; max-width:11px"></span>
+        </div>
+        <span class="bar-lbl">{{ t.period[5:] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:16px; justify-content:center; margin-top:10px; font-size:12px" class="mut">
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--primary);vertical-align:middle"></span> Income</span>
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--expense);vertical-align:middle"></span> Spending</span>
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 {% endblock %}

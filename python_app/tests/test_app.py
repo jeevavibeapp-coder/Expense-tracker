@@ -24,7 +24,7 @@ def test_login_page_and_redirect(client):
 
 def test_signup_creates_account_with_categories(auth_client):
     page = auth_client.get("/dashboard")
-    assert page.status_code == 200 and b"Dashboard" in page.data
+    assert page.status_code == 200 and b"Total balance" in page.data
     cats = auth_client.get("/categories")
     assert b"Food &amp; Dining" in cats.data or b"Food & Dining" in cats.data
 
@@ -40,7 +40,8 @@ def test_duplicate_signup_rejected(client):
 def test_add_transaction_confirmed(auth_client):
     r = _add(auth_client, amount="250.00", merchant="Starbucks")
     assert r.status_code == 200
-    assert b"Starbucks" in r.data and b"Confirmed" in r.data
+    # User-provided merchant is auto-confirmed at 100% confidence.
+    assert b"Starbucks" in r.data and b"100%" in r.data
 
 
 def test_learning_then_live_resolve(auth_client):
@@ -82,9 +83,9 @@ def test_sms_parse_and_create(auth_client):
 
 def test_search_and_delete(auth_client):
     _add(auth_client, amount="100.00", merchant="KFC")
-    _add(auth_client, amount="500.00", merchant="Starbucks")
+    _add(auth_client, amount="500.00", merchant="Zomato")
     found = auth_client.get("/transactions?q=kfc")
-    assert b"KFC" in found.data and b"Starbucks" not in found.data
+    assert b"KFC" in found.data and b"Zomato" not in found.data
     import re
     m = re.search(rb"/transactions/([0-9a-f]+)/delete", found.data)
     tx_id = m.group(1).decode()
@@ -106,7 +107,8 @@ def test_dashboard_real_data(auth_client):
     _add(auth_client, amount="200.00", type="income", merchant="Salary")
     _add(auth_client, amount="50.00", merchant="KFC")
     dash = auth_client.get("/dashboard")
-    assert b"200.00" in dash.data and b"KFC" in dash.data
+    # Balance = 200 income - 50 expense = 150.00, and KFC is a top merchant.
+    assert b"150.00" in dash.data and b"KFC" in dash.data
 
 
 def test_categories_crud(auth_client):

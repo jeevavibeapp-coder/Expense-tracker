@@ -87,9 +87,42 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
 
     app.jinja_env.globals["now"] = lambda: dt.datetime.now(dt.timezone.utc)
 
+    # UI helpers (presentation only — no behaviour change).
+    _AVATAR_COLORS = [
+        "#7c5cff", "#5b8cff", "#36d39a", "#ff6b81", "#fbbf24", "#22c1c3",
+        "#a78bfa", "#f472b6", "#34d399", "#fb923c", "#60a5fa", "#e879f9",
+    ]
+
+    def _initials(name):
+        parts = [p for p in (name or "").strip().split() if p]
+        if not parts:
+            return "?"
+        if len(parts) == 1:
+            return parts[0][:2].upper()
+        return (parts[0][0] + parts[1][0]).upper()
+
+    def _avatar_color(name):
+        s = sum(ord(ch) for ch in (name or "?"))
+        return _AVATAR_COLORS[s % len(_AVATAR_COLORS)]
+
+    app.jinja_env.filters["initials"] = _initials
+    app.jinja_env.filters["avatar_color"] = _avatar_color
+
     @app.context_processor
     def _inject_globals():
-        return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"]}
+        theme, nav_fraud, nav_review = "system", 0, 0
+        uid = session.get("user_id")
+        if uid:
+            row = db.one(g.conn, "SELECT theme FROM settings WHERE user_id=?", (uid,))
+            if row:
+                theme = row["theme"]
+            nav_fraud = db.one(g.conn, "SELECT COUNT(*) c FROM fraud_alerts WHERE "
+                               "user_id=? AND status='open'", (uid,))["c"]
+            nav_review = db.one(g.conn, "SELECT COUNT(*) c FROM transactions WHERE "
+                                "user_id=? AND is_deleted=0 AND status IN "
+                                "('pending_confirmation','needs_review')", (uid,))["c"]
+        return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
+                "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review}
 
     def require_login():
         if not session.get("user_id") or current_user() is None:
