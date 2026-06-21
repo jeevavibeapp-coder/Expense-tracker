@@ -73,7 +73,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         // The user may have just returned from the system settings screen —
         // refresh the permission state so the banner appears/disappears.
