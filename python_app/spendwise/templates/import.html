@@ -4,6 +4,11 @@
 {% block heading %}Import from SMS{% endblock %}
 {% block content %}
 <div class="screen stack">
+  <div class="card" style="display:flex; gap:10px; align-items:flex-start; background:rgba(54,211,154,.08); border-color:rgba(54,211,154,.25)">
+    <span style="color:var(--income); display:flex; margin-top:1px">{{ m.icon('check') }}</span>
+    <div><div style="font-weight:700; font-size:13.5px">Automatic capture is on</div>
+      <div class="mut" style="font-size:12.5px">Bank &amp; UPI messages are captured the moment they arrive — no pasting needed. If a category isn’t clear, SpendWise asks you with a quick popup. Use the box below only to add an older message by hand.</div></div>
+  </div>
   <div class="card">
     <div style="display:flex; gap:10px; align-items:center; margin-bottom:6px">
       <span class="ii" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--grad);color:#fff">{{ m.icon('sms') }}</span>

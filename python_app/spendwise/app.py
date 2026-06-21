@@ -111,6 +111,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     @app.context_processor
     def _inject_globals():
         theme, nav_fraud, nav_review = "system", 0, 0
+        cat_prompts, prompt_categories = [], []
         uid = session.get("user_id")
         if uid:
             row = db.one(g.conn, "SELECT theme FROM settings WHERE user_id=?", (uid,))
@@ -121,8 +122,18 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             nav_review = db.one(g.conn, "SELECT COUNT(*) c FROM transactions WHERE "
                                 "user_id=? AND is_deleted=0 AND status IN "
                                 "('pending_confirmation','needs_review')", (uid,))["c"]
+            # Auto-captured SMS transactions still awaiting a category → popup.
+            cat_prompts = db.all_rows(
+                g.conn, "SELECT * FROM transactions WHERE user_id=? AND category_id IS NULL "
+                "AND source='sms' AND is_deleted=0 AND COALESCE(category_prompted,0)=0 "
+                "ORDER BY occurred_at DESC, created_at DESC LIMIT 20", (uid,))
+            if cat_prompts:
+                prompt_categories = db.all_rows(
+                    g.conn, "SELECT * FROM categories WHERE user_id=? AND is_archived=0 "
+                    "ORDER BY type DESC, name", (uid,))
         return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
-                "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review}
+                "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review,
+                "cat_prompts": cat_prompts, "prompt_categories": prompt_categories}
 
     def require_login():
         if not session.get("user_id") or current_user() is None:
@@ -178,6 +189,14 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             else:
                 status = TX_REVIEW
                 decision = engine.DECISION_MANUAL
+
+        # Inherit the resolved merchant's learned category when the caller did
+        # not specify one (e.g. an auto-captured SMS) — so we only have to ask
+        # the user about genuinely unknown merchants.
+        if merchant_id and category_id is None:
+            mrow = db.one(g.conn, "SELECT category_id FROM merchants WHERE id=?", (merchant_id,))
+            if mrow and mrow["category_id"]:
+                category_id = mrow["category_id"]
 
         db.execute(g.conn,
                    "INSERT INTO transactions(id,user_id,amount,type,category_id,raw_merchant,"
@@ -329,6 +348,52 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn.commit()
         return redirect(url_for("transactions", confirmed=1))
 
+    @app.post("/transactions/<tx_id>/categorize")
+    def transactions_categorize(tx_id):
+        """Answer the 'which category?' popup for an auto-captured SMS txn.
+
+        Picking a category also teaches the engine so the same merchant is
+        categorised automatically next time. Submitting with no category just
+        dismisses the prompt for this transaction.
+        """
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        tx = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? AND is_deleted=0",
+                    (tx_id, uid))
+        if tx:
+            cat = request.form.get("category_id") or None
+            valid = cat and db.one(g.conn, "SELECT id FROM categories WHERE id=? AND user_id=?",
+                                   (cat, uid))
+            if valid and tx["raw_merchant"]:
+                canonical = tx["merchant_name"] or tx["raw_merchant"]
+                occ = dt.datetime.fromisoformat(tx["occurred_at"])
+                engine.record_confirmation(g.conn, user_id=uid, raw_name=tx["raw_merchant"],
+                                           merchant_name=canonical, amount=tx["amount"],
+                                           category_id=cat, occurred_at=occ)
+                m = engine.get_or_create_merchant(g.conn, user_id=uid,
+                                                  canonical_name=canonical, category_id=cat)
+                db.execute(g.conn,
+                           "UPDATE transactions SET category_id=?, merchant_id=?, merchant_name=?, "
+                           "category_prompted=1 WHERE id=?", (cat, m["id"], canonical, tx_id))
+            elif valid:
+                db.execute(g.conn, "UPDATE transactions SET category_id=?, category_prompted=1 "
+                           "WHERE id=?", (cat, tx_id))
+            else:
+                db.execute(g.conn, "UPDATE transactions SET category_prompted=1 WHERE id=?", (tx_id,))
+            g.conn.commit()
+        return redirect(request.referrer or url_for("dashboard"))
+
+    @app.post("/sms/prompts/dismiss")
+    def sms_prompts_dismiss():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        db.execute(g.conn, "UPDATE transactions SET category_prompted=1 WHERE user_id=? AND "
+                   "category_id IS NULL AND source='sms' AND is_deleted=0", (uid,))
+        g.conn.commit()
+        return redirect(request.referrer or url_for("dashboard"))
+
     @app.post("/transactions/<tx_id>/delete")
     def transactions_delete(tx_id):
         uid = require_login()
@@ -379,6 +444,41 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             source="sms", resolve=True)
         return render_template("_import_result.html", result=result,
                                breakdown=result["breakdown"])
+
+    @app.post("/sms/ingest")
+    def sms_ingest():
+        """Auto-capture a finance SMS pushed by the Android SMS receiver.
+
+        Called directly by the device (no pasting, no session cookie), so it is
+        restricted to loopback and resolves the single on-device user. Returns
+        JSON describing whether a transaction was captured and if it still needs
+        a category from the user.
+        """
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            abort(403)
+        uid = auth.ensure_local_user(g.conn)
+        body = request.form.get("body") or request.form.get("sms") or ""
+        parsed = parse_sms(body)
+        if not parsed.matched or parsed.amount is None:
+            return {"captured": False, "reason": "not_financial"}, 200
+        # Idempotency: the same bank reference must not be captured twice (the
+        # receiver may both POST live and re-queue on a flaky connection).
+        if parsed.reference_number:
+            dup = db.one(g.conn, "SELECT id, category_id FROM transactions WHERE user_id=? "
+                         "AND source='sms' AND reference_number=? AND is_deleted=0",
+                         (uid, parsed.reference_number))
+            if dup:
+                return {"captured": False, "reason": "duplicate", "id": dup["id"],
+                        "needs_category": dup["category_id"] is None}, 200
+        result = create_transaction(
+            uid, amount=parsed.amount, type_=parsed.type,
+            raw_merchant=parsed.raw_merchant, reference_number=parsed.reference_number,
+            occurred_at=parsed.occurred_at, source="sms", resolve=True)
+        tx = db.one(g.conn, "SELECT category_id FROM transactions WHERE id=?", (result["id"],))
+        return {"captured": True, "id": result["id"],
+                "merchant": result["resolved_merchant"] or parsed.raw_merchant,
+                "decision": result["decision"],
+                "needs_category": tx["category_id"] is None}, 200
 
     # ── Routes: categories ───────────────────────────────────────────────
     @app.get("/categories")

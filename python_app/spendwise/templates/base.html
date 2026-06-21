@@ -54,6 +54,46 @@
       <div><div class="st">Import from SMS</div><div class="sd">Paste a bank / UPI message</div></div>
     </a>
   </div>
+
+  {# ── Auto-captured SMS → "which category?" popup ── #}
+  {% if cat_prompts %}
+  {% set cp = cat_prompts[0] %}
+  <div class="cat-modal" role="dialog" aria-modal="true" aria-label="Choose a category">
+    <div class="cat-card reveal">
+      <div class="cat-head">
+        <span class="cat-spark">{{ m.icon('sms') }}</span>
+        <div style="flex:1">
+          <div class="cat-title">New transaction from SMS</div>
+          <div class="cat-sub">Captured automatically · choose a category</div>
+        </div>
+        {% if cat_prompts|length > 1 %}<span class="badge badge-mid">1 / {{ cat_prompts|length }}</span>{% endif %}
+      </div>
+      <div class="cat-tx">
+        {{ m.avatar(cp['merchant_name'] or cp['raw_merchant'] or '?') }}
+        <div style="flex:1; min-width:0">
+          <div class="cat-merch">{{ cp['merchant_name'] or cp['raw_merchant'] or 'Unknown merchant' }}</div>
+          {% if cp['raw_merchant'] and cp['merchant_name'] and cp['raw_merchant'] != cp['merchant_name'] %}
+          <div class="cat-raw">from “{{ cp['raw_merchant'] }}”</div>{% endif %}
+        </div>
+        <div class="cat-amt num {{ cp['type'] }}">{{ '+' if cp['type']=='income' else '–' }}{{ m.money(cp['amount']) }}</div>
+      </div>
+      <form method="post" action="/transactions/{{ cp['id'] }}/categorize">
+        <div class="cat-chips">
+          {% for c in prompt_categories %}
+          <button class="cat-chip" type="submit" name="category_id" value="{{ c['id'] }}">{{ c['name'] }}</button>
+          {% endfor %}
+        </div>
+        <div class="cat-foot">
+          <button class="btn-ghost btn-sm" type="submit">Skip</button>
+          <a class="btn-ghost btn-sm" href="/categories">+ New category</a>
+        </div>
+      </form>
+      <form method="post" action="/sms/prompts/dismiss">
+        <button class="cat-dismiss btn-ghost btn-sm" type="submit">Dismiss all</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% else %}
   {% block auth %}{% endblock %}

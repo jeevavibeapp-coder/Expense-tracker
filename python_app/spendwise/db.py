@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     source TEXT NOT NULL DEFAULT 'manual',
     confidence INTEGER,
     status TEXT NOT NULL DEFAULT 'confirmed',
+    category_prompted INTEGER NOT NULL DEFAULT 0,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
@@ -112,7 +113,17 @@ def connect(path: str) -> sqlite3.Connection:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Lightweight, additive migrations for databases created by older builds
+    (CREATE TABLE IF NOT EXISTS never adds new columns to an existing table)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(transactions)")}
+    if "category_prompted" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN "
+                     "category_prompted INTEGER NOT NULL DEFAULT 0")
 
 
 def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:

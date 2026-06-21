@@ -1,7 +1,12 @@
 package com.jeevavibeapp.spendwise;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
+
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -10,6 +15,8 @@ import com.chaquo.python.android.AndroidPlatform;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends BridgeActivity {
 
@@ -19,6 +26,7 @@ public class MainActivity extends BridgeActivity {
     // up and leaving the bundled `dist` splash visible.
     private static final long SERVER_TIMEOUT_MS = 15000L;
     private static final long POLL_INTERVAL_MS = 250L;
+    private static final int SMS_PERMISSION_REQUEST = 4011;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -26,6 +34,10 @@ public class MainActivity extends BridgeActivity {
         // as a brief splash screen until the embedded server is ready.
         super.onCreate(savedInstanceState);
         registerPlugin(SpendWisePlugin.class);
+
+        // Ask for SMS access up front — without RECEIVE_SMS the broadcast that
+        // powers automatic transaction capture is never delivered.
+        requestSmsPermissions();
 
         // Start the Chaquopy Python interpreter (must happen before any Python
         // is invoked). Idempotent.
@@ -41,6 +53,21 @@ public class MainActivity extends BridgeActivity {
                 startServerAndLoad(filesDir);
             }
         }, "spendwise-bootstrap").start();
+    }
+
+    /** Request RECEIVE_SMS / READ_SMS at runtime (Android 6+) if not granted. */
+    private void requestSmsPermissions() {
+        String[] wanted = { Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS };
+        List<String> needed = new ArrayList<>();
+        for (String perm : wanted) {
+            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(perm);
+            }
+        }
+        if (!needed.isEmpty()) {
+            ActivityCompat.requestPermissions(this, needed.toArray(new String[0]),
+                    SMS_PERMISSION_REQUEST);
+        }
     }
 
     private void startServerAndLoad(String filesDir) {

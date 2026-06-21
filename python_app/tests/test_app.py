@@ -138,3 +138,63 @@ def test_sms_parser_unit():
     r = parsing.parse_sms("INR 25,000.00 credited to your account from ACME on 01/02/2024")
     assert r.amount == 25000.0 and r.type == "income"
     assert parsing.parse_sms("Your OTP is 4567.").matched is False
+
+
+def _su_client(tmp_path, name="s.db"):
+    app = create_app(db_path=str(tmp_path / name), single_user=True, secret_key="t")
+    return app.test_client()
+
+
+def test_sms_ingest_auto_captures(tmp_path):
+    c = _su_client(tmp_path)
+    sms = "Rs.450.00 spent at SWIGGY on 12-06-2025 ref 553201998877 UPI"
+    r = c.post("/sms/ingest", data={"sender": "VK-HDFCBK", "body": sms})
+    j = r.get_json()
+    assert j["captured"] is True and j["needs_category"] is True
+    # The transaction is now in the app without any pasting.
+    page = c.get("/transactions")
+    assert b"SWIGGY" in page.data.upper()
+    # And the "which category?" popup is shown when the app opens.
+    dash = c.get("/dashboard")
+    assert b"New transaction from SMS" in dash.data
+
+
+def test_sms_ingest_ignores_non_financial(tmp_path):
+    c = _su_client(tmp_path)
+    r = c.post("/sms/ingest", data={"sender": "AX-OTP", "body": "Your OTP is 4567."})
+    assert r.get_json()["captured"] is False
+
+
+def test_sms_ingest_dedup_by_reference(tmp_path):
+    c = _su_client(tmp_path)
+    sms = "Rs.200 debited to UBER on 01/02/2025 ref ABCXYZ123456 UPI"
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["captured"] is True
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["reason"] == "duplicate"
+
+
+def test_sms_categorize_teaches_engine(tmp_path):
+    c = _su_client(tmp_path)
+    first = c.post("/sms/ingest", data={
+        "body": "Rs.350 debited to DOMINOS on 01/02/2025 ref REF111222333 UPI"}).get_json()
+    tx_id = first["id"]
+    # Pick a real category from the popup's chips (auto-provisioned defaults).
+    import re
+    cat_id = re.search(rb'name="category_id" value="([0-9a-f]+)"',
+                       c.get("/dashboard").data)
+    assert cat_id, "category chips should render in the popup"
+    cid = cat_id.group(1).decode()
+    c.post(f"/transactions/{tx_id}/categorize", data={"category_id": cid})
+    # Popup is gone, and a second DOMINOS SMS is auto-categorised (no prompt).
+    assert b"New transaction from SMS" not in c.get("/dashboard").data
+    second = c.post("/sms/ingest", data={
+        "body": "Rs.420 debited to DOMINOS on 02/02/2025 ref REF444555666 UPI"}).get_json()
+    assert second["captured"] is True and second["needs_category"] is False
+
+
+def test_sms_prompts_dismiss_all(tmp_path):
+    c = _su_client(tmp_path)
+    c.post("/sms/ingest", data={"body": "Rs.99 debited to ACME on 01/02/2025 UPI"})
+    c.post("/sms/ingest", data={"body": "Rs.88 debited to BETA on 01/02/2025 UPI"})
+    assert b"New transaction from SMS" in c.get("/dashboard").data
+    c.post("/sms/prompts/dismiss")
+    assert b"New transaction from SMS" not in c.get("/dashboard").data
