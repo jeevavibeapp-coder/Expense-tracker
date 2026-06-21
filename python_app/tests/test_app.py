@@ -191,6 +191,17 @@ def test_sms_categorize_teaches_engine(tmp_path):
     assert second["captured"] is True and second["needs_category"] is False
 
 
+def test_sms_permission_banner(tmp_path):
+    c = _su_client(tmp_path)
+    # No banner until the device reports a denial.
+    assert b"Auto-capture is paused" not in c.get("/dashboard").data
+    c.post("/device/state", data={"sms_permission": "denied"})
+    assert b"Auto-capture is paused" in c.get("/dashboard").data
+    # Granting clears it.
+    c.post("/device/state", data={"sms_permission": "granted"})
+    assert b"Auto-capture is paused" not in c.get("/dashboard").data
+
+
 def test_sms_prompts_dismiss_all(tmp_path):
     c = _su_client(tmp_path)
     c.post("/sms/ingest", data={"body": "Rs.99 debited to ACME on 01/02/2025 UPI"})

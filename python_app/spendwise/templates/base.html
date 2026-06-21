@@ -23,6 +23,20 @@
     </div>
   </header>
 
+  {% if sms_denied %}
+  <div class="perm-banner" role="alert">
+    <span class="pb-ic">{{ m.icon('sms') }}</span>
+    <div class="pb-txt">
+      <b>Auto-capture is paused</b>
+      <span>Allow SMS access so SpendWise can log bank transactions automatically.</span>
+    </div>
+    <button class="pb-btn" type="button"
+            onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}else{location.reload();}">
+      Allow
+    </button>
+  </div>
+  {% endif %}
+
   <main>{% block content %}{% endblock %}</main>
 
   {# ── Bottom navigation ── #}

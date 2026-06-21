@@ -421,3 +421,21 @@ body { overscroll-behavior-y: contain; }
   gap: 10px; margin-top: 14px; }
 .cat-dismiss { display: block; width: 100%; margin-top: 4px;
   color: var(--mut, #9aa0ad); text-align: center; }
+
+/* ── SMS permission nudge banner ──────────────────────────────────────── */
+.perm-banner { display: flex; align-items: center; gap: 12px;
+  margin: 10px 12px 0; padding: 12px 14px; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255,107,129,.16), rgba(124,92,255,.16));
+  border: 1px solid rgba(255,107,129,.32); }
+.perm-banner .pb-ic { width: 34px; height: 34px; border-radius: 11px; flex: none;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  background: var(--grad, linear-gradient(135deg, #9b6bff, #5b7cff)); }
+.perm-banner .pb-ic svg { width: 18px; height: 18px; }
+.perm-banner .pb-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.perm-banner .pb-txt b { font-size: 13.5px; }
+.perm-banner .pb-txt span { font-size: 12px; color: var(--mut, #9aa0ad); }
+.perm-banner .pb-btn { flex: none; padding: 9px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; color: #fff; cursor: pointer; border: none;
+  background: var(--grad, linear-gradient(135deg, #9b6bff, #5b7cff));
+  transition: transform .12s var(--ease, ease); }
+.perm-banner .pb-btn:active { transform: scale(.94); }

@@ -112,6 +112,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     def _inject_globals():
         theme, nav_fraud, nav_review = "system", 0, 0
         cat_prompts, prompt_categories = [], []
+        st = db.one(g.conn, "SELECT value FROM app_state WHERE key='sms_permission'")
+        sms_denied = bool(st and st["value"] == "denied")
         uid = session.get("user_id")
         if uid:
             row = db.one(g.conn, "SELECT theme FROM settings WHERE user_id=?", (uid,))
@@ -133,7 +135,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     "ORDER BY type DESC, name", (uid,))
         return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
                 "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review,
-                "cat_prompts": cat_prompts, "prompt_categories": prompt_categories}
+                "cat_prompts": cat_prompts, "prompt_categories": prompt_categories,
+                "sms_denied": sms_denied}
 
     def require_login():
         if not session.get("user_id") or current_user() is None:
@@ -479,6 +482,19 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 "merchant": result["resolved_merchant"] or parsed.raw_merchant,
                 "decision": result["decision"],
                 "needs_category": tx["category_id"] is None}, 200
+
+    @app.post("/device/state")
+    def device_state():
+        """Native layer reports whether SMS capture is currently permitted, so
+        the web UI can show a 'grant access' banner when it isn't."""
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            abort(403)
+        perm = request.form.get("sms_permission")
+        if perm in ("granted", "denied"):
+            db.execute(g.conn, "INSERT OR REPLACE INTO app_state(key, value) "
+                       "VALUES ('sms_permission', ?)", (perm,))
+            g.conn.commit()
+        return {"ok": True}, 200
 
     # ── Routes: categories ───────────────────────────────────────────────
     @app.get("/categories")

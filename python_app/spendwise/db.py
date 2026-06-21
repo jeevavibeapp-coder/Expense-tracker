@@ -93,6 +93,10 @@ CREATE TABLE IF NOT EXISTS settings (
     confirm_threshold INTEGER NOT NULL DEFAULT 50,
     high_value_amount REAL
 );
+CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
