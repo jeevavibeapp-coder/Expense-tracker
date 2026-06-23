@@ -191,6 +191,33 @@ def test_sms_categorize_teaches_engine(tmp_path):
     assert second["captured"] is True and second["needs_category"] is False
 
 
+def test_sms_ingest_dedup_refless(tmp_path):
+    c = _su_client(tmp_path)
+    sms = "Rs.120 debited to LOCALCAFE on 03-04-2025 UPI"  # no parseable ref
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["captured"] is True
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["reason"] == "duplicate"
+
+
+def test_device_token_enforced(tmp_path):
+    app = create_app(db_path=str(tmp_path / "t.db"), single_user=True,
+                     secret_key="t", device_token="sekret")
+    c = app.test_client()
+    sms = "Rs.50 spent at TEA on 01-01-2025 ref AAA111222333 UPI"
+    assert c.post("/sms/ingest", data={"body": sms}).status_code == 403          # no token
+    assert c.post("/sms/ingest", data={"body": sms},
+                  headers={"X-SpendWise-Token": "wrong"}).status_code == 403       # bad token
+    ok = c.post("/sms/ingest", data={"body": sms}, headers={"X-SpendWise-Token": "sekret"})
+    assert ok.status_code == 200 and ok.get_json()["captured"] is True            # good token
+    assert c.post("/device/state", data={"sms_permission": "denied"}).status_code == 403
+
+
+def test_secret_key_persisted(tmp_path):
+    db = str(tmp_path / "p.db")
+    a1 = create_app(db_path=db, single_user=True)
+    a2 = create_app(db_path=db, single_user=True)
+    assert a1.secret_key and a1.secret_key == a2.secret_key  # survives "restart"
+
+
 def test_sms_permission_banner(tmp_path):
     c = _su_client(tmp_path)
     # No banner until the device reports a denial.

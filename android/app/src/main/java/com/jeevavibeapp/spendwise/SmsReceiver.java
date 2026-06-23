@@ -3,6 +3,7 @@ package com.jeevavibeapp.spendwise;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.telephony.SmsMessage;
 import android.util.Log;
@@ -23,7 +24,8 @@ import java.net.URLEncoder;
  *
  * Flow:
  *   1. Filter to likely finance messages.
- *   2. POST {sender, body} to the on-device server (http://127.0.0.1:8765/sms/ingest).
+ *   2. POST {sender, body} to the on-device server (http://127.0.0.1:8765/sms/ingest)
+ *      with the per-launch device token so only this app can ingest.
  *   3. If the server isn't up (app closed), append to a queue file that the
  *      app drains on its next launch, so nothing is ever lost.
  */
@@ -32,6 +34,10 @@ public class SmsReceiver extends BroadcastReceiver {
     private static final String TAG = "SpendWiseSms";
     private static final String INGEST_URL = "http://127.0.0.1:8765/sms/ingest";
     private static final String INBOX_FILE = "sms_inbox.jsonl";
+    private static final String PREFS = "spendwise";
+    private static final String TOKEN_KEY = "sms_token";
+    // Serializes appends to the queue file across the per-message worker threads.
+    private static final Object QUEUE_LOCK = new Object();
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -69,12 +75,14 @@ public class SmsReceiver extends BroadcastReceiver {
         // Network must not run on the main thread; keep the process alive while
         // we deliver the message.
         final Context appContext = context.getApplicationContext();
+        final String token = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(TOKEN_KEY, null);
         final PendingResult pending = goAsync();
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    if (!postToServer(fSender, body)) {
+                    if (!postToServer(fSender, body, token)) {
                         queue(appContext, fSender, body);
                     }
                 } catch (Throwable t) {
@@ -95,9 +103,9 @@ public class SmsReceiver extends BroadcastReceiver {
         String b = body.toLowerCase();
         String[] keys = {
             "debited", "credited", "spent", "txn", "transaction", "a/c", "acct",
-            "account", "upi", "inr", "rs.", "rs ", "₹", "paid", "received",
+            "account", "upi", "inr", "rs.", "rs ", "rs", "₹", "paid", "received",
             "withdrawn", "balance", "purchase", "payment", "transfer", "imps",
-            "neft", "deposited",
+            "neft", "deposited", "debit", "credit",
         };
         for (String k : keys) {
             if (b.contains(k)) {
@@ -108,7 +116,7 @@ public class SmsReceiver extends BroadcastReceiver {
     }
 
     /** POST to the running embedded server. Returns true on a 2xx response. */
-    private static boolean postToServer(String sender, String body) {
+    private static boolean postToServer(String sender, String body, String token) {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(INGEST_URL);
@@ -118,6 +126,9 @@ public class SmsReceiver extends BroadcastReceiver {
             conn.setReadTimeout(3000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            if (token != null && !token.isEmpty()) {
+                conn.setRequestProperty("X-SpendWise-Token", token);
+            }
             String form = "sender=" + URLEncoder.encode(sender == null ? "" : sender, "UTF-8")
                     + "&body=" + URLEncoder.encode(body, "UTF-8");
             try (OutputStream os = conn.getOutputStream()) {
@@ -134,15 +145,17 @@ public class SmsReceiver extends BroadcastReceiver {
         }
     }
 
-    /** Append to the offline queue drained on next app launch. */
+    /** Append to the offline queue drained on next app launch (serialized). */
     private static void queue(Context context, String sender, String body) throws Exception {
         JSONObject obj = new JSONObject();
         obj.put("sender", sender == null ? "" : sender);
         obj.put("body", body);
+        String line = obj.toString() + "\n";
         File file = new File(context.getFilesDir(), INBOX_FILE);
-        try (BufferedWriter w = new BufferedWriter(new FileWriter(file, true))) {
-            w.write(obj.toString());
-            w.newLine();
+        synchronized (QUEUE_LOCK) {
+            try (BufferedWriter w = new BufferedWriter(new FileWriter(file, true))) {
+                w.write(line);
+            }
         }
         Log.d(TAG, "Queued finance SMS for next launch");
     }

@@ -58,7 +58,7 @@
   --bg-grad: radial-gradient(120% 70% at 50% -10%, #e7e2ff 0%, rgba(238,240,246,0) 55%), var(--bg);
   --surface: #ffffff; --surface-2: #f4f5fa; --surface-3: #eceef5;
   --hairline: rgba(16,18,32,.08); --hairline-2: rgba(16,18,32,.14);
-  --text: #14141c; --text-2: #5a5d6e; --text-3: #9094a6;
+  --text: #14141c; --text-2: #5a5d6e; --text-3: #6b6f80;
   --ring-track: rgba(16,18,32,.08);
   --shadow: 0 10px 30px rgba(30,30,60,.12); --shadow-sm: 0 2px 10px rgba(30,30,60,.08);
 }
@@ -67,7 +67,7 @@
     --bg:#eef0f6; --bg-grad: radial-gradient(120% 70% at 50% -10%,#e7e2ff 0%,rgba(238,240,246,0) 55%), var(--bg);
     --surface:#fff; --surface-2:#f4f5fa; --surface-3:#eceef5;
     --hairline:rgba(16,18,32,.08); --hairline-2:rgba(16,18,32,.14);
-    --text:#14141c; --text-2:#5a5d6e; --text-3:#9094a6; --ring-track:rgba(16,18,32,.08);
+    --text:#14141c; --text-2:#5a5d6e; --text-3:#6b6f80; --ring-track:rgba(16,18,32,.08);
     --shadow:0 10px 30px rgba(30,30,60,.12); --shadow-sm:0 2px 10px rgba(30,30,60,.08);
   }
 }
@@ -343,7 +343,7 @@ body { overscroll-behavior-y: contain; }
 ::view-transition-new(root) { animation: vt-in .28s var(--ease) both; }
 @keyframes vt-in { from { opacity: 0; transform: translateY(10px) scale(.99); } to { opacity: 1; transform: none; } }
 @keyframes vt-out { to { opacity: 0; transform: translateY(-6px); } }
-.fab { transition: transform .28s var(--spring); }
+.fab { transition: transform .18s var(--ease); }
 
 /* Ripple */
 .btn, .btn-soft, .fab, .chip, .sheet-action, .icon-btn, .tap { position: relative; overflow: hidden; }
@@ -358,14 +358,17 @@ body { overscroll-behavior-y: contain; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 /* Scroll reveal */
-.reveal { opacity: 0; transform: translateY(16px); transition: opacity .5s var(--ease), transform .55s var(--ease); }
-.reveal.in { opacity: 1; transform: none; }
+/* Visible by default; only hidden once JS proves it's alive (html.js), so a
+   script failure can never leave content stuck invisible. */
+.reveal { opacity: 1; transform: none; transition: opacity .5s var(--ease), transform .55s var(--ease); }
+html.js .reveal { opacity: 0; transform: translateY(16px); }
+html.js .reveal.in { opacity: 1; transform: none; }
 
 /* Premium card sheen on the balance hero */
 .hero { overflow: hidden; }
 .hero::before { content: ""; position: absolute; inset: 0; z-index: 1;
   background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.18) 50%, transparent 58%);
-  transform: translateX(-130%); animation: sheen 6s ease-in-out infinite; }
+  transform: translateX(-130%); animation: sheen 2.6s ease-in-out 1 .3s both; }
 .hero > * { position: relative; z-index: 2; }
 @keyframes sheen { 0%, 100% { transform: translateX(-130%); } 55% { transform: translateX(130%); } }
 .card-chip { width: 32px; height: 23px; border-radius: 6px;
@@ -439,3 +442,13 @@ body { overscroll-behavior-y: contain; }
   background: var(--grad, linear-gradient(135deg, #9b6bff, #5b7cff));
   transition: transform .12s var(--ease, ease); }
 .perm-banner .pb-btn:active { transform: scale(.94); }
+
+/* ── A11y / mobile ergonomics ─────────────────────────────────────────── */
+/* Lock background scroll while a bottom sheet or the SMS popup is open. */
+body:has(.sheet-target:target), body:has(.cat-modal) { overflow: hidden; }
+/* Visible focus ring for keyboard / D-pad / switch-access users. */
+a:focus-visible, button:focus-visible, summary:focus-visible,
+.tab:focus-visible, .chip:focus-visible, .cat-chip:focus-visible,
+.icon-btn:focus-visible, .fab:focus-visible, .sheet-action:focus-visible {
+  outline: none; box-shadow: 0 0 0 3px rgba(124,92,255,.5); border-radius: 12px;
+}

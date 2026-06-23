@@ -42,6 +42,15 @@ def _category_breakdown(conn, user_id: str) -> list[dict]:
     return [{"name": r["n"], "value": round(float(r["v"]), 2)} for r in rows]
 
 
+def _cap_breakdown(cats: list[dict], n: int = 5) -> list[dict]:
+    """Keep the donut readable when one category dominates: show the top n and
+    roll the long tail into a single 'Other' slice."""
+    if len(cats) <= n + 1:
+        return cats
+    other = round(sum(c["value"] for c in cats[n:]), 2)
+    return cats[:n] + [{"name": "Other", "value": other}]
+
+
 def _trend(conn, user_id: str, months: int = 6) -> list[dict]:
     rows = db.all_rows(
         conn,
@@ -89,7 +98,8 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     income = round(_total(conn, user_id, "income"), 2)
     expense = round(_total(conn, user_id, "expense"), 2)
     top = _top_merchants(conn, user_id)
-    cats = _category_breakdown(conn, user_id)
+    cats_full = _category_breakdown(conn, user_id)
+    cats = _cap_breakdown(cats_full)
 
     pending = db.one(
         conn,
@@ -105,6 +115,6 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
         "balance": round(income - expense, 2), "top_merchants": top,
         "merchant_breakdown": top, "category_breakdown": cats,
         "trend": _trend(conn, user_id),
-        "insights": _insights(monthly, weekly, top, cats, pending, fraud_open),
+        "insights": _insights(monthly, weekly, top, cats_full, pending, fraud_open),
         "open_fraud_alerts": fraud_open, "pending_confirmations": pending,
     }

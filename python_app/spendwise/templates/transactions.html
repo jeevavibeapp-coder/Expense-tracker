@@ -8,6 +8,13 @@
 {% set pending = transactions | selectattr('status', 'in', ['pending_confirmation','needs_review']) | list %}
 <div class="screen stack">
 
+  {% if request.args.get('error') == 'amount' %}
+  <div class="card" style="display:flex;gap:10px;align-items:center;background:var(--expense-soft);border-color:var(--expense)">
+    <span style="color:var(--expense);display:flex">{{ m.icon('x') }}</span>
+    <span style="font-size:13px">Enter a valid amount to add a transaction.</span>
+  </div>
+  {% endif %}
+
   {# Search #}
   <form method="get" action="/transactions" class="card" style="display:flex; gap:10px; align-items:center; padding:10px 12px">
     <span class="faint" style="display:flex">{{ m.icon('search') }}</span>

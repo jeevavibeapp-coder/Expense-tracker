@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     confidence INTEGER,
     status TEXT NOT NULL DEFAULT 'confirmed',
     category_prompted INTEGER NOT NULL DEFAULT 0,
+    dedup_key TEXT,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
@@ -112,6 +113,7 @@ def connect(path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
 
@@ -128,6 +130,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "category_prompted" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN "
                      "category_prompted INTEGER NOT NULL DEFAULT 0")
+    if "dedup_key" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN dedup_key TEXT")
 
 
 def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:

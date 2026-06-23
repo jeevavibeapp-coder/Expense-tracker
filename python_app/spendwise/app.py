@@ -7,6 +7,8 @@ inside the Android APK (single-user mode).
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import hmac
 import os
 from typing import Optional
 
@@ -21,16 +23,31 @@ TX_CONFIRMED, TX_PENDING, TX_REVIEW = "confirmed", "pending_confirmation", "need
 
 
 def create_app(db_path: Optional[str] = None, single_user: bool = False,
-               secret_key: Optional[str] = None) -> Flask:
+               secret_key: Optional[str] = None, device_token: Optional[str] = None) -> Flask:
     app = Flask(__name__)
     app.config["DB_PATH"] = db_path or os.environ.get("SPENDWISE_DB", "spendwise.db")
     app.config["SINGLE_USER"] = single_user or os.environ.get("SPENDWISE_SINGLE_USER") == "1"
-    app.secret_key = (secret_key or os.environ.get("SPENDWISE_SECRET")
-                      or os.urandom(32).hex())
+    # When set (on-device), native→server calls must carry this token, so a
+    # co-installed app can't POST to the loopback ingest endpoints.
+    app.config["DEVICE_TOKEN"] = device_token or os.environ.get("SPENDWISE_DEVICE_TOKEN") or None
 
     # Initialise the schema once at startup.
     init_conn = db.connect(app.config["DB_PATH"])
     db.init_db(init_conn)
+
+    # A stable secret so sessions survive process restarts on-device. Explicit
+    # arg / env win; otherwise persist a generated key in app_state.
+    secret = secret_key or os.environ.get("SPENDWISE_SECRET")
+    if not secret:
+        row = db.one(init_conn, "SELECT value FROM app_state WHERE key='secret_key'")
+        if row and row["value"]:
+            secret = row["value"]
+        else:
+            secret = os.urandom(32).hex()
+            db.execute(init_conn, "INSERT OR REPLACE INTO app_state(key, value) "
+                       "VALUES ('secret_key', ?)", (secret,))
+            init_conn.commit()
+    app.secret_key = secret
     init_conn.close()
 
     # ── Request lifecycle ────────────────────────────────────────────────
@@ -52,6 +69,17 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             return None
         return auth.get_user(g.conn, uid)
+
+    def device_authorized() -> bool:
+        """Loopback-only AND (when a device token is configured) a matching
+        token header — so a co-installed app can't reach these endpoints."""
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            return False
+        token = app.config["DEVICE_TOKEN"]
+        if token:
+            sent = request.headers.get("X-SpendWise-Token", "")
+            return hmac.compare_digest(sent, token)
+        return True
 
     def settings_for(uid: str) -> dict:
         row = db.one(g.conn, "SELECT * FROM settings WHERE user_id=?", (uid,))
@@ -147,7 +175,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     def create_transaction(uid: str, *, amount: float, type_: str, category_id=None,
                            merchant=None, raw_merchant=None, notes=None,
                            reference_number=None, occurred_at: Optional[dt.datetime] = None,
-                           source="manual", resolve=True) -> dict:
+                           source="manual", resolve=True, dedup_key=None) -> dict:
         s = settings_for(uid)
         occ = occurred_at or dt.datetime.now(dt.timezone.utc)
         raw = (raw_merchant or merchant or "").strip() or None
@@ -204,11 +232,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         db.execute(g.conn,
                    "INSERT INTO transactions(id,user_id,amount,type,category_id,raw_merchant,"
                    "merchant_id,merchant_name,notes,reference_number,occurred_at,source,"
-                   "confidence,status,is_deleted,created_at) VALUES "
-                   "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
+                   "confidence,status,dedup_key,is_deleted,created_at) VALUES "
+                   "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
                    (tx_id, uid, amount, type_, category_id, raw, merchant_id, merchant_name,
                     notes, reference_number, occ.isoformat(), source, confidence, status,
-                    dt.datetime.now(dt.timezone.utc).isoformat()))
+                    dedup_key, dt.datetime.now(dt.timezone.utc).isoformat()))
 
         alert_ids = fraud.evaluate_transaction(
             g.conn, user_id=uid,
@@ -301,7 +329,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             return redirect(url_for("login"))
         amount = parse_amount(request.form.get("amount", ""))
         if amount is None or amount < 0:
-            return redirect(url_for("transactions"))
+            return redirect(url_for("transactions", error="amount"))
         create_transaction(
             uid, amount=amount, type_=request.form.get("type", "expense"),
             category_id=request.form.get("category_id") or None,
@@ -457,26 +485,28 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         JSON describing whether a transaction was captured and if it still needs
         a category from the user.
         """
-        if request.remote_addr not in ("127.0.0.1", "::1"):
+        if not device_authorized():
             abort(403)
         uid = auth.ensure_local_user(g.conn)
         body = request.form.get("body") or request.form.get("sms") or ""
         parsed = parse_sms(body)
         if not parsed.matched or parsed.amount is None:
             return {"captured": False, "reason": "not_financial"}, 200
-        # Idempotency: the same bank reference must not be captured twice (the
-        # receiver may both POST live and re-queue on a flaky connection).
-        if parsed.reference_number:
-            dup = db.one(g.conn, "SELECT id, category_id FROM transactions WHERE user_id=? "
-                         "AND source='sms' AND reference_number=? AND is_deleted=0",
-                         (uid, parsed.reference_number))
-            if dup:
-                return {"captured": False, "reason": "duplicate", "id": dup["id"],
-                        "needs_category": dup["category_id"] is None}, 200
+        # Idempotency: the same message must not be captured twice (the receiver
+        # may both POST live and re-queue on a flaky connection). Prefer the bank
+        # reference; fall back to a content hash for messages that have none.
+        dedup_key = parsed.reference_number or hashlib.sha1(
+            ("%s|%s|%s|%s|%s" % (uid, parsed.amount, parsed.type,
+             parsed.occurred_at or "", body.strip())).encode("utf-8")).hexdigest()
+        dup = db.one(g.conn, "SELECT id, category_id FROM transactions WHERE user_id=? "
+                     "AND source='sms' AND dedup_key=? AND is_deleted=0", (uid, dedup_key))
+        if dup:
+            return {"captured": False, "reason": "duplicate", "id": dup["id"],
+                    "needs_category": dup["category_id"] is None}, 200
         result = create_transaction(
             uid, amount=parsed.amount, type_=parsed.type,
             raw_merchant=parsed.raw_merchant, reference_number=parsed.reference_number,
-            occurred_at=parsed.occurred_at, source="sms", resolve=True)
+            occurred_at=parsed.occurred_at, source="sms", resolve=True, dedup_key=dedup_key)
         tx = db.one(g.conn, "SELECT category_id FROM transactions WHERE id=?", (result["id"],))
         return {"captured": True, "id": result["id"],
                 "merchant": result["resolved_merchant"] or parsed.raw_merchant,
@@ -487,7 +517,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     def device_state():
         """Native layer reports whether SMS capture is currently permitted, so
         the web UI can show a 'grant access' banner when it isn't."""
-        if request.remote_addr not in ("127.0.0.1", "::1"):
+        if not device_authorized():
             abort(403)
         perm = request.form.get("sms_permission")
         if perm in ("granted", "denied"):
