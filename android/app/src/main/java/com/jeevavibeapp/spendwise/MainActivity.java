@@ -6,14 +6,23 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.View;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewFeature;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -29,9 +38,7 @@ public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "SpendWise";
     private static final String SERVER_URL = "http://127.0.0.1:8765";
-    // How long to wait for the embedded Flask server to come up before giving
-    // up and showing an error/retry screen.
-    private static final long SERVER_TIMEOUT_MS = 15000L;
+    private static final long SERVER_TIMEOUT_MS = 20000L;  // extra headroom on low-end devices
     private static final long POLL_INTERVAL_MS = 250L;
     private static final int SMS_PERMISSION_REQUEST = 4011;
     private static final String PREFS = "spendwise";
@@ -39,24 +46,66 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // BridgeActivity.onCreate loads the bundled `dist` web assets, which act
-        // as a brief splash screen until the embedded server is ready.
         super.onCreate(savedInstanceState);
         registerPlugin(SpendWisePlugin.class);
 
-        // Expose a tiny bridge so the in-app banner / error page (served by the
-        // embedded web app) can re-trigger native actions.
+        // Edge-to-edge: let our content draw behind system bars on all API levels.
+        // On API 35+ Android enforces this anyway; on older versions we opt in.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+
+        // Apply insets as padding on the root view so the WebView content is
+        // never obscured by nav bars / notches on any device.
+        View rootView = getWindow().getDecorView().getRootView();
+        ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, insets) -> {
+            int bottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+            int top    = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            v.setPadding(0, top, 0, bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+
+        applyWebViewCompatibility();
+
         try {
             getBridge().getWebView().addJavascriptInterface(new SmsBridge(), "AndroidSms");
         } catch (Throwable t) {
             Log.e(TAG, "Failed to attach SMS bridge", t);
         }
 
-        // Ask for SMS access up front — without RECEIVE_SMS the broadcast that
-        // powers automatic transaction capture is never delivered.
         requestSmsPermissions();
-
         bootstrap();
+    }
+
+    /** Harden WebView settings for compatibility across Android 7–15+. */
+    private void applyWebViewCompatibility() {
+        try {
+            WebView wv = getBridge().getWebView();
+            WebSettings ws = wv.getSettings();
+
+            // Allow mixed content from the loopback server (http://127.0.0.1).
+            ws.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+
+            // Smooth scrolling and touch responsiveness improvements.
+            ws.setDomStorageEnabled(true);
+            ws.setDatabaseEnabled(true);
+
+            // Viewport meta tags are honoured on all devices.
+            ws.setLoadWithOverviewMode(true);
+            ws.setUseWideViewPort(true);
+
+            // Disable safe-browsing to avoid network calls from the WebView while
+            // the embedded server is still booting; the embedded app is trusted.
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
+                WebSettingsCompat.setSafeBrowsingEnabled(wv, false);
+            }
+
+            // Force dark mode in the WebView to respect the user's system setting
+            // on devices that support it (API 29+ / WebView 76+).
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                WebSettingsCompat.setAlgorithmicDarkeningAllowed(wv, true);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "WebView compatibility setup partial failure", t);
+        }
     }
 
     /** Start the Python interpreter + embedded server off the UI thread. */
@@ -74,8 +123,7 @@ public class MainActivity extends BridgeActivity {
         }, "spendwise-bootstrap").start();
     }
 
-    /** A stable per-install secret shared with the embedded server so only this
-     *  app can POST to the loopback ingest endpoints. */
+    /** Stable per-install secret — only this app can POST to loopback ingest endpoints. */
     private String getDeviceToken() {
         SharedPreferences p = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String t = p.getString(TOKEN_KEY, null);
@@ -89,8 +137,6 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        // The user may have just returned from the system settings screen —
-        // refresh the permission state so the banner appears/disappears.
         reportPermissionState(true);
     }
 
@@ -108,7 +154,6 @@ public class MainActivity extends BridgeActivity {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
-    /** Request RECEIVE_SMS at runtime (Android 6+) if not granted. */
     private void requestSmsPermissions() {
         if (!hasSmsPermission()) {
             getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -118,8 +163,6 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    /** Called from the web banner: re-prompt, or deep-link to settings if the
-     *  permission was permanently denied ("Don't ask again"). */
     private void handleGrantRequest() {
         if (hasSmsPermission()) {
             reportPermissionState(true);
@@ -130,7 +173,6 @@ public class MainActivity extends BridgeActivity {
         boolean canPrompt = ActivityCompat.shouldShowRequestPermissionRationale(
                 this, Manifest.permission.RECEIVE_SMS);
         if (asked && !canPrompt) {
-            // Permanently denied — the system dialog won't show again.
             try {
                 Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.fromParts("package", getPackageName(), null));
@@ -144,8 +186,6 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    /** Tell the embedded app whether SMS capture is currently allowed, then
-     *  optionally reload so the banner reflects the new state. */
     private void reportPermissionState(final boolean reloadOnChange) {
         final boolean granted = hasSmsPermission();
         final String token = getDeviceToken();
@@ -188,18 +228,14 @@ public class MainActivity extends BridgeActivity {
             int code = conn.getResponseCode();
             return code >= 200 && code < 300;
         } catch (Exception e) {
-            return false;  // server not up yet; reported again once it is
+            return false;
         } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
+            if (conn != null) conn.disconnect();
         }
     }
 
     private void startServerAndLoad(String filesDir, String token) {
         try {
-            // start_server(files_dir, token) starts Flask on a daemon thread
-            // (idempotent) and drains any queued SMS.
             Python.getInstance()
                     .getModule("spendwise.android_entry")
                     .callAttr("start_server", filesDir, token);
@@ -210,7 +246,6 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (waitForServer()) {
-            // Server is up — make sure it knows the current permission state.
             reportPermissionState(false);
             runOnUiThread(new Runnable() {
                 @Override
@@ -228,7 +263,6 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    /** Show a branded error screen with a Retry button instead of a frozen splash. */
     private void showStartupError() {
         final String html =
             "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -237,7 +271,7 @@ public class MainActivity extends BridgeActivity {
             + "justify-content:center;text-align:center}.b{padding:28px}h1{font-size:20px;margin:0 0 8px}"
             + "p{opacity:.9;font-size:14px;margin:0 0 22px}button{padding:13px 28px;border:none;border-radius:999px;"
             + "font-size:15px;font-weight:700;color:#5b3cff;background:#fff}</style></head><body><div class='b'>"
-            + "<h1>Couldn’t start SpendWise</h1><p>The app engine didn’t respond. Please try again.</p>"
+            + "<h1>Couldn't start SpendWise</h1><p>The app engine didn't respond. Please try again.</p>"
             + "<button onclick=\"if(window.AndroidSms&&AndroidSms.retry){AndroidSms.retry()}\">Retry</button>"
             + "</div></body></html>";
         runOnUiThread(new Runnable() {
@@ -251,28 +285,22 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
-    /** Poll the local server until it responds or the timeout elapses. */
     private boolean waitForServer() {
         long deadline = System.currentTimeMillis() + SERVER_TIMEOUT_MS;
         while (System.currentTimeMillis() < deadline) {
             HttpURLConnection conn = null;
             try {
-                URL url = new URL(SERVER_URL);
+                URL url = new URL(SERVER_URL + "/healthz");
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(1000);
                 conn.setReadTimeout(1000);
                 conn.setRequestMethod("GET");
                 int code = conn.getResponseCode();
-                // Any HTTP response means the server socket is up and serving.
-                if (code > 0) {
-                    return true;
-                }
+                if (code == 200) return true;
             } catch (Exception e) {
                 // Server not up yet; keep polling.
             } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
+                if (conn != null) conn.disconnect();
             }
             try {
                 Thread.sleep(POLL_INTERVAL_MS);
@@ -284,7 +312,6 @@ public class MainActivity extends BridgeActivity {
         return false;
     }
 
-    /** JavaScript-callable bridge for the in-app banner and error page. */
     public class SmsBridge {
         @JavascriptInterface
         public void requestPermission() {
@@ -304,6 +331,12 @@ public class MainActivity extends BridgeActivity {
                     bootstrap();
                 }
             });
+        }
+
+        @JavascriptInterface
+        public String getDeviceInfo() {
+            // Expose device info to the web app for diagnostics / analytics.
+            return Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ")";
         }
     }
 }
