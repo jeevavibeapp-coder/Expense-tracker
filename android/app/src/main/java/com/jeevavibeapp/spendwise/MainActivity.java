@@ -95,13 +95,13 @@ public class MainActivity extends BridgeActivity {
             // Disable safe-browsing to avoid network calls from the WebView while
             // the embedded server is still booting; the embedded app is trusted.
             if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
-                WebSettingsCompat.setSafeBrowsingEnabled(wv, false);
+                WebSettingsCompat.setSafeBrowsingEnabled(ws, false);
             }
 
             // Force dark mode in the WebView to respect the user's system setting
             // on devices that support it (API 29+ / WebView 76+).
             if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-                WebSettingsCompat.setAlgorithmicDarkeningAllowed(wv, true);
+                WebSettingsCompat.setAlgorithmicDarkeningAllowed(ws, true);
             }
         } catch (Throwable t) {
             Log.w(TAG, "WebView compatibility setup partial failure", t);
