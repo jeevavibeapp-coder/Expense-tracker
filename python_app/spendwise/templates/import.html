@@ -24,6 +24,22 @@
   </div>
 
   <div id="parse-out"></div>
+
+  {% if recent_sms %}
+  <div class="section-h"><h2>Recently captured from SMS</h2><a href="/transactions">See all</a></div>
+  <div class="tx-list">
+    {% for t in recent_sms %}
+    <div class="tx">
+      {{ m.avatar(t['merchant_name'] or t['raw_merchant'] or '?') }}
+      <div class="tx-main">
+        <div class="tx-name">{{ t['merchant_name'] or t['raw_merchant'] or 'Unknown merchant' }}</div>
+        <div class="tx-sub mut" style="font-size:12px">{{ t['occurred_at'][:10] }}{% if not t['category_id'] %} · <span style="color:var(--warn)">needs category</span>{% endif %}</div>
+      </div>
+      <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ m.money(t['amount']) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 <script>
 (function () {

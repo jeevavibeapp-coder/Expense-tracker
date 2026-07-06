@@ -236,3 +236,37 @@ def test_sms_prompts_dismiss_all(tmp_path):
     assert b"New transaction from SMS" in c.get("/dashboard").data
     c.post("/sms/prompts/dismiss")
     assert b"New transaction from SMS" not in c.get("/dashboard").data
+
+
+def test_budget_set_progress_and_insight(auth_client):
+    import re
+    # Grab an existing expense category id from the budgets page.
+    page = auth_client.get("/categories")
+    m = re.search(rb'id="budget-([0-9a-f]+)"', page.data)
+    assert m, "expense categories should render budget sheets"
+    cat_id = m.group(1).decode()
+    # Set a monthly budget, then overspend it this month.
+    auth_client.post(f"/categories/{cat_id}/budget", data={"budget_amount": "100"})
+    _add(auth_client, amount="150.00", merchant="KFC", category_id=cat_id)
+    dash = auth_client.get("/dashboard")
+    assert b"Budgets" in dash.data and b"over budget" in dash.data
+    # Clearing removes it from the dashboard.
+    auth_client.post(f"/categories/{cat_id}/budget",
+                     data={"budget_amount": "100", "clear": "1"})
+    assert b"over budget" not in auth_client.get("/dashboard").data
+
+
+def test_export_csv(auth_client):
+    _add(auth_client, amount="123.45", merchant="ExportMart")
+    r = auth_client.get("/export.csv")
+    assert r.status_code == 200 and "text/csv" in r.headers["Content-Type"]
+    assert b"ExportMart" in r.data and b"123.45" in r.data
+    assert b"date,type,amount" in r.data  # header row
+
+
+def test_import_page_lists_recent_sms(tmp_path):
+    c = _su_client(tmp_path)
+    c.post("/sms/ingest", data={
+        "body": "Rs.777 debited to CAFERIO on 01/02/2025 ref REF777888999 UPI"})
+    page = c.get("/import")
+    assert b"Recently captured" in page.data and b"CAFERIO" in page.data.upper()

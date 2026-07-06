@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS categories (
     type TEXT NOT NULL DEFAULT 'expense',
     icon TEXT NOT NULL DEFAULT 'Tag',
     color TEXT NOT NULL DEFAULT '#6366f1',
+    budget_amount REAL,
     is_archived INTEGER NOT NULL DEFAULT 0,
     UNIQUE(user_id, name)
 );
@@ -132,6 +133,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
                      "category_prompted INTEGER NOT NULL DEFAULT 0")
     if "dedup_key" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN dedup_key TEXT")
+    cat_cols = {row["name"] for row in conn.execute("PRAGMA table_info(categories)")}
+    if "budget_amount" not in cat_cols:
+        conn.execute("ALTER TABLE categories ADD COLUMN budget_amount REAL")
 
 
 def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:

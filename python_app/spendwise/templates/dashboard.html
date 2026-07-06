@@ -19,7 +19,8 @@
   </div>
 
   {# Money health score #}
-  {% set rate = ((d.total_income - d.total_expense) / d.total_income * 100) if d.total_income > 0 else 0 %}
+  {% if d.total_income > 0 %}
+  {% set rate = ((d.total_income - d.total_expense) / d.total_income * 100) %}
   {% set rate = [[rate, 0]|max, 100]|min %}
   {% set arc = rate / 100 * 263.894 %}
   {% set tag = ('Healthy','var(--income)') if rate >= 30 else (('On track','var(--warn)') if rate >= 10 else ('Watch spending','var(--expense)')) %}
@@ -38,6 +39,15 @@
       <div class="mut" style="font-size:12.5px; margin-top:8px">You keep {{ rate|round|int }}% of your income. Aim for 20%+.</div>
     </div>
   </div>
+  {% else %}
+  <div class="card score-row reveal">
+    <span class="ai" style="width:48px;height:48px;border-radius:15px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 48px">{{ m.icon('sparkles') }}</span>
+    <div style="flex:1">
+      <div style="font-weight:700; font-size:15px">Money health</div>
+      <div class="mut" style="font-size:12.5px; margin-top:6px">Add an income transaction and SpendWise will start tracking how much of it you keep each month.</div>
+    </div>
+  </div>
+  {% endif %}
 
   {# Period strip #}
   <div class="card reveal" style="display:flex; justify-content:space-between; text-align:center; padding:16px 8px">
@@ -80,6 +90,26 @@
   <div class="stack">
     {% for line in d.insights[:4] %}
     <div class="insight"><span class="ii" style="color:var(--primary-2)">{{ m.icon('sparkles') }}</span><p>{{ line }}</p></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Monthly budgets #}
+  {% if d.budgets %}
+  <div class="section-h"><h2>Budgets</h2><a href="/categories">Manage</a></div>
+  <div class="card reveal stack" style="gap:12px">
+    {% for b in d.budgets[:4] %}
+    <div>
+      <div style="display:flex; align-items:baseline; gap:8px">
+        <span style="width:9px;height:9px;border-radius:50%;background:{{ b.color }};flex:0 0 9px;align-self:center"></span>
+        <span style="flex:1; font-size:13.5px; font-weight:600">{{ b.name }}</span>
+        <span class="num" style="font-size:12.5px; font-weight:700; color:{{ 'var(--expense)' if b.pct > 100 else 'var(--text-2)' }}">
+          {{ m.money_k(b.spent) }} / {{ m.money_k(b.budget) }}</span>
+      </div>
+      <div class="cat-bar" style="margin-top:6px">
+        <i style="width:{{ [b.pct, 100]|min }}%; background:{{ 'var(--expense)' if b.pct > 100 else b.color }}"></i>
+      </div>
+    </div>
     {% endfor %}
   </div>
   {% endif %}

@@ -12,8 +12,11 @@ import hmac
 import os
 from typing import Optional
 
+import csv
+import io
+
 from flask import (
-    Flask, abort, g, redirect, render_template, request, session, url_for,
+    Flask, Response, abort, g, redirect, render_template, request, session, url_for,
 )
 
 from . import analytics, auth, db, engine, fraud
@@ -441,7 +444,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         uid = require_login()
         if not uid:
             return redirect(url_for("login"))
-        return render_template("import.html", user=current_user(), active="import")
+        recent_sms = db.all_rows(
+            g.conn, "SELECT * FROM transactions WHERE user_id=? AND source='sms' "
+            "AND is_deleted=0 ORDER BY created_at DESC LIMIT 8", (uid,))
+        return render_template("import.html", user=current_user(), active="import",
+                               recent_sms=recent_sms)
 
     @app.post("/import/parse")
     def import_parse():
@@ -526,14 +533,37 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn.commit()
         return {"ok": True}, 200
 
-    # ── Routes: categories ───────────────────────────────────────────────
+    # ── Routes: categories & budgets ─────────────────────────────────────
+    def _month_start_iso() -> str:
+        now = dt.datetime.now(dt.timezone.utc)
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
     @app.get("/categories")
     def categories_page():
         uid = require_login()
         if not uid:
             return redirect(url_for("login"))
+        s = settings_for(uid)
         return render_template("categories.html", categories=categories_for(uid, True),
+                               spent_by_cat=analytics.month_category_spend(
+                                   g.conn, uid, _month_start_iso()),
+                               currency=s["currency"],
                                user=current_user(), active="categories")
+
+    @app.post("/categories/<cat_id>/budget")
+    def categories_budget(cat_id):
+        """Set (or clear, with an empty value) a category's monthly budget."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        raw = (request.form.get("budget_amount") or "").strip()
+        amount = parse_amount(raw) if raw else None
+        if request.form.get("clear") or (amount is not None and amount <= 0):
+            amount = None
+        db.execute(g.conn, "UPDATE categories SET budget_amount=? WHERE id=? AND user_id=?",
+                   (amount, cat_id, uid))
+        g.conn.commit()
+        return redirect(url_for("categories_page"))
 
     @app.post("/categories")
     def categories_create():
@@ -554,7 +584,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                        (db.new_id(), uid, name, type_ if type_ in ("income", "expense") else "expense",
                         "Tag", (request.form.get("color") or "#6366f1")[:16]))
             g.conn.commit()
+        s = settings_for(uid)
         return render_template("categories.html", categories=categories_for(uid, True),
+                               spent_by_cat=analytics.month_category_spend(
+                                   g.conn, uid, _month_start_iso()),
+                               currency=s["currency"],
                                user=current_user(), active="categories", error=error,
                                flash="" if error else "Category added.")
 
@@ -613,6 +647,30 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             flash = "Settings saved."
         return render_template("settings.html", s=settings_for(uid), user=current_user(),
                                active="settings", flash=flash)
+
+    # ── Routes: data export ──────────────────────────────────────────────
+    @app.get("/export.csv")
+    def export_csv():
+        """Download every (non-deleted) transaction as a CSV file."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        rows = db.all_rows(
+            g.conn,
+            "SELECT t.*, c.name category_name FROM transactions t "
+            "LEFT JOIN categories c ON c.id = t.category_id "
+            "WHERE t.user_id=? AND t.is_deleted=0 ORDER BY t.occurred_at DESC", (uid,))
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["date", "type", "amount", "merchant", "category", "notes",
+                    "reference", "source", "status"])
+        for r in rows:
+            w.writerow([r["occurred_at"], r["type"], r["amount"],
+                        r["merchant_name"] or r["raw_merchant"] or "",
+                        r["category_name"] or "", r["notes"] or "",
+                        r["reference_number"] or "", r["source"], r["status"]])
+        return Response(buf.getvalue(), mimetype="text/csv", headers={
+            "Content-Disposition": "attachment; filename=spendwise-transactions.csv"})
 
     @app.get("/healthz")
     def healthz():

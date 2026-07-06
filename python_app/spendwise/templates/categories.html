@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}Budgets · {{ app_name }}{% endblock %}
-{% block heading %}Categories{% endblock %}
+{% block heading %}Budgets{% endblock %}
+{% block subhead %}<div class="sub">Set monthly limits per category</div>{% endblock %}
 {% block content %}
 <div class="screen stack">
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
@@ -14,10 +15,21 @@
   {% if expense %}
   <div class="cat-grid">
     {% for c in expense %}
+    {% set spent = spent_by_cat.get(c['id'], 0) %}
     <div class="cat-card">
       <span class="cat-ico" style="background:{{ c['color'] }}22; color:{{ c['color'] }}">{{ m.icon('tag') }}</span>
       <div class="cat-name">{{ c['name'] }}</div>
-      <div class="cat-val">Expense</div>
+      <a href="#budget-{{ c['id'] }}" style="display:block; text-decoration:none; color:inherit; margin-top:4px">
+        {% if c['budget_amount'] %}
+        {% set pct = (spent / c['budget_amount'] * 100) %}
+        <div class="cat-val num" style="{{ 'color:var(--expense); font-weight:700' if pct > 100 }}">
+          {{ m.money_k(spent) }} / {{ m.money_k(c['budget_amount']) }}
+          {%- if pct > 100 %} · over{% endif %}</div>
+        <div class="cat-bar" style="margin-top:6px"><i style="width:{{ [pct, 100]|min|round|int }}%; background:{{ 'var(--expense)' if pct > 100 else c['color'] }}"></i></div>
+        {% else %}
+        <div class="cat-val">{{ m.money_k(spent) }} spent · <span style="color:var(--primary-2)">set budget</span></div>
+        {% endif %}
+      </a>
       <form method="post" action="/categories/{{ c['id'] }}/delete" onsubmit="return confirm('Delete this category?')"
             style="position:absolute; top:10px; right:10px">
         <button class="icon-btn" style="width:28px;height:28px;border:none;background:transparent;color:var(--text-3)" aria-label="Delete">{{ m.icon('x') }}</button>
@@ -63,4 +75,31 @@
     <button class="btn" type="submit">Add category</button>
   </form>
 </div>
+
+{# Per-category budget sheets — each in its own wrapper so the :target sibling
+   selector only opens the matching sheet. #}
+{% for c in expense %}
+<div>
+  <span id="budget-{{ c['id'] }}" class="sheet-target"></span>
+  <a class="scrim" href="#" aria-label="Close"></a>
+  <div class="sheet" role="dialog" aria-label="Set budget for {{ c['name'] }}">
+    <div class="grip"></div>
+    <h3>{{ c['name'] }} · monthly budget</h3>
+    {% set spent = spent_by_cat.get(c['id'], 0) %}
+    <div class="mut" style="font-size:13px; margin:-6px 0 14px">
+      Spent {{ currency }} {{ m.money(spent) }} so far this month.</div>
+    <form method="post" action="/categories/{{ c['id'] }}/budget">
+      <div class="field"><label class="lbl">Budget amount ({{ currency }})</label>
+        <input name="budget_amount" type="number" step="0.01" min="0" inputmode="decimal"
+               value="{{ '%.2f'|format(c['budget_amount']) if c['budget_amount'] else '' }}"
+               placeholder="e.g. 5000"></div>
+      <button class="btn" type="submit">Save budget</button>
+      {% if c['budget_amount'] %}
+      <button class="btn-soft" type="submit" name="clear" value="1"
+              style="width:100%; margin-top:10px; color:var(--expense)">Remove budget</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endfor %}
 {% endblock %}

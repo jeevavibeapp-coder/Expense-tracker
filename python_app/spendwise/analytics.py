@@ -51,6 +51,35 @@ def _cap_breakdown(cats: list[dict], n: int = 5) -> list[dict]:
     return cats[:n] + [{"name": "Other", "value": other}]
 
 
+def month_category_spend(conn, user_id: str, month_start_iso: str) -> dict[str, float]:
+    """Spend so far this month, keyed by category id."""
+    rows = db.all_rows(
+        conn,
+        "SELECT category_id cid, SUM(amount) v FROM transactions WHERE user_id=? "
+        "AND type='expense' AND is_deleted=0 AND category_id IS NOT NULL "
+        "AND occurred_at>=? GROUP BY category_id", (user_id, month_start_iso))
+    return {r["cid"]: round(float(r["v"]), 2) for r in rows}
+
+
+def budget_status(conn, user_id: str, month_start_iso: str) -> list[dict]:
+    """Progress against each category's monthly budget, most-spent-first."""
+    spent = month_category_spend(conn, user_id, month_start_iso)
+    rows = db.all_rows(
+        conn,
+        "SELECT id, name, color, budget_amount FROM categories WHERE user_id=? "
+        "AND type='expense' AND is_archived=0 AND budget_amount IS NOT NULL "
+        "AND budget_amount > 0", (user_id,))
+    out = []
+    for r in rows:
+        s = spent.get(r["id"], 0.0)
+        b = float(r["budget_amount"])
+        out.append({"id": r["id"], "name": r["name"], "color": r["color"],
+                    "budget": round(b, 2), "spent": s,
+                    "pct": round(s / b * 100) if b else 0})
+    out.sort(key=lambda x: x["pct"], reverse=True)
+    return out
+
+
 def _trend(conn, user_id: str, months: int = 6) -> list[dict]:
     rows = db.all_rows(
         conn,
@@ -65,8 +94,16 @@ def _trend(conn, user_id: str, months: int = 6) -> list[dict]:
     return out[-months:]
 
 
-def _insights(monthly, weekly, top_merchants, category_breakdown, pending, fraud_open) -> list[str]:
+def _insights(monthly, weekly, top_merchants, category_breakdown, pending, fraud_open,
+              budgets=()) -> list[str]:
     out = []
+    over = [b for b in budgets if b["pct"] > 100]
+    near = [b for b in budgets if 85 <= b["pct"] <= 100]
+    if over:
+        out.append(f"You're over budget in {over[0]['name']} "
+                   f"({over[0]['spent']:.0f} of {over[0]['budget']:.0f}).")
+    elif near:
+        out.append(f"{near[0]['name']} is at {near[0]['pct']}% of its monthly budget.")
     if monthly > 0:
         out.append(f"You've spent {monthly:.0f} so far this month.")
     if category_breakdown:
@@ -108,13 +145,14 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     fraud_open = db.one(
         conn, "SELECT COUNT(*) c FROM fraud_alerts WHERE user_id=? AND status='open'",
         (user_id,))["c"]
+    budgets = budget_status(conn, user_id, month_start.isoformat())
 
     return {
         "currency": currency, "daily_spend": daily, "weekly_spend": weekly,
         "monthly_spend": monthly, "total_income": income, "total_expense": expense,
         "balance": round(income - expense, 2), "top_merchants": top,
         "merchant_breakdown": top, "category_breakdown": cats,
-        "trend": _trend(conn, user_id),
-        "insights": _insights(monthly, weekly, top, cats_full, pending, fraud_open),
+        "trend": _trend(conn, user_id), "budgets": budgets,
+        "insights": _insights(monthly, weekly, top, cats_full, pending, fraud_open, budgets),
         "open_fraud_alerts": fraud_open, "pending_confirmations": pending,
     }

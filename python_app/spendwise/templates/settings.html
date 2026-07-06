@@ -51,6 +51,13 @@
     <button class="btn" type="submit">Save changes</button>
   </form>
 
+  <div class="card stack">
+    <div style="font-weight:700">Your data</div>
+    <div class="mut" style="font-size:12.5px; margin-top:-6px">Everything stays on this device. Download a copy any time.</div>
+    <a class="btn-soft" href="/export.csv" download
+       style="display:block; text-align:center; text-decoration:none">Export transactions (CSV)</a>
+  </div>
+
   {% if not single_user %}
   <form method="post" action="/logout"><button class="btn-soft" type="submit" style="width:100%; color:var(--expense); margin-top:4px">Sign out</button></form>
   {% endif %}
