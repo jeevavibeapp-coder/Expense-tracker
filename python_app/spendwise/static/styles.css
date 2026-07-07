@@ -348,6 +348,7 @@ body { overscroll-behavior-y: contain; }
 /* Ripple */
 .btn, .btn-soft, .fab, .chip, .sheet-action, .icon-btn, .tap { position: relative; overflow: hidden; }
 .ripple { position: absolute; border-radius: 50%; background: rgba(255,255,255,.35);
+  background: color-mix(in srgb, currentColor 22%, transparent);
   transform: scale(0); animation: rippleA .6s var(--ease); pointer-events: none; }
 @keyframes rippleA { to { transform: scale(2.4); opacity: 0; } }
 
@@ -404,12 +405,12 @@ html.js .reveal.in { opacity: 1; transform: none; }
   background: var(--grad, linear-gradient(135deg, #9b6bff, #5b7cff)); flex: none; }
 .cat-spark svg { width: 20px; height: 20px; }
 .cat-title { font-size: 15px; font-weight: 800; }
-.cat-sub { font-size: 12px; color: var(--mut, #9aa0ad); margin-top: 1px; }
+.cat-sub { font-size: 12px; color: var(--text-2); margin-top: 1px; }
 .cat-tx { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
   background: var(--surface-2, rgba(255,255,255,.04)); border-radius: 14px; margin-bottom: 14px; }
 .cat-merch { font-size: 14px; font-weight: 700; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
-.cat-raw { font-size: 11.5px; color: var(--mut, #9aa0ad); margin-top: 1px; }
+.cat-raw { font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
 .cat-amt { font-weight: 800; font-size: 15px; flex: none; }
 .cat-amt.income { color: var(--income, #36d39a); }
 .cat-amt.expense { color: var(--expense, #ff6b81); }
@@ -423,7 +424,7 @@ html.js .reveal.in { opacity: 1; transform: none; }
 .cat-foot { display: flex; align-items: center; justify-content: space-between;
   gap: 10px; margin-top: 14px; }
 .cat-dismiss { display: block; width: 100%; margin-top: 4px;
-  color: var(--mut, #9aa0ad); text-align: center; }
+  color: var(--text-2); text-align: center; }
 
 /* ── SMS permission nudge banner ──────────────────────────────────────── */
 .perm-banner { display: flex; align-items: center; gap: 12px;
@@ -436,7 +437,7 @@ html.js .reveal.in { opacity: 1; transform: none; }
 .perm-banner .pb-ic svg { width: 18px; height: 18px; }
 .perm-banner .pb-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .perm-banner .pb-txt b { font-size: 13.5px; }
-.perm-banner .pb-txt span { font-size: 12px; color: var(--mut, #9aa0ad); }
+.perm-banner .pb-txt span { font-size: 12px; color: var(--text-2); }
 .perm-banner .pb-btn { flex: none; padding: 9px 16px; border-radius: 999px;
   font-size: 13px; font-weight: 700; color: #fff; cursor: pointer; border: none;
   background: var(--grad, linear-gradient(135deg, #9b6bff, #5b7cff));
@@ -471,3 +472,10 @@ a.chip { text-decoration: none; }
 .spark i.zero { background: var(--surface-3); opacity: 1; }
 .due-pill { font-size: 11px; font-weight: 800; padding: 3px 9px;
   border-radius: 999px; white-space: nowrap; }
+
+/* ── Press feedback & anchor-jump fixes (multi-agent design review) ────── */
+.tile, .queue, a.alert { transition: transform .15s var(--ease); }
+.tile:active, .queue:active, a.alert:active { transform: scale(.98); }
+.tab { transition: color .18s var(--ease); }
+/* :target anchors are fixed so opening/closing a sheet never scrolls the page. */
+.sheet-target { position: fixed; top: 0; }

@@ -7,14 +7,29 @@ from . import db
 
 
 def _now() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    """Device-local wall-clock time stamped as UTC.
+
+    Stored occurred_at values are local wall-clock times labelled +00:00 (the
+    SMS parser keeps the printed local time, and the manual form stores the
+    user's local date), so "now" must live in the same clock domain or every
+    day/week/month boundary drifts by the UTC offset.
+    """
+    return dt.datetime.now().replace(microsecond=0, tzinfo=dt.timezone.utc)
 
 
-def _sum_expense_since(conn, user_id: str, since_iso: str) -> float:
+def _tomorrow_iso() -> str:
+    """Exclusive upper bound for 'so far' queries: start of tomorrow. Keeps
+    future-dated transactions out of today/week/month tiles and budgets."""
+    day_start = _now().replace(hour=0, minute=0, second=0, microsecond=0)
+    return (day_start + dt.timedelta(days=1)).isoformat()
+
+
+def _sum_expense_since(conn, user_id: str, since_iso: str, until_iso: str) -> float:
     return float(db.one(
         conn,
         "SELECT COALESCE(SUM(amount),0) s FROM transactions WHERE user_id=? AND type='expense' "
-        "AND is_deleted=0 AND occurred_at>=?", (user_id, since_iso))["s"])
+        "AND is_deleted=0 AND occurred_at>=? AND occurred_at<?",
+        (user_id, since_iso, until_iso))["s"])
 
 
 def _total(conn, user_id: str, type_: str) -> float:
@@ -52,12 +67,13 @@ def _cap_breakdown(cats: list[dict], n: int = 5) -> list[dict]:
 
 
 def month_category_spend(conn, user_id: str, month_start_iso: str) -> dict[str, float]:
-    """Spend so far this month, keyed by category id."""
+    """Spend so far this month, keyed by category id (future-dated excluded)."""
     rows = db.all_rows(
         conn,
         "SELECT category_id cid, SUM(amount) v FROM transactions WHERE user_id=? "
         "AND type='expense' AND is_deleted=0 AND category_id IS NOT NULL "
-        "AND occurred_at>=? GROUP BY category_id", (user_id, month_start_iso))
+        "AND occurred_at>=? AND occurred_at<? GROUP BY category_id",
+        (user_id, month_start_iso, _tomorrow_iso()))
     return {r["cid"]: round(float(r["v"]), 2) for r in rows}
 
 
@@ -117,8 +133,9 @@ def no_spend_stats(conn, user_id: str) -> dict:
 
 def detect_recurring(conn, user_id: str) -> list[dict]:
     """Find repeating charges (subscriptions / bills) and predict the next due
-    date. A merchant qualifies with ≥2 charges at a weekly/monthly/quarterly
-    cadence and a stable amount (±25%)."""
+    date. A merchant qualifies with ≥3 charges (≥4 for weekly) at a
+    weekly/monthly/quarterly cadence and a stable amount (range within 25% of
+    the mean) — two coincidental purchases are not a bill."""
     rows = db.all_rows(
         conn,
         "SELECT merchant_name n, amount, occurred_at FROM transactions WHERE user_id=? "
@@ -146,6 +163,9 @@ def detect_recurring(conn, user_id: str) -> list[dict]:
         elif 85 <= med <= 95:
             cadence = "quarterly"
         else:
+            continue
+        # Two data points can't establish a pattern; weekly needs even more.
+        if len(txs) < (4 if cadence == "weekly" else 3):
             continue
         amounts = [t[1] for t in txs[-4:]]
         mean = sum(amounts) / len(amounts)
@@ -181,19 +201,36 @@ def build_report(conn, user_id: str, month: str) -> dict:
                        tzinfo=dt.timezone.utc)
     a, b, pa = start.isoformat(), end.isoformat(), prev.isoformat()
 
+    now = _now()
+    is_current = start <= now < end
+
     income = round(_sum_between(conn, user_id, "income", a, b), 2)
     expense = round(_sum_between(conn, user_id, "expense", a, b), 2)
-    prev_expense = round(_sum_between(conn, user_id, "expense", pa, a), 2)
+    # For the in-progress month, compare like with like: previous month only
+    # up to the same day-of-month, not its full total.
+    if is_current:
+        prev_cut = min(prev + dt.timedelta(days=now.day), start)
+        prev_expense = round(_sum_between(conn, user_id, "expense", pa,
+                                          prev_cut.isoformat()), 2)
+    else:
+        prev_expense = round(_sum_between(conn, user_id, "expense", pa, a), 2)
 
     cat_sql = ("SELECT c.name n, c.color col, SUM(t.amount) v FROM transactions t "
                "JOIN categories c ON c.id = t.category_id WHERE t.user_id=? "
                "AND t.type='expense' AND t.is_deleted=0 AND t.occurred_at>=? "
                "AND t.occurred_at<? GROUP BY c.id ORDER BY v DESC")
-    prev_cats = {r["n"]: float(r["v"])
+    prev_rows = {r["n"]: (float(r["v"]), r["col"])
                  for r in db.all_rows(conn, cat_sql, (user_id, pa, a))}
     categories = [{"name": r["n"], "color": r["col"], "value": round(float(r["v"]), 2),
-                   "delta": round(float(r["v"]) - prev_cats.get(r["n"], 0.0), 2)}
+                   "delta": round(float(r["v"]) - prev_rows.get(r["n"], (0.0,))[0], 2)}
                   for r in db.all_rows(conn, cat_sql, (user_id, a, b))]
+    # Categories with spend last month but none this month must still show
+    # their drop, or per-category deltas stop explaining the headline delta.
+    seen = {c["name"] for c in categories}
+    for name, (pv, col) in prev_rows.items():
+        if name not in seen and pv > 0:
+            categories.append({"name": name, "color": col, "value": 0.0,
+                               "delta": round(-pv, 2)})
 
     merchants = [{"name": r["n"], "value": round(float(r["v"]), 2)} for r in db.all_rows(
         conn,
@@ -208,8 +245,7 @@ def build_report(conn, user_id: str, month: str) -> dict:
         "WHERE user_id=? AND type='expense' AND is_deleted=0 AND occurred_at>=? "
         "AND occurred_at<? GROUP BY d ORDER BY d", (user_id, a, b))
     spent = {r["d"]: round(float(r["v"]), 2) for r in day_rows}
-    now = _now()
-    elapsed = now.day if start <= now < end else (end - start).days
+    elapsed = now.day if is_current else (end - start).days
     daily = [{"d": i + 1, "v": spent.get(f"{month}-{i + 1:02d}", 0.0)}
              for i in range(elapsed)]
     highest = max(daily, key=lambda x: x["v"]) if daily else None
@@ -240,9 +276,24 @@ def _trend(conn, user_id: str, months: int = 6) -> list[dict]:
     buckets: dict[str, dict] = {}
     for r in rows:
         b = buckets.setdefault(r["p"], {"income": 0.0, "expense": 0.0})
-        b[r["type"]] = b[r["type"]] + float(r["v"])
-    out = [{"period": p, "income": round(buckets[p]["income"], 2),
-            "expense": round(buckets[p]["expense"], 2)} for p in sorted(buckets)]
+        if r["type"] in b:
+            b[r["type"]] += float(r["v"])
+    if not buckets:
+        return []
+    # Zero-fill gaps so adjacent bars are always consecutive calendar months.
+    periods = sorted(buckets)
+    y, mth = int(periods[0][:4]), int(periods[0][5:7])
+    out = []
+    while True:
+        p = f"{y:04d}-{mth:02d}"
+        b = buckets.get(p, {"income": 0.0, "expense": 0.0})
+        out.append({"period": p, "income": round(b["income"], 2),
+                    "expense": round(b["expense"], 2)})
+        if p >= periods[-1]:
+            break
+        mth += 1
+        if mth == 13:
+            y, mth = y + 1, 1
     return out[-months:]
 
 
@@ -289,9 +340,10 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     week_start = day_start - dt.timedelta(days=day_start.weekday())
     month_start = day_start.replace(day=1)
 
-    daily = round(_sum_expense_since(conn, user_id, day_start.isoformat()), 2)
-    weekly = round(_sum_expense_since(conn, user_id, week_start.isoformat()), 2)
-    monthly = round(_sum_expense_since(conn, user_id, month_start.isoformat()), 2)
+    until = _tomorrow_iso()
+    daily = round(_sum_expense_since(conn, user_id, day_start.isoformat(), until), 2)
+    weekly = round(_sum_expense_since(conn, user_id, week_start.isoformat(), until), 2)
+    monthly = round(_sum_expense_since(conn, user_id, month_start.isoformat(), until), 2)
     income = round(_total(conn, user_id, "income"), 2)
     expense = round(_total(conn, user_id, "expense"), 2)
     top = _top_merchants(conn, user_id)

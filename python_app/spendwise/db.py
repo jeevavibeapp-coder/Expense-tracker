@@ -136,6 +136,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cat_cols = {row["name"] for row in conn.execute("PRAGMA table_info(categories)")}
     if "budget_amount" not in cat_cols:
         conn.execute("ALTER TABLE categories ADD COLUMN budget_amount REAL")
+    # Closes the check-then-insert race in /sms/ingest (live POST + queue
+    # drain arriving together). Guarded: an old DB that already contains
+    # duplicates keeps working without the index.
+    try:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_tx_dedup ON "
+                     "transactions(user_id, dedup_key) "
+                     "WHERE dedup_key IS NOT NULL AND is_deleted=0")
+    except sqlite3.IntegrityError:
+        pass
 
 
 def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:

@@ -25,7 +25,7 @@
     <div class="hero-row">
       <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ currency }} {{ m.money_k(r.income) }}</div></div>
       <div class="hero-pill"><div class="k">Saved</div>
-        <div class="v num">{{ currency }} {{ m.money_k([r.saved, 0]|max) }}{% if r.save_rate is not none %} · {{ r.save_rate }}%{% endif %}</div></div>
+        <div class="v num">{{ currency }} {{ m.money_k([r.saved, 0]|max) }}{% if r.save_rate is not none %} · {{ [r.save_rate, 0]|max }}%{% endif %}</div></div>
     </div>
   </div>
 
@@ -33,13 +33,13 @@
   <div class="card reveal" style="display:flex; gap:10px; align-items:center">
     {% if r.expense_delta > 0 %}
     <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--expense-soft);color:var(--expense);flex:0 0 38px">{{ m.icon('income') }}</span>
-    <div style="font-size:13px">You spent <b class="num">{{ currency }} {{ m.money_k(r.expense_delta) }}</b> more than last month ({{ currency }} {{ m.money_k(r.prev_expense) }}).</div>
+    <div style="font-size:13px">You spent <b class="num">{{ currency }} {{ m.money_k(r.expense_delta) }}</b> more than last month{{ ' over the same days' if r.month == cur_m }} ({{ currency }} {{ m.money_k(r.prev_expense) }}).</div>
     {% elif r.expense_delta < 0 %}
     <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:rgba(54,211,154,.12);color:var(--income);flex:0 0 38px">{{ m.icon('expense') }}</span>
-    <div style="font-size:13px">Nice — <b class="num">{{ currency }} {{ m.money_k(-r.expense_delta) }}</b> less than last month ({{ currency }} {{ m.money_k(r.prev_expense) }}).</div>
+    <div style="font-size:13px">Nice — <b class="num">{{ currency }} {{ m.money_k(-r.expense_delta) }}</b> less than last month{{ ' over the same days' if r.month == cur_m }} ({{ currency }} {{ m.money_k(r.prev_expense) }}).</div>
     {% else %}
     <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--surface-3);color:var(--text-2);flex:0 0 38px">{{ m.icon('activity') }}</span>
-    <div style="font-size:13px">Same as last month ({{ currency }} {{ m.money_k(r.prev_expense) }}).</div>
+    <div style="font-size:13px">Same as last month{{ ' over the same days' if r.month == cur_m }} ({{ currency }} {{ m.money_k(r.prev_expense) }}).</div>
     {% endif %}
   </div>
 

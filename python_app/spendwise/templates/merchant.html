@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ name }} · {{ app_name }}{% endblock %}
+{% block heading %}{{ name }}{% endblock %}
+{% block subhead %}<div class="sub">Merchant history</div>{% endblock %}
+{% block content %}
+<div class="screen stack">
+
+  {# Merchant hero #}
+  <div class="card reveal" style="display:flex; align-items:center; gap:14px">
+    {{ m.avatar(name) }}
+    <div style="flex:1">
+      <div style="font-weight:800; font-size:16px">{{ name }}</div>
+      <div class="mut" style="font-size:12.5px">{{ count }} transaction{{ '' if count == 1 else 's' }}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="num" style="font-weight:800; font-size:17px">{{ currency }} {{ m.money_k(total) }}</div>
+      <div class="faint" style="font-size:11px">total spent</div>
+    </div>
+  </div>
+
+  {# Stats #}
+  <div class="card reveal" style="display:flex; justify-content:space-between; text-align:center; padding:16px 8px">
+    <div style="flex:1">
+      <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase">Average</div>
+      <div class="num" style="font-size:18px; font-weight:800; margin-top:4px">{{ m.money_k(avg) }}</div>
+    </div>
+    <div style="width:1px; background:var(--hairline)"></div>
+    <div style="flex:1">
+      <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase">Visits</div>
+      <div class="num" style="font-size:18px; font-weight:800; margin-top:4px">{{ count }}</div>
+    </div>
+    <div style="width:1px; background:var(--hairline)"></div>
+    <div style="flex:1">
+      <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase">Last visit</div>
+      <div class="num" style="font-size:18px; font-weight:800; margin-top:4px">
+        {{ transactions[0]['occurred_at'][8:10] ~ '/' ~ transactions[0]['occurred_at'][5:7] if transactions else '–' }}</div>
+    </div>
+  </div>
+
+  {# Monthly trend #}
+  {% if trend and trend|length > 1 %}
+  <div class="section-h"><h2>Month by month</h2></div>
+  <div class="card reveal">
+    {% set tmax = trend | map(attribute='value') | max %}
+    <div class="spark" style="height:70px">
+      {% for t in trend %}
+      <i style="height:{{ [(t.value / tmax * 100)|round|int, 4]|max if tmax else 4 }}%"
+         title="{{ t.period }} · {{ m.money(t.value) }}"></i>
+      {% endfor %}
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px" class="faint">
+      <span style="font-size:10.5px">{{ trend[0].period[5:] }}/{{ trend[0].period[2:4] }}</span>
+      <span style="font-size:10.5px">{{ trend[-1].period[5:] }}/{{ trend[-1].period[2:4] }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {# History #}
+  <div class="section-h"><h2>All transactions</h2></div>
+  <div class="tx-list reveal">
+    {% for t in transactions %}
+    <div class="tx">
+      {{ m.avatar(name) }}
+      <div class="tx-main">
+        <div class="tx-name">{{ t['occurred_at'][:10] }}</div>
+        <div class="tx-meta">
+          {% if t['notes'] %}<span>{{ t['notes'] }}</span>
+          {% elif t['reference_number'] %}<span>Ref {{ t['reference_number'] }}</span>
+          {% else %}<span style="text-transform:capitalize">{{ t['source'] }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency }} {{ m.money(t['amount']) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <a class="btn-ghost" href="/transactions" style="text-align:center">← Back to activity</a>
+</div>
+{% endblock %}

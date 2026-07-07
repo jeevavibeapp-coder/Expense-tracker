@@ -208,7 +208,7 @@
         <text class="ring-sub" x="60" y="71" text-anchor="middle">{{ cur }} · SPENT</text>
       </svg>
       <div style="flex:1">
-        {% for c in d.category_breakdown[:5] %}
+        {% for c in d.category_breakdown[:6] %}
         <div style="display:flex; align-items:center; gap:8px; padding:5px 0">
           <span style="width:9px;height:9px;border-radius:50%;background:{{ c.name|avatar_color }};flex:0 0 9px"></span>
           <span style="flex:1; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.name }}</span>
@@ -218,7 +218,8 @@
       </div>
     </div>
     {% else %}
-    <div class="empty"><div class="ei">{{ m.icon('grid') }}</div><p>No categorised spending yet.</p></div>
+    <div class="empty"><div class="ei">{{ m.icon('grid') }}</div><p>No categorised spending yet.</p>
+      <a class="btn btn-sm" href="/categories" style="margin-top:12px">Set up categories</a></div>
     {% endif %}
   </div>
 
@@ -228,14 +229,14 @@
   {% set mmax = d.top_merchants[0].value %}
   <div class="tx-list reveal">
     {% for mch in d.top_merchants[:5] %}
-    <div class="tx">
+    <a class="tx" href="/merchant?n={{ mch.name|urlencode }}" style="text-decoration:none; color:inherit">
       {{ m.avatar(mch.name) }}
       <div class="tx-main">
         <div class="tx-name">{{ mch.name }}</div>
         <div class="cat-bar" style="margin-top:7px"><i style="width:{{ (mch.value/mmax*100)|round|int }}%; background:{{ mch.name|avatar_color }}"></i></div>
       </div>
       <div class="tx-amt num">{{ cur }} {{ m.money_k(mch.value) }}</div>
-    </div>
+    </a>
     {% endfor %}
   </div>
   {% endif %}

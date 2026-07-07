@@ -54,14 +54,25 @@ public class SmsReceiver extends BroadcastReceiver {
         }
 
         // Concatenate multipart SMS bodies from the same sender.
+        String format = bundle.getString("format");  // "3gpp" / "3gpp2" (CDMA)
         StringBuilder bodyBuilder = new StringBuilder();
         String sender = null;
         for (Object pdu : pdus) {
-            SmsMessage sms = SmsMessage.createFromPdu((byte[]) pdu);
+            SmsMessage sms;
+            try {
+                sms = format != null
+                        ? SmsMessage.createFromPdu((byte[]) pdu, format)
+                        : SmsMessage.createFromPdu((byte[]) pdu);
+            } catch (Throwable t) {
+                continue;  // malformed PDU on some OEM stacks — skip this part
+            }
             if (sms == null) {
                 continue;
             }
-            bodyBuilder.append(sms.getMessageBody());
+            String part = sms.getMessageBody();
+            if (part != null) {
+                bodyBuilder.append(part);
+            }
             if (sender == null) {
                 sender = sms.getOriginatingAddress();
             }
@@ -101,9 +112,11 @@ public class SmsReceiver extends BroadcastReceiver {
     /** Cheap pre-filter so we don't forward OTPs / personal messages. */
     private static boolean looksFinancial(String body) {
         String b = body.toLowerCase();
+        // NOTE: no bare "rs" — it substring-matches ordinary words ("offers",
+        // "hours"), which would forward personal messages to the queue.
         String[] keys = {
             "debited", "credited", "spent", "txn", "transaction", "a/c", "acct",
-            "account", "upi", "inr", "rs.", "rs ", "rs", "₹", "paid", "received",
+            "account", "upi", "inr", "rs.", "rs ", "₹", "paid", "received",
             "withdrawn", "balance", "purchase", "payment", "transfer", "imps",
             "neft", "deposited", "debit", "credit",
         };

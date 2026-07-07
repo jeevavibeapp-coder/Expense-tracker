@@ -4,7 +4,10 @@
   <meta charset="utf-8">
   <script>document.documentElement.classList.add('js')</script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-  <meta name="theme-color" content="#0a0a0f">
+  {% if theme == 'light' %}<meta name="theme-color" content="#eef0f6">
+  {% elif theme == 'dark' %}<meta name="theme-color" content="#0a0a0f">
+  {% else %}<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef0f6">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0f">{% endif %}
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <script src="{{ url_for('static', filename='app.js') }}" defer></script>
@@ -56,7 +59,7 @@
 
   {# ── FAB action chooser (pure-CSS :target sheet) ── #}
   <span id="fab-sheet" class="sheet-target"></span>
-  <a class="scrim" href="#" aria-label="Close"></a>
+  <a class="scrim" href="#!" aria-label="Close"></a>
   <div class="sheet" role="dialog" aria-label="Add">
     <div class="grip"></div>
     <h3>Add to SpendWise</h3>

@@ -37,7 +37,8 @@
     </div>
     {% endfor %}
   </div>
-  {% else %}<div class="empty"><div class="ei">{{ m.icon('grid') }}</div><p>No spending categories yet.</p></div>{% endif %}
+  {% else %}<div class="empty"><div class="ei">{{ m.icon('grid') }}</div><p>No spending categories yet.</p>
+    <a class="btn btn-sm" href="#newcat" style="margin-top:12px">Create a category</a></div>{% endif %}
 
   {% if income %}
   <div class="section-h"><h2>Income</h2></div>
@@ -61,7 +62,7 @@
 
 {# Add category sheet #}
 <span id="newcat" class="sheet-target"></span>
-<a class="scrim" href="#" aria-label="Close"></a>
+<a class="scrim" href="#!" aria-label="Close"></a>
 <div class="sheet" role="dialog" aria-label="New category">
   <div class="grip"></div>
   <h3>New category</h3>
@@ -81,7 +82,7 @@
 {% for c in expense %}
 <div>
   <span id="budget-{{ c['id'] }}" class="sheet-target"></span>
-  <a class="scrim" href="#" aria-label="Close"></a>
+  <a class="scrim" href="#!" aria-label="Close"></a>
   <div class="sheet" role="dialog" aria-label="Set budget for {{ c['name'] }}">
     <div class="grip"></div>
     <h3>{{ c['name'] }} · monthly budget</h3>

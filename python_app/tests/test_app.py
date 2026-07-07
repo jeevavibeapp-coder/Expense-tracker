@@ -275,10 +275,14 @@ def test_import_page_lists_recent_sms(tmp_path):
 def test_recurring_bill_detection(auth_client):
     import datetime as dt
     today = dt.date.today()
-    # Two NETFLIX charges ~30 days apart → monthly subscription, due ~today.
+    # Two similar charges are NOT a bill (coincidence guard) …
     for days_ago in (60, 30):
         _add(auth_client, amount="499.00", merchant="NETFLIX",
              occurred_at=(today - dt.timedelta(days=days_ago)).isoformat())
+    assert b"Upcoming bills" not in auth_client.get("/dashboard").data
+    # … but three at a monthly cadence are.
+    _add(auth_client, amount="499.00", merchant="NETFLIX",
+         occurred_at=(today - dt.timedelta(days=90)).isoformat())
     dash = auth_client.get("/dashboard")
     assert b"Upcoming bills" in dash.data and b"NETFLIX" in dash.data
 
@@ -312,3 +316,92 @@ def test_dashboard_streak_card(auth_client):
          occurred_at=(dt.date.today() - dt.timedelta(days=1)).isoformat())
     dash = auth_client.get("/dashboard")
     assert b"no-spend streak" in dash.data
+
+
+def test_edit_transaction(auth_client):
+    import re
+    _add(auth_client, amount="200.00", merchant="OldName")
+    page = auth_client.get("/transactions")
+    tx_id = re.search(rb"/transactions/([0-9a-f]+)/edit", page.data).group(1).decode()
+    r = auth_client.post(f"/transactions/{tx_id}/edit", data={
+        "amount": "250.00", "merchant": "NewName", "type": "expense",
+        "occurred_at": "2026-01-15", "notes": "fixed"}, follow_redirects=True)
+    assert b"NewName" in r.data and b"250.00" in r.data and b"fixed" in r.data
+    # Invalid amount is rejected.
+    bad = auth_client.post(f"/transactions/{tx_id}/edit", data={"amount": "0"})
+    assert "error=amount" in bad.headers["Location"]
+
+
+def test_undo_delete(auth_client):
+    import re
+    _add(auth_client, amount="75.00", merchant="Oops")
+    page = auth_client.get("/transactions")
+    tx_id = re.search(rb"/transactions/([0-9a-f]+)/delete", page.data).group(1).decode()
+    gone = auth_client.post(f"/transactions/{tx_id}/delete", follow_redirects=True)
+    assert b"Undo" in gone.data          # undo bar offered
+    back = auth_client.post(f"/transactions/{tx_id}/restore", follow_redirects=True)
+    assert b"Oops" in back.data          # transaction is back
+
+
+def test_merchant_drilldown_page(auth_client):
+    _add(auth_client, amount="120.00", merchant="ChaiPoint")
+    _add(auth_client, amount="80.00", merchant="ChaiPoint")
+    r = auth_client.get("/merchant?n=ChaiPoint")
+    assert r.status_code == 200
+    assert b"ChaiPoint" in r.data and b"Merchant history" in r.data
+    assert auth_client.get("/merchant").status_code == 302  # no name → back
+
+
+def test_future_dated_tx_excluded_from_tiles(tmp_path):
+    import datetime as dt
+    from spendwise import analytics, db as sdb
+    path = str(tmp_path / "future.db")
+    c = create_app(db_path=path, single_user=True, secret_key="t").test_client()
+    future = (dt.date.today() + dt.timedelta(days=40)).isoformat()
+    c.post("/transactions", data={"amount": "9999.00", "type": "expense",
+           "merchant": "FutureRent", "category_id": "", "notes": "",
+           "occurred_at": future})
+    conn = sdb.connect(path)
+    uid = sdb.one(conn, "SELECT id FROM users")["id"]
+    d = analytics.build_dashboard(conn, uid)
+    # Next month's rent must not inflate today/week/month "so far" tiles.
+    assert d["daily_spend"] == 0 and d["weekly_spend"] == 0 and d["monthly_spend"] == 0
+
+
+def test_report_shows_vanished_category_drop(auth_client):
+    import datetime as dt, re
+    # Spend in a category ONLY last month; this month's report must still
+    # show the category with a negative delta.
+    page = auth_client.get("/categories")
+    cat_id = re.search(rb'id="budget-([0-9a-f]+)"', page.data).group(1).decode()
+    last_month = (dt.date.today().replace(day=1) - dt.timedelta(days=15))
+    _add(auth_client, amount="500.00", merchant="OneOff",
+         category_id=cat_id, occurred_at=last_month.isoformat())
+    r = auth_client.get("/report")
+    assert "▼".encode() in r.data  # the drop arrow renders
+
+
+def test_report_month_param_normalised(auth_client):
+    _add(auth_client, amount="10.00", merchant="X")
+    assert auth_client.get("/report?m=2025-7").status_code == 200  # unpadded ok
+
+
+def test_zero_amount_rejected(auth_client):
+    r = auth_client.post("/transactions", data={
+        "amount": "0", "type": "expense", "merchant": "Zero", "category_id": "",
+        "notes": "", "occurred_at": ""})
+    assert "error=amount" in r.headers["Location"]
+    assert b"Zero" not in auth_client.get("/transactions").data
+
+
+def test_weird_type_does_not_break_dashboard(auth_client):
+    auth_client.post("/transactions", data={
+        "amount": "10.00", "type": "banana", "merchant": "M", "category_id": "",
+        "notes": "", "occurred_at": ""})
+    assert auth_client.get("/dashboard").status_code == 200  # no KeyError 500
+
+
+def test_csv_formula_injection_neutralised(auth_client):
+    _add(auth_client, amount="5.00", merchant="=cmd()")
+    r = auth_client.get("/export.csv")
+    assert b"'=cmd()" in r.data  # dangerous prefix quoted

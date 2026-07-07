@@ -15,6 +15,23 @@
   </div>
   {% endif %}
 
+  {# Undo-delete bar #}
+  {% if undo_tx %}
+  <div class="card" style="display:flex; gap:10px; align-items:center; padding:12px 14px">
+    <span class="faint" style="display:flex">{{ m.icon('trash') }}</span>
+    <span style="flex:1; font-size:13px">Deleted “{{ undo_tx['merchant_name'] or undo_tx['raw_merchant'] or 'transaction' }}”.</span>
+    <form method="post" action="/transactions/{{ undo_tx['id'] }}/restore">
+      <button class="btn btn-sm" type="submit">Undo</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if request.args.get('restored') %}
+  <div class="flash">Transaction restored.</div>
+  {% endif %}
+  {% if request.args.get('edited') %}
+  <div class="flash">Transaction updated.</div>
+  {% endif %}
+
   {# Search #}
   <form method="get" action="/transactions" class="card" style="display:flex; gap:10px; align-items:center; padding:10px 12px">
     <span class="faint" style="display:flex">{{ m.icon('search') }}</span>
@@ -52,7 +69,7 @@
                style="margin-top:6px; padding:9px 11px; font-size:13px" required>
       </div>
       <div style="text-align:right">
-        <div class="num" style="font-weight:800; font-size:14px">{{ d.currency if d is defined else '' }}{{ m.money(t['amount']) }}</div>
+        <div class="num" style="font-weight:800; font-size:14px">{{ currency }} {{ m.money(t['amount']) }}</div>
         <button class="btn btn-sm" type="submit" style="margin-top:6px">Confirm</button>
       </div>
     </form>
@@ -67,7 +84,8 @@
     {% set day = t['occurred_at'][:10] %}
     {% if day != ns.day %}
       {% if ns.day is not none %}</div>{% endif %}
-      <div class="tx-group-h"><span class="d">{{ 'Today' if day == today else (day[8:10] ~ ' ' ~ months[day[5:7]|int] ~ ' ' ~ day[:4]) }}</span></div>
+      <div class="tx-group-h"><span class="d">{{ 'Today' if day == today else (day[8:10] ~ ' ' ~ months[day[5:7]|int] ~ ' ' ~ day[:4]) }}</span>
+        {% if day_totals.get(day) %}<span class="t num">{{ currency }} {{ m.money_k(day_totals[day]) }} spent</span>{% endif %}</div>
       <div class="tx-list">
       {% set ns.day = day %}
     {% endif %}
@@ -83,13 +101,39 @@
             {% if t['notes'] %}<span>{{ t['notes'] }}</span>{% endif %}
           </div>
         </div>
-        <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ m.money(t['amount']) }}</div>
+        <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency }} {{ m.money(t['amount']) }}</div>
       </summary>
-      <div style="display:flex; gap:8px; padding:10px 16px 14px; background:var(--surface-2)">
-        {% if t['raw_merchant'] and t['merchant_name'] and t['raw_merchant'] != t['merchant_name'] %}
-          <span class="faint" style="flex:1; font-size:12px; align-self:center">Resolved from “{{ t['raw_merchant'] }}”</span>
-        {% else %}<span style="flex:1"></span>{% endif %}
-        <form method="post" action="/transactions/{{ t['id'] }}/delete" onsubmit="return confirm('Delete this transaction?')">
+      <div style="padding:12px 16px 14px; background:var(--surface-2)">
+        {# Inline edit — every field of the transaction #}
+        <form method="post" action="/transactions/{{ t['id'] }}/edit" class="stack" style="gap:10px">
+          <div class="row">
+            <div class="field" style="margin:0"><label class="lbl">Amount</label>
+              <input name="amount" type="number" step="0.01" min="0.01" inputmode="decimal"
+                     value="{{ '%.2f'|format(t['amount']) }}" required></div>
+            <div class="field" style="margin:0"><label class="lbl">Date</label>
+              <input name="occurred_at" type="date" value="{{ t['occurred_at'][:10] }}"></div>
+          </div>
+          <div class="row">
+            <div class="field" style="margin:0"><label class="lbl">Merchant</label>
+              <input name="merchant" value="{{ t['merchant_name'] or t['raw_merchant'] or '' }}"></div>
+            <div class="field" style="margin:0"><label class="lbl">Category</label>
+              <select name="category_id"><option value="">None</option>
+                {% for c in categories %}
+                <option value="{{ c['id'] }}" {{ 'selected' if c['id'] == t['category_id'] }}>{{ c['name'] }}</option>
+                {% endfor %}</select></div>
+          </div>
+          <div class="field" style="margin:0"><label class="lbl">Notes</label>
+            <input name="notes" value="{{ t['notes'] or '' }}" placeholder="Optional"></div>
+          <input type="hidden" name="type" value="{{ t['type'] }}">
+          <div style="display:flex; gap:8px; align-items:center">
+            {% if t['merchant_name'] %}
+            <a class="btn-ghost btn-sm" href="/merchant?n={{ t['merchant_name']|urlencode }}">{{ m.icon('search') }} Merchant</a>
+            {% endif %}
+            <span style="flex:1"></span>
+            <button class="btn btn-sm" type="submit">Save</button>
+          </div>
+        </form>
+        <form method="post" action="/transactions/{{ t['id'] }}/delete" style="margin-top:8px; text-align:right">
           <button class="btn-ghost btn-sm" type="submit" aria-label="Delete transaction" style="color:var(--expense)">{{ m.icon('trash') }} Delete</button>
         </form>
       </div>
@@ -98,13 +142,15 @@
   </div>
   {% else %}
   <div class="empty"><div class="ei">{{ m.icon('activity') }}</div><h3>No transactions yet</h3>
-    <p>Tap <b>+</b> to add one, or import a bank SMS.</p></div>
+    <p>Your bank SMS are captured automatically — or add one yourself.</p>
+    <a class="btn btn-sm" href="#add" style="margin-top:14px">Add a transaction</a>
+    <a class="btn-ghost btn-sm" href="/import" style="margin-top:8px">Import from SMS</a></div>
   {% endif %}
 </div>
 
 {# ── Add transaction bottom sheet (#add) ── #}
 <span id="add" class="sheet-target"></span>
-<a class="scrim" href="#" aria-label="Close"></a>
+<a class="scrim" href="#!" aria-label="Close"></a>
 <div class="sheet" role="dialog" aria-label="Add transaction">
   <div class="grip"></div>
   <h3>Add transaction</h3>

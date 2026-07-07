@@ -54,12 +54,13 @@ public class MainActivity extends BridgeActivity {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
 
         // Apply insets as padding on the root view so the WebView content is
-        // never obscured by nav bars / notches on any device.
+        // never obscured by nav bars / notches / the keyboard on any device.
         View rootView = getWindow().getDecorView().getRootView();
         ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, insets) -> {
-            int bottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
-            int top    = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
-            v.setPadding(0, top, 0, bottom);
+            int nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+            int ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+            int top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            v.setPadding(0, top, 0, Math.max(nav, ime));
             return WindowInsetsCompat.CONSUMED;
         });
 
@@ -108,17 +109,30 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    /** Start the Python interpreter + embedded server off the UI thread. */
+    private volatile boolean bootstrapping = false;
+
+    /** Start the Python interpreter + embedded server fully off the UI thread
+     *  (Python.start unpacks the runtime on first launch — too slow for main).
+     *  Guarded so Retry taps can't stack concurrent bootstraps. */
     private void bootstrap() {
-        if (!Python.isStarted()) {
-            Python.start(new AndroidPlatform(this));
+        if (bootstrapping) {
+            return;
         }
+        bootstrapping = true;
+        final android.content.Context appContext = getApplicationContext();
         final String filesDir = getFilesDir().getAbsolutePath();
         final String token = getDeviceToken();
         new Thread(new Runnable() {
             @Override
             public void run() {
-                startServerAndLoad(filesDir, token);
+                try {
+                    if (!Python.isStarted()) {
+                        Python.start(new AndroidPlatform(appContext));
+                    }
+                    startServerAndLoad(filesDir, token);
+                } finally {
+                    bootstrapping = false;
+                }
             }
         }, "spendwise-bootstrap").start();
     }
@@ -138,6 +152,21 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         reportPermissionState(true);
+    }
+
+    /** Hardware/gesture back should walk the in-app history (it's a multi-page
+     *  server-rendered app), not exit to the launcher from every screen. */
+    @Override
+    public void onBackPressed() {
+        try {
+            android.webkit.WebView wv = getBridge().getWebView();
+            if (wv != null && wv.canGoBack()) {
+                wv.goBack();
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+        super.onBackPressed();
     }
 
     @Override
@@ -189,11 +218,17 @@ public class MainActivity extends BridgeActivity {
     private void reportPermissionState(final boolean reloadOnChange) {
         final boolean granted = hasSmsPermission();
         final String token = getDeviceToken();
+        // Only reload the WebView when the state actually flips to granted —
+        // reloading on every onResume would wipe scroll/form state each time
+        // the user returns to the app.
+        SharedPreferences p = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        final boolean changed = p.getInt("last_perm", -1) != (granted ? 1 : 0);
+        p.edit().putInt("last_perm", granted ? 1 : 0).apply();
         new Thread(new Runnable() {
             @Override
             public void run() {
                 boolean delivered = postState(granted, token);
-                if (delivered && granted && reloadOnChange) {
+                if (delivered && granted && changed && reloadOnChange) {
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {

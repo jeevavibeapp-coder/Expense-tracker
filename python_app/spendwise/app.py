@@ -14,6 +14,8 @@ from typing import Optional
 
 import csv
 import io
+import re
+import sqlite3
 
 from flask import (
     Flask, Response, abort, g, redirect, render_template, request, session, url_for,
@@ -116,7 +118,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             except ValueError:
                 return None
 
-    app.jinja_env.globals["now"] = lambda: dt.datetime.now(dt.timezone.utc)
+    app.jinja_env.globals["now"] = lambda: dt.datetime.now()
 
     # UI helpers (presentation only — no behaviour change).
     _AVATAR_COLORS = [
@@ -180,7 +182,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                            reference_number=None, occurred_at: Optional[dt.datetime] = None,
                            source="manual", resolve=True, dedup_key=None) -> dict:
         s = settings_for(uid)
-        occ = occurred_at or dt.datetime.now(dt.timezone.utc)
+        # Same clock domain as stored SMS times: local wall-clock stamped UTC.
+        occ = occurred_at or dt.datetime.now().replace(microsecond=0,
+                                                       tzinfo=dt.timezone.utc)
+        if type_ not in ("income", "expense"):
+            type_ = "expense"
         raw = (raw_merchant or merchant or "").strip() or None
         tx_id = db.new_id()
         merchant_id = None
@@ -308,10 +314,12 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         uid = require_login()
         if not uid:
             return redirect(url_for("login"))
-        cur_m = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m")
+        cur_m = dt.datetime.now().strftime("%Y-%m")
         m = (request.args.get("m") or cur_m).strip()
         try:
-            dt.datetime.strptime(m, "%Y-%m")
+            # Normalise (strptime accepts unpadded "2025-7", which would break
+            # the report's zero-padded day keys and string comparisons).
+            m = dt.datetime.strptime(m, "%Y-%m").strftime("%Y-%m")
         except ValueError:
             m = cur_m
         if m > cur_m:  # no reports for the future
@@ -348,8 +356,18 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             sql += " AND status IN ('pending_confirmation','needs_review')"
         sql += " ORDER BY occurred_at DESC, created_at DESC LIMIT 200"
         rows = db.all_rows(g.conn, sql, tuple(params))
+        day_totals: dict = {}
+        for r in rows:
+            if r["type"] == "expense":
+                day = r["occurred_at"][:10]
+                day_totals[day] = round(day_totals.get(day, 0.0) + r["amount"], 2)
+        undo_id = (request.args.get("undo") or "").strip()
+        undo_tx = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? "
+                         "AND is_deleted=1", (undo_id, uid)) if undo_id else None
         return render_template("transactions.html", transactions=rows, total=len(rows),
                                q=q, f=f, categories=categories_for(uid), user=current_user(),
+                               currency=settings_for(uid)["currency"],
+                               day_totals=day_totals, undo_tx=undo_tx,
                                active="transactions")
 
     @app.post("/transactions")
@@ -358,7 +376,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             return redirect(url_for("login"))
         amount = parse_amount(request.form.get("amount", ""))
-        if amount is None or amount < 0:
+        if amount is None or amount <= 0:
             return redirect(url_for("transactions", error="amount"))
         create_transaction(
             uid, amount=amount, type_=request.form.get("type", "expense"),
@@ -463,7 +481,91 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         db.execute(g.conn, "UPDATE transactions SET is_deleted=1 WHERE id=? AND user_id=?",
                    (tx_id, uid))
         g.conn.commit()
-        return redirect(url_for("transactions"))
+        return redirect(url_for("transactions", undo=tx_id))
+
+    @app.post("/transactions/<tx_id>/restore")
+    def transactions_restore(tx_id):
+        """Undo a delete (soft-deleted rows are kept, so this is loss-free)."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        db.execute(g.conn, "UPDATE transactions SET is_deleted=0 WHERE id=? AND user_id=?",
+                   (tx_id, uid))
+        g.conn.commit()
+        return redirect(url_for("transactions", restored=1))
+
+    @app.post("/transactions/<tx_id>/edit")
+    def transactions_edit(tx_id):
+        """Edit any field of an existing transaction. A changed merchant is
+        learned (confirmed at 100%) so future resolutions improve."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        tx = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? AND is_deleted=0",
+                    (tx_id, uid))
+        if not tx:
+            return redirect(url_for("transactions"))
+        amount = parse_amount(request.form.get("amount", ""))
+        if amount is None or amount <= 0:
+            return redirect(url_for("transactions", error="amount"))
+        type_ = request.form.get("type", tx["type"])
+        if type_ not in ("income", "expense"):
+            type_ = tx["type"]
+        cat = request.form.get("category_id") or None
+        if cat and not db.one(g.conn, "SELECT id FROM categories WHERE id=? AND user_id=?",
+                              (cat, uid)):
+            cat = tx["category_id"]
+        occ = parse_date(request.form.get("occurred_at", ""))
+        occ_iso = occ.isoformat() if occ else tx["occurred_at"]
+        notes = (request.form.get("notes") or "").strip() or None
+        merchant = (request.form.get("merchant") or "").strip()
+        merchant_id, merchant_name = tx["merchant_id"], tx["merchant_name"]
+        confidence, status = tx["confidence"], tx["status"]
+        if merchant and merchant != (tx["merchant_name"] or ""):
+            mrow = engine.get_or_create_merchant(g.conn, user_id=uid,
+                                                 canonical_name=merchant, category_id=cat)
+            merchant_id, merchant_name = mrow["id"], mrow["canonical_name"]
+            confidence, status = 100, TX_CONFIRMED
+            if tx["raw_merchant"]:
+                engine.record_confirmation(
+                    g.conn, user_id=uid, raw_name=tx["raw_merchant"],
+                    merchant_name=merchant_name, amount=amount, category_id=cat,
+                    occurred_at=dt.datetime.fromisoformat(occ_iso),
+                    is_correction=bool(tx["merchant_name"]))
+        db.execute(g.conn,
+                   "UPDATE transactions SET amount=?, type=?, category_id=?, occurred_at=?, "
+                   "notes=?, merchant_id=?, merchant_name=?, confidence=?, status=? WHERE id=?",
+                   (amount, type_, cat, occ_iso, notes, merchant_id, merchant_name,
+                    confidence, status, tx_id))
+        g.conn.commit()
+        return redirect(url_for("transactions", edited=1))
+
+    @app.get("/merchant")
+    def merchant_page():
+        """Drill-down for one merchant: stats, monthly trend, full history."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        name = (request.args.get("n") or "").strip()
+        if not name:
+            return redirect(url_for("transactions"))
+        rows = db.all_rows(
+            g.conn, "SELECT * FROM transactions WHERE user_id=? AND is_deleted=0 AND "
+            "merchant_name=? ORDER BY occurred_at DESC LIMIT 100", (uid, name))
+        total = round(sum(r["amount"] for r in rows if r["type"] == "expense"), 2)
+        monthly: dict = {}
+        for r in rows:
+            if r["type"] == "expense":
+                p = r["occurred_at"][:7]
+                monthly[p] = round(monthly.get(p, 0.0) + r["amount"], 2)
+        trend = [{"period": p, "value": monthly[p]} for p in sorted(monthly)][-6:]
+        s = settings_for(uid)
+        return render_template("merchant.html", name=name, transactions=rows,
+                               total=total, count=len(rows), trend=trend,
+                               avg=round(total / max(1, sum(1 for r in rows
+                                         if r["type"] == "expense")), 2),
+                               currency=s["currency"], user=current_user(),
+                               active="transactions")
 
     # ── Routes: SMS import ───────────────────────────────────────────────
     @app.get("/import")
@@ -475,6 +577,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn, "SELECT * FROM transactions WHERE user_id=? AND source='sms' "
             "AND is_deleted=0 ORDER BY created_at DESC LIMIT 8", (uid,))
         return render_template("import.html", user=current_user(), active="import",
+                               currency=settings_for(uid)["currency"],
                                recent_sms=recent_sms)
 
     @app.post("/import/parse")
@@ -537,10 +640,21 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if dup:
             return {"captured": False, "reason": "duplicate", "id": dup["id"],
                     "needs_category": dup["category_id"] is None}, 200
-        result = create_transaction(
-            uid, amount=parsed.amount, type_=parsed.type,
-            raw_merchant=parsed.raw_merchant, reference_number=parsed.reference_number,
-            occurred_at=parsed.occurred_at, source="sms", resolve=True, dedup_key=dedup_key)
+        try:
+            result = create_transaction(
+                uid, amount=parsed.amount, type_=parsed.type,
+                raw_merchant=parsed.raw_merchant, reference_number=parsed.reference_number,
+                occurred_at=parsed.occurred_at, source="sms", resolve=True, dedup_key=dedup_key)
+        except sqlite3.IntegrityError:
+            # Lost the check-then-insert race (live POST + queue drain landing
+            # together) — the unique dedup index made the second insert fail.
+            g.conn.rollback()
+            dup = db.one(g.conn, "SELECT id, category_id FROM transactions WHERE user_id=? "
+                         "AND source='sms' AND dedup_key=? AND is_deleted=0",
+                         (uid, dedup_key))
+            return {"captured": False, "reason": "duplicate",
+                    "id": dup["id"] if dup else None,
+                    "needs_category": bool(dup and dup["category_id"] is None)}, 200
         tx = db.one(g.conn, "SELECT category_id FROM transactions WHERE id=?", (result["id"],))
         return {"captured": True, "id": result["id"],
                 "merchant": result["resolved_merchant"] or parsed.raw_merchant,
@@ -562,7 +676,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
 
     # ── Routes: categories & budgets ─────────────────────────────────────
     def _month_start_iso() -> str:
-        now = dt.datetime.now(dt.timezone.utc)
+        # Local wall-clock stamped UTC — same domain as stored occurred_at.
+        now = dt.datetime.now().replace(tzinfo=dt.timezone.utc)
         return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
     @app.get("/categories")
@@ -606,10 +721,13 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     (uid, name.lower())):
             error = "A category with that name already exists."
         else:
+            color = request.form.get("color") or "#6366f1"
+            if not re.fullmatch(r"#[0-9a-fA-F]{3,8}", color):
+                color = "#6366f1"  # colour lands in a style attribute — hex only
             db.execute(g.conn,
                        "INSERT INTO categories(id,user_id,name,type,icon,color) VALUES (?,?,?,?,?,?)",
                        (db.new_id(), uid, name, type_ if type_ in ("income", "expense") else "expense",
-                        "Tag", (request.form.get("color") or "#6366f1")[:16]))
+                        "Tag", color))
             g.conn.commit()
         s = settings_for(uid)
         return render_template("categories.html", categories=categories_for(uid, True),
@@ -662,13 +780,19 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             hv = parse_amount(request.form.get("high_value_amount", "")) \
                 if (request.form.get("high_value_amount") or "").strip() else None
             theme = request.form.get("theme", "system")
+
+            def _pct(field, default):
+                try:
+                    return max(0, min(100, int(request.form.get(field) or default)))
+                except (TypeError, ValueError):
+                    return default
+
             db.execute(g.conn,
                        "UPDATE settings SET currency=?, theme=?, auto_save_threshold=?, "
                        "confirm_threshold=?, high_value_amount=? WHERE user_id=?",
                        ((request.form.get("currency") or "INR")[:8],
                         theme if theme in ("system", "light", "dark") else "system",
-                        max(0, min(100, int(request.form.get("auto_save_threshold", 80) or 80))),
-                        max(0, min(100, int(request.form.get("confirm_threshold", 50) or 50))),
+                        _pct("auto_save_threshold", 80), _pct("confirm_threshold", 50),
                         hv, uid))
             g.conn.commit()
             flash = "Settings saved."
@@ -687,15 +811,20 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             "SELECT t.*, c.name category_name FROM transactions t "
             "LEFT JOIN categories c ON c.id = t.category_id "
             "WHERE t.user_id=? AND t.is_deleted=0 ORDER BY t.occurred_at DESC", (uid,))
+        def _cell(v):
+            # Neutralise spreadsheet formula injection (=, +, -, @ prefixes).
+            s = "" if v is None else str(v)
+            return "'" + s if s[:1] in ("=", "+", "-", "@") else s
+
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["date", "type", "amount", "merchant", "category", "notes",
                     "reference", "source", "status"])
         for r in rows:
             w.writerow([r["occurred_at"], r["type"], r["amount"],
-                        r["merchant_name"] or r["raw_merchant"] or "",
-                        r["category_name"] or "", r["notes"] or "",
-                        r["reference_number"] or "", r["source"], r["status"]])
+                        _cell(r["merchant_name"] or r["raw_merchant"]),
+                        _cell(r["category_name"]), _cell(r["notes"]),
+                        _cell(r["reference_number"]), r["source"], r["status"]])
         return Response(buf.getvalue(), mimetype="text/csv", headers={
             "Content-Disposition": "attachment; filename=spendwise-transactions.csv"})
 
