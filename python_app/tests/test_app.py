@@ -270,3 +270,45 @@ def test_import_page_lists_recent_sms(tmp_path):
         "body": "Rs.777 debited to CAFERIO on 01/02/2025 ref REF777888999 UPI"})
     page = c.get("/import")
     assert b"Recently captured" in page.data and b"CAFERIO" in page.data.upper()
+
+
+def test_recurring_bill_detection(auth_client):
+    import datetime as dt
+    today = dt.date.today()
+    # Two NETFLIX charges ~30 days apart → monthly subscription, due ~today.
+    for days_ago in (60, 30):
+        _add(auth_client, amount="499.00", merchant="NETFLIX",
+             occurred_at=(today - dt.timedelta(days=days_ago)).isoformat())
+    dash = auth_client.get("/dashboard")
+    assert b"Upcoming bills" in dash.data and b"NETFLIX" in dash.data
+
+
+def test_monthly_report_page(auth_client):
+    _add(auth_client, amount="900.00", type="income", merchant="Salary")
+    _add(auth_client, amount="300.00", merchant="BigBazaar")
+    r = auth_client.get("/report")
+    assert r.status_code == 200
+    assert b"Monthly report" in r.data and b"BigBazaar" in r.data
+    # Month navigation guards: future months clamp to the current month.
+    assert auth_client.get("/report?m=2999-01").status_code == 200
+    assert auth_client.get("/report?m=bogus").status_code == 200
+
+
+def test_transaction_filters(auth_client):
+    _add(auth_client, amount="100.00", type="income", merchant="PayIn")
+    _add(auth_client, amount="50.00", type="expense", merchant="PayOut")
+    inc = auth_client.get("/transactions?f=income")
+    assert b"PayIn" in inc.data and b"PayOut" not in inc.data
+    exp = auth_client.get("/transactions?f=expense")
+    assert b"PayOut" in exp.data and b"PayIn" not in exp.data
+    # The active chip row renders.
+    assert b"Needs review" in exp.data
+
+
+def test_dashboard_streak_card(auth_client):
+    import datetime as dt
+    # Expense yesterday, none today → a 1-day no-spend streak.
+    _add(auth_client, amount="80.00", merchant="KFC",
+         occurred_at=(dt.date.today() - dt.timedelta(days=1)).isoformat())
+    dash = auth_client.get("/dashboard")
+    assert b"no-spend streak" in dash.data

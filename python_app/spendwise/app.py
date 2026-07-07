@@ -303,6 +303,24 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         d = analytics.build_dashboard(g.conn, uid, currency=s["currency"])
         return render_template("dashboard.html", d=d, user=current_user(), active="dashboard")
 
+    @app.get("/report")
+    def report_page():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        cur_m = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m")
+        m = (request.args.get("m") or cur_m).strip()
+        try:
+            dt.datetime.strptime(m, "%Y-%m")
+        except ValueError:
+            m = cur_m
+        if m > cur_m:  # no reports for the future
+            m = cur_m
+        s = settings_for(uid)
+        r = analytics.build_report(g.conn, uid, m)
+        return render_template("report.html", r=r, cur_m=cur_m, currency=s["currency"],
+                               user=current_user(), active="dashboard")
+
     # ── Routes: transactions ─────────────────────────────────────────────
     @app.get("/transactions")
     def transactions():
@@ -310,6 +328,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             return redirect(url_for("login"))
         q = (request.args.get("q") or "").strip()
+        f = (request.args.get("f") or "").strip()
         sql = ("SELECT * FROM transactions WHERE user_id=? AND is_deleted=0")
         params = [uid]
         if q:
@@ -319,10 +338,18 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     "lower(COALESCE(notes,'')) LIKE ? OR "
                     "lower(COALESCE(reference_number,'')) LIKE ?)")
             params += [like, like, like, like]
+        if f == "expense":
+            sql += " AND type='expense'"
+        elif f == "income":
+            sql += " AND type='income'"
+        elif f == "sms":
+            sql += " AND source='sms'"
+        elif f == "review":
+            sql += " AND status IN ('pending_confirmation','needs_review')"
         sql += " ORDER BY occurred_at DESC, created_at DESC LIMIT 200"
         rows = db.all_rows(g.conn, sql, tuple(params))
         return render_template("transactions.html", transactions=rows, total=len(rows),
-                               q=q, categories=categories_for(uid), user=current_user(),
+                               q=q, f=f, categories=categories_for(uid), user=current_user(),
                                active="transactions")
 
     @app.post("/transactions")

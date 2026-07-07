@@ -60,6 +60,74 @@
     {% endfor %}
   </div>
 
+  {# Streak + monthly report tiles #}
+  <div class="tile-row reveal">
+    <div class="tile">
+      <span class="ti" style="background:rgba(251,191,36,.15); color:var(--warn)">{{ m.icon('flame') }}</span>
+      <div style="min-width:0">
+        <div class="tt num">{{ d.streak.streak }}-day</div>
+        <div class="td">no-spend streak · {{ d.streak.month_free }} free day{{ '' if d.streak.month_free == 1 else 's' }} this month</div>
+      </div>
+    </div>
+    <a class="tile" href="/report">
+      <span class="ti" style="background:var(--grad); color:#fff">{{ m.icon('calendar') }}</span>
+      <div style="min-width:0; flex:1">
+        <div class="tt">Monthly report</div>
+        <div class="td">Full breakdown & trends</div>
+      </div>
+      <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
+    </a>
+  </div>
+
+  {# Last 14 days sparkline #}
+  {% if d.daily_series and d.total_expense > 0 %}
+  {% set smax = d.daily_series | map(attribute='v') | max %}
+  <div class="card reveal">
+    <div style="display:flex; align-items:baseline; margin-bottom:10px">
+      <div style="flex:1; font-weight:700; font-size:14px">Last 14 days</div>
+      <div class="mut num" style="font-size:12px">{{ cur }} {{ m.money_k(d.daily_series | sum(attribute='v')) }} total</div>
+    </div>
+    <div class="spark">
+      {% for p in d.daily_series %}
+      <i class="{{ 'zero' if p.v == 0 }}" style="height:{{ [(p.v / smax * 100)|round|int, 5]|max if smax else 5 }}%"
+         title="{{ p.d }} · {{ m.money(p.v) }}"></i>
+      {% endfor %}
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px" class="faint">
+      <span style="font-size:10.5px">{{ d.daily_series[0].d[8:] }}/{{ d.daily_series[0].d[5:7] }}</span>
+      <span style="font-size:10.5px">Today</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Upcoming bills / subscriptions #}
+  {% if d.recurring %}
+  <div class="section-h"><h2>Upcoming bills</h2></div>
+  <div class="tx-list reveal">
+    {% for r in d.recurring[:4] %}
+    <div class="tx">
+      <span class="tx-ava" style="background:var(--surface-3); color:var(--primary-2)">{{ m.icon('repeat') }}</span>
+      <div class="tx-main">
+        <div class="tx-name">{{ r.name }}</div>
+        <div class="tx-meta"><span style="text-transform:capitalize">{{ r.cadence }}</span></div>
+      </div>
+      <div style="text-align:right">
+        <div class="tx-amt num">{{ cur }} {{ m.money_k(r.amount) }}</div>
+        {% if r.days_left < 0 %}
+        <span class="due-pill" style="background:var(--expense-soft); color:var(--expense)">overdue</span>
+        {% elif r.days_left == 0 %}
+        <span class="due-pill" style="background:var(--expense-soft); color:var(--expense)">due today</span>
+        {% elif r.days_left <= 5 %}
+        <span class="due-pill" style="background:rgba(251,191,36,.15); color:var(--warn)">in {{ r.days_left }}d</span>
+        {% else %}
+        <span class="due-pill" style="background:var(--surface-3); color:var(--text-2)">in {{ r.days_left }}d</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {# Review queue teaser #}
   {% if d.pending_confirmations %}
   <a href="/transactions" class="queue" style="display:block">

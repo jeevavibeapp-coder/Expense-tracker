@@ -20,8 +20,19 @@
     <span class="faint" style="display:flex">{{ m.icon('search') }}</span>
     <input name="q" value="{{ q }}" placeholder="Search merchant, notes, reference"
            style="border:none; background:transparent; padding:6px 0; box-shadow:none">
-    {% if q %}<a class="btn-ghost btn-sm" href="/transactions">Clear</a>{% endif %}
+    {% if f %}<input type="hidden" name="f" value="{{ f }}">{% endif %}
+    {% if q %}<a class="btn-ghost btn-sm" href="/transactions{{ '?f=' ~ f if f }}">Clear</a>{% endif %}
   </form>
+
+  {# Filter chips #}
+  {% set qs = ('&q=' ~ (q|urlencode)) if q else '' %}
+  <div class="chips">
+    <a class="chip {{ 'active' if not f }}" href="/transactions?{{ qs[1:] }}">All</a>
+    <a class="chip {{ 'active' if f == 'expense' }}" href="/transactions?f=expense{{ qs }}">Spent</a>
+    <a class="chip {{ 'active' if f == 'income' }}" href="/transactions?f=income{{ qs }}">Received</a>
+    <a class="chip {{ 'active' if f == 'sms' }}" href="/transactions?f=sms{{ qs }}">From SMS</a>
+    <a class="chip {{ 'active' if f == 'review' }}" href="/transactions?f=review{{ qs }}">Needs review</a>
+  </div>
 
   {# Merchant confirmation queue — the signature workflow #}
   {% if pending %}

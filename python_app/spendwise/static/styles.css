@@ -452,3 +452,22 @@ a:focus-visible, button:focus-visible, summary:focus-visible,
 .icon-btn:focus-visible, .fab:focus-visible, .sheet-action:focus-visible {
   outline: none; box-shadow: 0 0 0 3px rgba(124,92,255,.5); border-radius: 12px;
 }
+
+/* ── Filter chips, streak & report tiles, sparkline ───────────────────── */
+a.chip { text-decoration: none; }
+.chip.active { background: var(--grad, linear-gradient(135deg, #9b6bff, #5b7cff));
+  color: #fff; border-color: transparent; }
+.tile-row { display: flex; gap: 12px; }
+.tile { flex: 1; display: flex; align-items: center; gap: 11px; padding: 14px;
+  border-radius: var(--r); background: var(--surface); border: 1px solid var(--hairline);
+  text-decoration: none; color: inherit; min-width: 0; }
+.tile .ti { width: 38px; height: 38px; border-radius: 12px; display: grid;
+  place-items: center; flex: 0 0 38px; }
+.tile .tt { font-size: 14px; font-weight: 800; line-height: 1.2; }
+.tile .td { font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
+.spark { display: flex; align-items: flex-end; gap: 4px; height: 64px; }
+.spark i { flex: 1; display: block; border-radius: 4px 4px 2px 2px; min-height: 3px;
+  background: var(--grad, linear-gradient(180deg, #9b6bff, #5b7cff)); opacity: .9; }
+.spark i.zero { background: var(--surface-3); opacity: 1; }
+.due-pill { font-size: 11px; font-weight: 800; padding: 3px 9px;
+  border-radius: 999px; white-space: nowrap; }
