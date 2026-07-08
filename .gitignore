@@ -8,6 +8,7 @@ coverage/
 *.db
 __pycache__/
 *.pyc
+docs/
 android/app/build/
 android/build/
 android/.gradle/
