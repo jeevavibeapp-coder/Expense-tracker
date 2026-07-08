@@ -58,6 +58,15 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     # ── Request lifecycle ────────────────────────────────────────────────
     @app.before_request
     def _open_db():
+        # Cross-origin write protection: state-changing requests must come
+        # from our own pages (the WebView / same-origin browser tab). A page
+        # on another origin (or a local file, Origin "null") can't POST here.
+        if request.method == "POST":
+            origin = request.headers.get("Origin")
+            if origin:
+                host = origin.split("//")[-1].split(":")[0].lower()
+                if host not in ("127.0.0.1", "localhost", "::1"):
+                    abort(403)
         g.conn = db.connect(app.config["DB_PATH"])
         if app.config["SINGLE_USER"] and "user_id" not in session:
             session["user_id"] = auth.ensure_local_user(g.conn)
@@ -77,7 +86,14 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
 
     def device_authorized() -> bool:
         """Loopback-only AND (when a device token is configured) a matching
-        token header — so a co-installed app can't reach these endpoints."""
+        token header — so a co-installed app can't reach these endpoints.
+
+        In plain multi-user web mode (no device token, not single-user) the
+        device endpoints are disabled outright: remote_addr can't be trusted
+        behind a reverse proxy, and these endpoints write to the auto-created
+        local user."""
+        if not (app.config["SINGLE_USER"] or app.config["DEVICE_TOKEN"]):
+            return False
         if request.remote_addr not in ("127.0.0.1", "::1"):
             return False
         token = app.config["DEVICE_TOKEN"]
@@ -602,7 +618,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             abort(401)
         amount = parse_amount(request.form.get("amount", ""))
-        if amount is None:
+        if amount is None or amount <= 0:
             return '<p class="error">Could not read the amount.</p>'
         result = create_transaction(
             uid, amount=amount, type_=request.form.get("type", "expense"),
@@ -627,7 +643,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         uid = auth.ensure_local_user(g.conn)
         body = request.form.get("body") or request.form.get("sms") or ""
         parsed = parse_sms(body)
-        if not parsed.matched or parsed.amount is None:
+        if not parsed.matched or not parsed.amount or parsed.amount <= 0:
             return {"captured": False, "reason": "not_financial"}, 200
         # Idempotency: the same message must not be captured twice (the receiver
         # may both POST live and re-queue on a flaky connection). Prefer the bank

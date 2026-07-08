@@ -405,3 +405,32 @@ def test_csv_formula_injection_neutralised(auth_client):
     _add(auth_client, amount="5.00", merchant="=cmd()")
     r = auth_client.get("/export.csv")
     assert b"'=cmd()" in r.data  # dangerous prefix quoted
+
+
+def test_zero_amount_sms_and_import_rejected(tmp_path):
+    c = _su_client(tmp_path)
+    r = c.post("/sms/ingest", data={"body": "Rs.0.00 debited to GLITCH on 01/02/2025 UPI"})
+    assert r.get_json()["captured"] is False
+    bad = c.post("/import/create", data={
+        "amount": "0", "type": "expense", "raw_merchant": "GLITCH",
+        "reference_number": "", "occurred_at": ""})
+    assert b"error" in bad.data.lower()
+    assert c.get("/dashboard").status_code == 200  # no ZeroDivisionError
+
+
+def test_cross_origin_post_rejected(auth_client):
+    evil = auth_client.post("/transactions", data={
+        "amount": "10.00", "type": "expense", "merchant": "CSRF", "category_id": "",
+        "notes": "", "occurred_at": ""}, headers={"Origin": "https://evil.example"})
+    assert evil.status_code == 403
+    ok = auth_client.post("/transactions", data={
+        "amount": "10.00", "type": "expense", "merchant": "SameOrigin", "category_id": "",
+        "notes": "", "occurred_at": ""}, headers={"Origin": "http://127.0.0.1:8765"})
+    assert ok.status_code == 302  # same-origin still works
+
+
+def test_device_endpoints_disabled_in_web_mode(client):
+    # Multi-user web deployment (no single_user, no token): ingest is off.
+    sms = "Rs.50 spent at TEA on 01-01-2025 ref AAA111222333 UPI"
+    assert client.post("/sms/ingest", data={"body": sms}).status_code == 403
+    assert client.post("/device/state", data={"sms_permission": "denied"}).status_code == 403
