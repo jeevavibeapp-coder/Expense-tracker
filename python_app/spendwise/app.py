@@ -7,11 +7,18 @@ inside the Android APK (single-user mode).
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import hmac
 import os
 from typing import Optional
 
+import csv
+import io
+import re
+import sqlite3
+
 from flask import (
-    Flask, abort, g, redirect, render_template, request, session, url_for,
+    Flask, Response, abort, g, redirect, render_template, request, session, url_for,
 )
 
 from . import analytics, auth, db, engine, fraud
@@ -21,21 +28,45 @@ TX_CONFIRMED, TX_PENDING, TX_REVIEW = "confirmed", "pending_confirmation", "need
 
 
 def create_app(db_path: Optional[str] = None, single_user: bool = False,
-               secret_key: Optional[str] = None) -> Flask:
+               secret_key: Optional[str] = None, device_token: Optional[str] = None) -> Flask:
     app = Flask(__name__)
     app.config["DB_PATH"] = db_path or os.environ.get("SPENDWISE_DB", "spendwise.db")
     app.config["SINGLE_USER"] = single_user or os.environ.get("SPENDWISE_SINGLE_USER") == "1"
-    app.secret_key = (secret_key or os.environ.get("SPENDWISE_SECRET")
-                      or os.urandom(32).hex())
+    # When set (on-device), native→server calls must carry this token, so a
+    # co-installed app can't POST to the loopback ingest endpoints.
+    app.config["DEVICE_TOKEN"] = device_token or os.environ.get("SPENDWISE_DEVICE_TOKEN") or None
 
     # Initialise the schema once at startup.
     init_conn = db.connect(app.config["DB_PATH"])
     db.init_db(init_conn)
+
+    # A stable secret so sessions survive process restarts on-device. Explicit
+    # arg / env win; otherwise persist a generated key in app_state.
+    secret = secret_key or os.environ.get("SPENDWISE_SECRET")
+    if not secret:
+        row = db.one(init_conn, "SELECT value FROM app_state WHERE key='secret_key'")
+        if row and row["value"]:
+            secret = row["value"]
+        else:
+            secret = os.urandom(32).hex()
+            db.execute(init_conn, "INSERT OR REPLACE INTO app_state(key, value) "
+                       "VALUES ('secret_key', ?)", (secret,))
+            init_conn.commit()
+    app.secret_key = secret
     init_conn.close()
 
     # ── Request lifecycle ────────────────────────────────────────────────
     @app.before_request
     def _open_db():
+        # Cross-origin write protection: state-changing requests must come
+        # from our own pages (the WebView / same-origin browser tab). A page
+        # on another origin (or a local file, Origin "null") can't POST here.
+        if request.method == "POST":
+            origin = request.headers.get("Origin")
+            if origin:
+                host = origin.split("//")[-1].split(":")[0].lower()
+                if host not in ("127.0.0.1", "localhost", "::1"):
+                    abort(403)
         g.conn = db.connect(app.config["DB_PATH"])
         if app.config["SINGLE_USER"] and "user_id" not in session:
             session["user_id"] = auth.ensure_local_user(g.conn)
@@ -52,6 +83,24 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             return None
         return auth.get_user(g.conn, uid)
+
+    def device_authorized() -> bool:
+        """Loopback-only AND (when a device token is configured) a matching
+        token header — so a co-installed app can't reach these endpoints.
+
+        In plain multi-user web mode (no device token, not single-user) the
+        device endpoints are disabled outright: remote_addr can't be trusted
+        behind a reverse proxy, and these endpoints write to the auto-created
+        local user."""
+        if not (app.config["SINGLE_USER"] or app.config["DEVICE_TOKEN"]):
+            return False
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            return False
+        token = app.config["DEVICE_TOKEN"]
+        if token:
+            sent = request.headers.get("X-SpendWise-Token", "")
+            return hmac.compare_digest(sent, token)
+        return True
 
     def settings_for(uid: str) -> dict:
         row = db.one(g.conn, "SELECT * FROM settings WHERE user_id=?", (uid,))
@@ -85,11 +134,58 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             except ValueError:
                 return None
 
-    app.jinja_env.globals["now"] = lambda: dt.datetime.now(dt.timezone.utc)
+    app.jinja_env.globals["now"] = lambda: dt.datetime.now()
+
+    # UI helpers (presentation only — no behaviour change).
+    _AVATAR_COLORS = [
+        "#7c5cff", "#5b8cff", "#36d39a", "#ff6b81", "#fbbf24", "#22c1c3",
+        "#a78bfa", "#f472b6", "#34d399", "#fb923c", "#60a5fa", "#e879f9",
+    ]
+
+    def _initials(name):
+        parts = [p for p in (name or "").strip().split() if p]
+        if not parts:
+            return "?"
+        if len(parts) == 1:
+            return parts[0][:2].upper()
+        return (parts[0][0] + parts[1][0]).upper()
+
+    def _avatar_color(name):
+        s = sum(ord(ch) for ch in (name or "?"))
+        return _AVATAR_COLORS[s % len(_AVATAR_COLORS)]
+
+    app.jinja_env.filters["initials"] = _initials
+    app.jinja_env.filters["avatar_color"] = _avatar_color
 
     @app.context_processor
     def _inject_globals():
-        return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"]}
+        theme, nav_fraud, nav_review = "system", 0, 0
+        cat_prompts, prompt_categories = [], []
+        st = db.one(g.conn, "SELECT value FROM app_state WHERE key='sms_permission'")
+        sms_denied = bool(st and st["value"] == "denied")
+        uid = session.get("user_id")
+        if uid:
+            row = db.one(g.conn, "SELECT theme FROM settings WHERE user_id=?", (uid,))
+            if row:
+                theme = row["theme"]
+            nav_fraud = db.one(g.conn, "SELECT COUNT(*) c FROM fraud_alerts WHERE "
+                               "user_id=? AND status='open'", (uid,))["c"]
+            nav_review = db.one(g.conn, "SELECT COUNT(*) c FROM transactions WHERE "
+                                "user_id=? AND is_deleted=0 AND status IN "
+                                "('pending_confirmation','needs_review')", (uid,))["c"]
+            # Auto-captured SMS transactions still awaiting a category → popup.
+            cat_prompts = db.all_rows(
+                g.conn, "SELECT * FROM transactions WHERE user_id=? AND category_id IS NULL "
+                "AND source='sms' AND is_deleted=0 AND COALESCE(category_prompted,0)=0 "
+                "ORDER BY occurred_at DESC, created_at DESC LIMIT 20", (uid,))
+            if cat_prompts:
+                prompt_categories = db.all_rows(
+                    g.conn, "SELECT * FROM categories WHERE user_id=? AND is_archived=0 "
+                    "ORDER BY type DESC, name", (uid,))
+        return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
+                "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review,
+                "cat_prompts": cat_prompts, "prompt_categories": prompt_categories,
+                "sms_denied": sms_denied}
 
     def require_login():
         if not session.get("user_id") or current_user() is None:
@@ -100,9 +196,13 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     def create_transaction(uid: str, *, amount: float, type_: str, category_id=None,
                            merchant=None, raw_merchant=None, notes=None,
                            reference_number=None, occurred_at: Optional[dt.datetime] = None,
-                           source="manual", resolve=True) -> dict:
+                           source="manual", resolve=True, dedup_key=None) -> dict:
         s = settings_for(uid)
-        occ = occurred_at or dt.datetime.now(dt.timezone.utc)
+        # Same clock domain as stored SMS times: local wall-clock stamped UTC.
+        occ = occurred_at or dt.datetime.now().replace(microsecond=0,
+                                                       tzinfo=dt.timezone.utc)
+        if type_ not in ("income", "expense"):
+            type_ = "expense"
         raw = (raw_merchant or merchant or "").strip() or None
         tx_id = db.new_id()
         merchant_id = None
@@ -146,14 +246,22 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 status = TX_REVIEW
                 decision = engine.DECISION_MANUAL
 
+        # Inherit the resolved merchant's learned category when the caller did
+        # not specify one (e.g. an auto-captured SMS) — so we only have to ask
+        # the user about genuinely unknown merchants.
+        if merchant_id and category_id is None:
+            mrow = db.one(g.conn, "SELECT category_id FROM merchants WHERE id=?", (merchant_id,))
+            if mrow and mrow["category_id"]:
+                category_id = mrow["category_id"]
+
         db.execute(g.conn,
                    "INSERT INTO transactions(id,user_id,amount,type,category_id,raw_merchant,"
                    "merchant_id,merchant_name,notes,reference_number,occurred_at,source,"
-                   "confidence,status,is_deleted,created_at) VALUES "
-                   "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
+                   "confidence,status,dedup_key,is_deleted,created_at) VALUES "
+                   "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
                    (tx_id, uid, amount, type_, category_id, raw, merchant_id, merchant_name,
                     notes, reference_number, occ.isoformat(), source, confidence, status,
-                    dt.datetime.now(dt.timezone.utc).isoformat()))
+                    dedup_key, dt.datetime.now(dt.timezone.utc).isoformat()))
 
         alert_ids = fraud.evaluate_transaction(
             g.conn, user_id=uid,
@@ -217,6 +325,26 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         d = analytics.build_dashboard(g.conn, uid, currency=s["currency"])
         return render_template("dashboard.html", d=d, user=current_user(), active="dashboard")
 
+    @app.get("/report")
+    def report_page():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        cur_m = dt.datetime.now().strftime("%Y-%m")
+        m = (request.args.get("m") or cur_m).strip()
+        try:
+            # Normalise (strptime accepts unpadded "2025-7", which would break
+            # the report's zero-padded day keys and string comparisons).
+            m = dt.datetime.strptime(m, "%Y-%m").strftime("%Y-%m")
+        except ValueError:
+            m = cur_m
+        if m > cur_m:  # no reports for the future
+            m = cur_m
+        s = settings_for(uid)
+        r = analytics.build_report(g.conn, uid, m)
+        return render_template("report.html", r=r, cur_m=cur_m, currency=s["currency"],
+                               user=current_user(), active="dashboard")
+
     # ── Routes: transactions ─────────────────────────────────────────────
     @app.get("/transactions")
     def transactions():
@@ -224,6 +352,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             return redirect(url_for("login"))
         q = (request.args.get("q") or "").strip()
+        f = (request.args.get("f") or "").strip()
         sql = ("SELECT * FROM transactions WHERE user_id=? AND is_deleted=0")
         params = [uid]
         if q:
@@ -233,10 +362,28 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     "lower(COALESCE(notes,'')) LIKE ? OR "
                     "lower(COALESCE(reference_number,'')) LIKE ?)")
             params += [like, like, like, like]
+        if f == "expense":
+            sql += " AND type='expense'"
+        elif f == "income":
+            sql += " AND type='income'"
+        elif f == "sms":
+            sql += " AND source='sms'"
+        elif f == "review":
+            sql += " AND status IN ('pending_confirmation','needs_review')"
         sql += " ORDER BY occurred_at DESC, created_at DESC LIMIT 200"
         rows = db.all_rows(g.conn, sql, tuple(params))
+        day_totals: dict = {}
+        for r in rows:
+            if r["type"] == "expense":
+                day = r["occurred_at"][:10]
+                day_totals[day] = round(day_totals.get(day, 0.0) + r["amount"], 2)
+        undo_id = (request.args.get("undo") or "").strip()
+        undo_tx = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? "
+                         "AND is_deleted=1", (undo_id, uid)) if undo_id else None
         return render_template("transactions.html", transactions=rows, total=len(rows),
-                               q=q, categories=categories_for(uid), user=current_user(),
+                               q=q, f=f, categories=categories_for(uid), user=current_user(),
+                               currency=settings_for(uid)["currency"],
+                               day_totals=day_totals, undo_tx=undo_tx,
                                active="transactions")
 
     @app.post("/transactions")
@@ -245,14 +392,14 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             return redirect(url_for("login"))
         amount = parse_amount(request.form.get("amount", ""))
-        if amount is None or amount < 0:
-            return redirect(url_for("transactions"))
+        if amount is None or amount <= 0:
+            return redirect(url_for("transactions", error="amount"))
         create_transaction(
             uid, amount=amount, type_=request.form.get("type", "expense"),
             category_id=request.form.get("category_id") or None,
             merchant=request.form.get("merchant", ""), notes=request.form.get("notes", "") or None,
             occurred_at=parse_date(request.form.get("occurred_at", "")), source="manual")
-        return redirect(url_for("transactions"))
+        return redirect(url_for("transactions", added=1))
 
     @app.post("/transactions/resolve")
     def transactions_resolve():
@@ -294,7 +441,53 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                                            category_id=cat, occurred_at=occ,
                                            is_correction=is_correction)
             g.conn.commit()
-        return redirect(url_for("transactions"))
+        return redirect(url_for("transactions", confirmed=1))
+
+    @app.post("/transactions/<tx_id>/categorize")
+    def transactions_categorize(tx_id):
+        """Answer the 'which category?' popup for an auto-captured SMS txn.
+
+        Picking a category also teaches the engine so the same merchant is
+        categorised automatically next time. Submitting with no category just
+        dismisses the prompt for this transaction.
+        """
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        tx = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? AND is_deleted=0",
+                    (tx_id, uid))
+        if tx:
+            cat = request.form.get("category_id") or None
+            valid = cat and db.one(g.conn, "SELECT id FROM categories WHERE id=? AND user_id=?",
+                                   (cat, uid))
+            if valid and tx["raw_merchant"]:
+                canonical = tx["merchant_name"] or tx["raw_merchant"]
+                occ = dt.datetime.fromisoformat(tx["occurred_at"])
+                engine.record_confirmation(g.conn, user_id=uid, raw_name=tx["raw_merchant"],
+                                           merchant_name=canonical, amount=tx["amount"],
+                                           category_id=cat, occurred_at=occ)
+                m = engine.get_or_create_merchant(g.conn, user_id=uid,
+                                                  canonical_name=canonical, category_id=cat)
+                db.execute(g.conn,
+                           "UPDATE transactions SET category_id=?, merchant_id=?, merchant_name=?, "
+                           "category_prompted=1 WHERE id=?", (cat, m["id"], canonical, tx_id))
+            elif valid:
+                db.execute(g.conn, "UPDATE transactions SET category_id=?, category_prompted=1 "
+                           "WHERE id=?", (cat, tx_id))
+            else:
+                db.execute(g.conn, "UPDATE transactions SET category_prompted=1 WHERE id=?", (tx_id,))
+            g.conn.commit()
+        return redirect(request.referrer or url_for("dashboard"))
+
+    @app.post("/sms/prompts/dismiss")
+    def sms_prompts_dismiss():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        db.execute(g.conn, "UPDATE transactions SET category_prompted=1 WHERE user_id=? AND "
+                   "category_id IS NULL AND source='sms' AND is_deleted=0", (uid,))
+        g.conn.commit()
+        return redirect(request.referrer or url_for("dashboard"))
 
     @app.post("/transactions/<tx_id>/delete")
     def transactions_delete(tx_id):
@@ -304,7 +497,91 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         db.execute(g.conn, "UPDATE transactions SET is_deleted=1 WHERE id=? AND user_id=?",
                    (tx_id, uid))
         g.conn.commit()
-        return redirect(url_for("transactions"))
+        return redirect(url_for("transactions", undo=tx_id))
+
+    @app.post("/transactions/<tx_id>/restore")
+    def transactions_restore(tx_id):
+        """Undo a delete (soft-deleted rows are kept, so this is loss-free)."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        db.execute(g.conn, "UPDATE transactions SET is_deleted=0 WHERE id=? AND user_id=?",
+                   (tx_id, uid))
+        g.conn.commit()
+        return redirect(url_for("transactions", restored=1))
+
+    @app.post("/transactions/<tx_id>/edit")
+    def transactions_edit(tx_id):
+        """Edit any field of an existing transaction. A changed merchant is
+        learned (confirmed at 100%) so future resolutions improve."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        tx = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? AND is_deleted=0",
+                    (tx_id, uid))
+        if not tx:
+            return redirect(url_for("transactions"))
+        amount = parse_amount(request.form.get("amount", ""))
+        if amount is None or amount <= 0:
+            return redirect(url_for("transactions", error="amount"))
+        type_ = request.form.get("type", tx["type"])
+        if type_ not in ("income", "expense"):
+            type_ = tx["type"]
+        cat = request.form.get("category_id") or None
+        if cat and not db.one(g.conn, "SELECT id FROM categories WHERE id=? AND user_id=?",
+                              (cat, uid)):
+            cat = tx["category_id"]
+        occ = parse_date(request.form.get("occurred_at", ""))
+        occ_iso = occ.isoformat() if occ else tx["occurred_at"]
+        notes = (request.form.get("notes") or "").strip() or None
+        merchant = (request.form.get("merchant") or "").strip()
+        merchant_id, merchant_name = tx["merchant_id"], tx["merchant_name"]
+        confidence, status = tx["confidence"], tx["status"]
+        if merchant and merchant != (tx["merchant_name"] or ""):
+            mrow = engine.get_or_create_merchant(g.conn, user_id=uid,
+                                                 canonical_name=merchant, category_id=cat)
+            merchant_id, merchant_name = mrow["id"], mrow["canonical_name"]
+            confidence, status = 100, TX_CONFIRMED
+            if tx["raw_merchant"]:
+                engine.record_confirmation(
+                    g.conn, user_id=uid, raw_name=tx["raw_merchant"],
+                    merchant_name=merchant_name, amount=amount, category_id=cat,
+                    occurred_at=dt.datetime.fromisoformat(occ_iso),
+                    is_correction=bool(tx["merchant_name"]))
+        db.execute(g.conn,
+                   "UPDATE transactions SET amount=?, type=?, category_id=?, occurred_at=?, "
+                   "notes=?, merchant_id=?, merchant_name=?, confidence=?, status=? WHERE id=?",
+                   (amount, type_, cat, occ_iso, notes, merchant_id, merchant_name,
+                    confidence, status, tx_id))
+        g.conn.commit()
+        return redirect(url_for("transactions", edited=1))
+
+    @app.get("/merchant")
+    def merchant_page():
+        """Drill-down for one merchant: stats, monthly trend, full history."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        name = (request.args.get("n") or "").strip()
+        if not name:
+            return redirect(url_for("transactions"))
+        rows = db.all_rows(
+            g.conn, "SELECT * FROM transactions WHERE user_id=? AND is_deleted=0 AND "
+            "merchant_name=? ORDER BY occurred_at DESC LIMIT 100", (uid, name))
+        total = round(sum(r["amount"] for r in rows if r["type"] == "expense"), 2)
+        monthly: dict = {}
+        for r in rows:
+            if r["type"] == "expense":
+                p = r["occurred_at"][:7]
+                monthly[p] = round(monthly.get(p, 0.0) + r["amount"], 2)
+        trend = [{"period": p, "value": monthly[p]} for p in sorted(monthly)][-6:]
+        s = settings_for(uid)
+        return render_template("merchant.html", name=name, transactions=rows,
+                               total=total, count=len(rows), trend=trend,
+                               avg=round(total / max(1, sum(1 for r in rows
+                                         if r["type"] == "expense")), 2),
+                               currency=s["currency"], user=current_user(),
+                               active="transactions")
 
     # ── Routes: SMS import ───────────────────────────────────────────────
     @app.get("/import")
@@ -312,7 +589,12 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         uid = require_login()
         if not uid:
             return redirect(url_for("login"))
-        return render_template("import.html", user=current_user(), active="import")
+        recent_sms = db.all_rows(
+            g.conn, "SELECT * FROM transactions WHERE user_id=? AND source='sms' "
+            "AND is_deleted=0 ORDER BY created_at DESC LIMIT 8", (uid,))
+        return render_template("import.html", user=current_user(), active="import",
+                               currency=settings_for(uid)["currency"],
+                               recent_sms=recent_sms)
 
     @app.post("/import/parse")
     def import_parse():
@@ -336,7 +618,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             abort(401)
         amount = parse_amount(request.form.get("amount", ""))
-        if amount is None:
+        if amount is None or amount <= 0:
             return '<p class="error">Could not read the amount.</p>'
         result = create_transaction(
             uid, amount=amount, type_=request.form.get("type", "expense"),
@@ -347,14 +629,99 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         return render_template("_import_result.html", result=result,
                                breakdown=result["breakdown"])
 
-    # ── Routes: categories ───────────────────────────────────────────────
+    @app.post("/sms/ingest")
+    def sms_ingest():
+        """Auto-capture a finance SMS pushed by the Android SMS receiver.
+
+        Called directly by the device (no pasting, no session cookie), so it is
+        restricted to loopback and resolves the single on-device user. Returns
+        JSON describing whether a transaction was captured and if it still needs
+        a category from the user.
+        """
+        if not device_authorized():
+            abort(403)
+        uid = auth.ensure_local_user(g.conn)
+        body = request.form.get("body") or request.form.get("sms") or ""
+        parsed = parse_sms(body)
+        if not parsed.matched or not parsed.amount or parsed.amount <= 0:
+            return {"captured": False, "reason": "not_financial"}, 200
+        # Idempotency: the same message must not be captured twice (the receiver
+        # may both POST live and re-queue on a flaky connection). Prefer the bank
+        # reference; fall back to a content hash for messages that have none.
+        dedup_key = parsed.reference_number or hashlib.sha1(
+            ("%s|%s|%s|%s|%s" % (uid, parsed.amount, parsed.type,
+             parsed.occurred_at or "", body.strip())).encode("utf-8")).hexdigest()
+        dup = db.one(g.conn, "SELECT id, category_id FROM transactions WHERE user_id=? "
+                     "AND source='sms' AND dedup_key=? AND is_deleted=0", (uid, dedup_key))
+        if dup:
+            return {"captured": False, "reason": "duplicate", "id": dup["id"],
+                    "needs_category": dup["category_id"] is None}, 200
+        try:
+            result = create_transaction(
+                uid, amount=parsed.amount, type_=parsed.type,
+                raw_merchant=parsed.raw_merchant, reference_number=parsed.reference_number,
+                occurred_at=parsed.occurred_at, source="sms", resolve=True, dedup_key=dedup_key)
+        except sqlite3.IntegrityError:
+            # Lost the check-then-insert race (live POST + queue drain landing
+            # together) — the unique dedup index made the second insert fail.
+            g.conn.rollback()
+            dup = db.one(g.conn, "SELECT id, category_id FROM transactions WHERE user_id=? "
+                         "AND source='sms' AND dedup_key=? AND is_deleted=0",
+                         (uid, dedup_key))
+            return {"captured": False, "reason": "duplicate",
+                    "id": dup["id"] if dup else None,
+                    "needs_category": bool(dup and dup["category_id"] is None)}, 200
+        tx = db.one(g.conn, "SELECT category_id FROM transactions WHERE id=?", (result["id"],))
+        return {"captured": True, "id": result["id"],
+                "merchant": result["resolved_merchant"] or parsed.raw_merchant,
+                "decision": result["decision"],
+                "needs_category": tx["category_id"] is None}, 200
+
+    @app.post("/device/state")
+    def device_state():
+        """Native layer reports whether SMS capture is currently permitted, so
+        the web UI can show a 'grant access' banner when it isn't."""
+        if not device_authorized():
+            abort(403)
+        perm = request.form.get("sms_permission")
+        if perm in ("granted", "denied"):
+            db.execute(g.conn, "INSERT OR REPLACE INTO app_state(key, value) "
+                       "VALUES ('sms_permission', ?)", (perm,))
+            g.conn.commit()
+        return {"ok": True}, 200
+
+    # ── Routes: categories & budgets ─────────────────────────────────────
+    def _month_start_iso() -> str:
+        # Local wall-clock stamped UTC — same domain as stored occurred_at.
+        now = dt.datetime.now().replace(tzinfo=dt.timezone.utc)
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
     @app.get("/categories")
     def categories_page():
         uid = require_login()
         if not uid:
             return redirect(url_for("login"))
+        s = settings_for(uid)
         return render_template("categories.html", categories=categories_for(uid, True),
+                               spent_by_cat=analytics.month_category_spend(
+                                   g.conn, uid, _month_start_iso()),
+                               currency=s["currency"],
                                user=current_user(), active="categories")
+
+    @app.post("/categories/<cat_id>/budget")
+    def categories_budget(cat_id):
+        """Set (or clear, with an empty value) a category's monthly budget."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        raw = (request.form.get("budget_amount") or "").strip()
+        amount = parse_amount(raw) if raw else None
+        if request.form.get("clear") or (amount is not None and amount <= 0):
+            amount = None
+        db.execute(g.conn, "UPDATE categories SET budget_amount=? WHERE id=? AND user_id=?",
+                   (amount, cat_id, uid))
+        g.conn.commit()
+        return redirect(url_for("categories_page"))
 
     @app.post("/categories")
     def categories_create():
@@ -370,12 +737,19 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     (uid, name.lower())):
             error = "A category with that name already exists."
         else:
+            color = request.form.get("color") or "#6366f1"
+            if not re.fullmatch(r"#[0-9a-fA-F]{3,8}", color):
+                color = "#6366f1"  # colour lands in a style attribute — hex only
             db.execute(g.conn,
                        "INSERT INTO categories(id,user_id,name,type,icon,color) VALUES (?,?,?,?,?,?)",
                        (db.new_id(), uid, name, type_ if type_ in ("income", "expense") else "expense",
-                        "Tag", (request.form.get("color") or "#6366f1")[:16]))
+                        "Tag", color))
             g.conn.commit()
+        s = settings_for(uid)
         return render_template("categories.html", categories=categories_for(uid, True),
+                               spent_by_cat=analytics.month_category_spend(
+                                   g.conn, uid, _month_start_iso()),
+                               currency=s["currency"],
                                user=current_user(), active="categories", error=error,
                                flash="" if error else "Category added.")
 
@@ -422,18 +796,53 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             hv = parse_amount(request.form.get("high_value_amount", "")) \
                 if (request.form.get("high_value_amount") or "").strip() else None
             theme = request.form.get("theme", "system")
+
+            def _pct(field, default):
+                try:
+                    return max(0, min(100, int(request.form.get(field) or default)))
+                except (TypeError, ValueError):
+                    return default
+
             db.execute(g.conn,
                        "UPDATE settings SET currency=?, theme=?, auto_save_threshold=?, "
                        "confirm_threshold=?, high_value_amount=? WHERE user_id=?",
                        ((request.form.get("currency") or "INR")[:8],
                         theme if theme in ("system", "light", "dark") else "system",
-                        max(0, min(100, int(request.form.get("auto_save_threshold", 80) or 80))),
-                        max(0, min(100, int(request.form.get("confirm_threshold", 50) or 50))),
+                        _pct("auto_save_threshold", 80), _pct("confirm_threshold", 50),
                         hv, uid))
             g.conn.commit()
             flash = "Settings saved."
         return render_template("settings.html", s=settings_for(uid), user=current_user(),
                                active="settings", flash=flash)
+
+    # ── Routes: data export ──────────────────────────────────────────────
+    @app.get("/export.csv")
+    def export_csv():
+        """Download every (non-deleted) transaction as a CSV file."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        rows = db.all_rows(
+            g.conn,
+            "SELECT t.*, c.name category_name FROM transactions t "
+            "LEFT JOIN categories c ON c.id = t.category_id "
+            "WHERE t.user_id=? AND t.is_deleted=0 ORDER BY t.occurred_at DESC", (uid,))
+        def _cell(v):
+            # Neutralise spreadsheet formula injection (=, +, -, @ prefixes).
+            s = "" if v is None else str(v)
+            return "'" + s if s[:1] in ("=", "+", "-", "@") else s
+
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["date", "type", "amount", "merchant", "category", "notes",
+                    "reference", "source", "status"])
+        for r in rows:
+            w.writerow([r["occurred_at"], r["type"], r["amount"],
+                        _cell(r["merchant_name"] or r["raw_merchant"]),
+                        _cell(r["category_name"]), _cell(r["notes"]),
+                        _cell(r["reference_number"]), r["source"], r["status"]])
+        return Response(buf.getvalue(), mimetype="text/csv", headers={
+            "Content-Disposition": "attachment; filename=spendwise-transactions.csv"})
 
     @app.get("/healthz")
     def healthz():

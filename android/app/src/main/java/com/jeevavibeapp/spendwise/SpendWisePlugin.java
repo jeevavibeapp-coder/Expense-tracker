@@ -16,6 +16,16 @@ public class SpendWisePlugin extends Plugin {
         instance = this;
     }
 
+    @Override
+    protected void handleOnDestroy() {
+        // Clear the static ref so a destroyed activity's plugin (and its
+        // bridge/WebView) can be garbage-collected across recreations.
+        if (instance == this) {
+            instance = null;
+        }
+        super.handleOnDestroy();
+    }
+
     public static void onSmsReceived(String sender, String body) {
         if (instance != null) {
             JSObject ret = new JSObject();

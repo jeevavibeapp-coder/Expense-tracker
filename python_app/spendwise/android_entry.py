@@ -1,46 +1,126 @@
 """Entry point used by the Android app (Chaquopy) to run SpendWise on-device.
 
 The Android `MainActivity` starts a background thread that calls
-``start_server(files_dir)``; this launches the Flask app on 127.0.0.1 so the
-Capacitor WebView can load it. Everything runs fully offline inside the APK.
+``start_server(files_dir, token)``; this launches the Flask app on 127.0.0.1 so
+the Capacitor WebView can load it. Everything runs fully offline inside the APK.
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
+import time
+import urllib.parse
+import urllib.request
 
 _server_thread: "threading.Thread | None" = None
 _lock = threading.Lock()
+_device_token: "str | None" = None
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
+# Finance SMS that arrived while the app was closed are appended here by the
+# Android SMS receiver, then drained into the app on the next launch.
+INBOX_NAME = "sms_inbox.jsonl"
 
-def _run(db_path: str, host: str, port: int) -> None:
+
+def _run(db_path: str, host: str, port: int, token: "str | None") -> None:
     from spendwise.app import create_app
 
-    app = create_app(db_path=db_path, single_user=True)
+    app = create_app(db_path=db_path, single_user=True, device_token=token)
     # Werkzeug's dev server is sufficient for a single on-device user.
     app.run(host=host, port=port, threaded=True, use_reloader=False, debug=False)
 
 
-def start_server(files_dir: str = None, host: str = DEFAULT_HOST,
-                 port: int = DEFAULT_PORT) -> str:
-    """Start the embedded server once; return the URL the WebView should load.
+def _ingest(base_url: str, token: "str | None", item: dict) -> None:
+    data = urllib.parse.urlencode(
+        {"sender": item.get("sender") or "", "body": item.get("body") or ""}).encode()
+    req = urllib.request.Request(f"{base_url}/sms/ingest", data=data)
+    if token:
+        req.add_header("X-SpendWise-Token", token)
+    # Raises HTTPError on non-2xx, so failed ingests are kept in the queue.
+    urllib.request.urlopen(req, timeout=5)
 
-    Safe to call multiple times — only the first call starts the thread.
-    Called from Java via Chaquopy: ``getModule("spendwise.android_entry")
-    .callAttr("start_server", filesDir)``.
+
+def _drain_inbox(base: str, host: str, port: int, token: "str | None") -> None:
+    """Wait for the server, then replay any SMS queued while it was offline.
+
+    Atomically rotates the queue file before processing so messages appended by
+    the receiver *during* the drain are never clobbered.
     """
-    global _server_thread
+    path = os.path.join(base, INBOX_NAME)
+    base_url = f"http://{host}:{port}"
+    # Wait (up to ~30s) for the server to accept requests.
+    for _ in range(120):
+        try:
+            urllib.request.urlopen(f"{base_url}/healthz", timeout=1)
+            break
+        except Exception:
+            time.sleep(0.25)
+    if not os.path.exists(path):
+        return
+    # Claim the current queue by renaming it; concurrent appends create a fresh
+    # file that a later drain will pick up.
+    work = "%s.%d.%d.draining" % (path, os.getpid(), int(time.time() * 1000))
+    try:
+        os.rename(path, work)
+    except OSError:
+        return  # another drain already claimed it, or it vanished
+    try:
+        with open(work, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return
+    remaining = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue  # drop unparseable lines
+        try:
+            _ingest(base_url, token, item)
+        except Exception:
+            remaining.append(line)  # keep for the next launch on failure
+    # Re-queue failures by appending to the live file (which may now hold newly
+    # arrived messages), then drop the work file.
+    try:
+        if remaining:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write("\n".join(remaining) + "\n")
+        os.remove(work)
+    except OSError:
+        pass
+
+
+def start_server(files_dir: str = None, token: str = None, host: str = DEFAULT_HOST,
+                 port: int = DEFAULT_PORT) -> str:
+    """Start the embedded server (once) and drain any queued SMS.
+
+    Safe to call multiple times — only the first call starts the server thread,
+    but every call kicks a drain (cheap; atomic rotation makes it idempotent).
+    Called from Java via Chaquopy: ``getModule("spendwise.android_entry")
+    .callAttr("start_server", filesDir, token)``.
+    """
+    global _server_thread, _device_token
     base = files_dir or os.getcwd()
     db_path = os.path.join(base, "spendwise.db")
     with _lock:
+        if token:
+            _device_token = token
+        tok = _device_token
         if _server_thread is None or not _server_thread.is_alive():
             _server_thread = threading.Thread(
-                target=_run, args=(db_path, host, port), daemon=True,
+                target=_run, args=(db_path, host, port, tok), daemon=True,
                 name="spendwise-server")
             _server_thread.start()
+    # Replay queued SMS once the server is ready (off the main thread). Runs on
+    # every call so messages queued within a warm process still drain.
+    threading.Thread(target=_drain_inbox, args=(base, host, port, tok),
+                     daemon=True, name="spendwise-sms-drain").start()
     return f"http://{host}:{port}"
 
 

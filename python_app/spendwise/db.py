@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS categories (
     type TEXT NOT NULL DEFAULT 'expense',
     icon TEXT NOT NULL DEFAULT 'Tag',
     color TEXT NOT NULL DEFAULT '#6366f1',
+    budget_amount REAL,
     is_archived INTEGER NOT NULL DEFAULT 0,
     UNIQUE(user_id, name)
 );
@@ -69,6 +70,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     source TEXT NOT NULL DEFAULT 'manual',
     confidence INTEGER,
     status TEXT NOT NULL DEFAULT 'confirmed',
+    category_prompted INTEGER NOT NULL DEFAULT 0,
+    dedup_key TEXT,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
@@ -92,6 +95,10 @@ CREATE TABLE IF NOT EXISTS settings (
     confirm_threshold INTEGER NOT NULL DEFAULT 50,
     high_value_amount REAL
 );
+CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -107,12 +114,37 @@ def connect(path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Lightweight, additive migrations for databases created by older builds
+    (CREATE TABLE IF NOT EXISTS never adds new columns to an existing table)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(transactions)")}
+    if "category_prompted" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN "
+                     "category_prompted INTEGER NOT NULL DEFAULT 0")
+    if "dedup_key" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN dedup_key TEXT")
+    cat_cols = {row["name"] for row in conn.execute("PRAGMA table_info(categories)")}
+    if "budget_amount" not in cat_cols:
+        conn.execute("ALTER TABLE categories ADD COLUMN budget_amount REAL")
+    # Closes the check-then-insert race in /sms/ingest (live POST + queue
+    # drain arriving together). Guarded: an old DB that already contains
+    # duplicates keeps working without the index.
+    try:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_tx_dedup ON "
+                     "transactions(user_id, dedup_key) "
+                     "WHERE dedup_key IS NOT NULL AND is_deleted=0")
+    except sqlite3.IntegrityError:
+        pass
 
 
 def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:

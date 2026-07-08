@@ -1,29 +1,66 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Settings · {{ app_name }}{% endblock %}
 {% block heading %}Settings{% endblock %}
 {% block content %}
-<div class="card" style="max-width:560px">
+<div class="screen stack">
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
-  <form method="post" action="/settings">
-    <div class="row">
-      <div class="field"><label>Currency</label><input name="currency" value="{{ s['currency'] }}" maxlength="8"></div>
-      <div class="field"><label>Theme</label>
-        <select name="theme">
+
+  <div class="card" style="display:flex; align-items:center; gap:14px">
+    <span class="avatar" style="width:48px;height:48px;font-size:18px">{{ user['full_name']|initials }}</span>
+    <div><div style="font-weight:700; font-size:16px">{{ user['full_name'] }}</div>
+      <div class="mut" style="font-size:13px">{{ user['email'] }}</div></div>
+  </div>
+
+  <form method="post" action="/settings" class="stack">
+    <div class="card stack">
+      <div style="font-weight:700">Preferences</div>
+      <div class="row">
+        <div class="field" style="margin:0"><label class="lbl">Currency</label>
+          <input name="currency" value="{{ s['currency'] }}" maxlength="8"></div>
+      </div>
+      <div class="field" style="margin:0"><label class="lbl">Appearance</label>
+        <div class="seg">
           {% for opt in ['system','light','dark'] %}
-          <option value="{{ opt }}" {{ 'selected' if s['theme'] == opt else '' }}>{{ opt|capitalize }}</option>{% endfor %}
-        </select></div>
+          <label><input type="radio" name="theme" value="{{ opt }}" {{ 'checked' if s['theme']==opt }}><span>{{ opt|title }}</span></label>{% endfor %}
+        </div>
+      </div>
     </div>
-    <div class="row">
-      <div class="field"><label>Auto-save threshold (≥ this confidence auto-saves)</label>
-        <input name="auto_save_threshold" type="number" min="0" max="100" value="{{ s['auto_save_threshold'] }}"></div>
-      <div class="field"><label>Confirm threshold (≥ this asks to confirm)</label>
-        <input name="confirm_threshold" type="number" min="0" max="100" value="{{ s['confirm_threshold'] }}"></div>
+
+    <div class="card stack">
+      <div style="font-weight:700">Smart engine</div>
+      <div class="mut" style="font-size:12.5px; margin-top:-6px">How confident the engine must be to auto-save vs ask you.</div>
+      <div class="field" style="margin:0">
+        <label class="lbl">Auto-save at <b id="autoVal" class="num" style="color:var(--income)">{{ s['auto_save_threshold'] }}%</b> confidence</label>
+        <input type="range" name="auto_save_threshold" min="0" max="100" value="{{ s['auto_save_threshold'] }}"
+               oninput="document.getElementById('autoVal').textContent=this.value+'%'"></div>
+      <div class="field" style="margin:0">
+        <label class="lbl">Ask to confirm above <b id="confVal" class="num" style="color:var(--warn)">{{ s['confirm_threshold'] }}%</b></label>
+        <input type="range" name="confirm_threshold" min="0" max="100" value="{{ s['confirm_threshold'] }}"
+               oninput="document.getElementById('confVal').textContent=this.value+'%'"></div>
     </div>
-    <div class="field"><label>High-value alert amount (optional)</label>
-      <input name="high_value_amount" type="number" step="0.01" min="0"
-             value="{{ '%.2f'|format(s['high_value_amount']) if s['high_value_amount'] is not none else '' }}" placeholder="e.g. 25000">
-      <small>Transactions at or above this amount raise a fraud alert.</small></div>
-    <button class="btn" type="submit">Save settings</button>
+
+    <div class="card stack">
+      <div style="font-weight:700">Fraud protection</div>
+      <div class="field" style="margin:0"><label class="lbl">High-value alert amount (optional)</label>
+        <input name="high_value_amount" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(s['high_value_amount']) if s['high_value_amount'] is not none else '' }}" placeholder="e.g. 25000">
+        <div class="mut" style="font-size:12px; margin-top:6px">Transactions at or above this raise an alert.</div></div>
+    </div>
+
+    <button class="btn" type="submit">Save changes</button>
   </form>
+
+  <div class="card stack">
+    <div style="font-weight:700">Your data</div>
+    <div class="mut" style="font-size:12.5px; margin-top:-6px">Everything stays on this device. Download a copy any time.</div>
+    <a class="btn-soft" href="/export.csv" download
+       style="display:block; text-align:center; text-decoration:none">Export transactions (CSV)</a>
+  </div>
+
+  {% if not single_user %}
+  <form method="post" action="/logout"><button class="btn-soft" type="submit" style="width:100%; color:var(--expense); margin-top:4px">Sign out</button></form>
+  {% endif %}
+  <div class="faint" style="text-align:center; font-size:11px; padding:8px">SpendWise · on-device & offline</div>
 </div>
 {% endblock %}

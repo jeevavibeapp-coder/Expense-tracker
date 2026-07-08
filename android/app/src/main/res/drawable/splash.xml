@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SpendWise launch splash: same violet→blue gradient and wallet logo as the app icon,
+     so the app opens with consistent branding while the embedded server boots. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Full-bleed brand gradient -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="315"
+                android:startColor="#9B6BFF"
+                android:centerColor="#7C5CFF"
+                android:endColor="#5B7CFF" />
+        </shape>
+    </item>
+
+    <!-- Centered wallet logo (reuses the adaptive-icon foreground) -->
+    <item
+        android:width="240dp"
+        android:height="240dp"
+        android:gravity="center"
+        android:drawable="@mipmap/ic_launcher_foreground" />
+
+</layer-list>

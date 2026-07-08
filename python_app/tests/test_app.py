@@ -24,7 +24,7 @@ def test_login_page_and_redirect(client):
 
 def test_signup_creates_account_with_categories(auth_client):
     page = auth_client.get("/dashboard")
-    assert page.status_code == 200 and b"Dashboard" in page.data
+    assert page.status_code == 200 and b"Total balance" in page.data
     cats = auth_client.get("/categories")
     assert b"Food &amp; Dining" in cats.data or b"Food & Dining" in cats.data
 
@@ -40,7 +40,8 @@ def test_duplicate_signup_rejected(client):
 def test_add_transaction_confirmed(auth_client):
     r = _add(auth_client, amount="250.00", merchant="Starbucks")
     assert r.status_code == 200
-    assert b"Starbucks" in r.data and b"Confirmed" in r.data
+    # User-provided merchant is auto-confirmed at 100% confidence.
+    assert b"Starbucks" in r.data and b"100%" in r.data
 
 
 def test_learning_then_live_resolve(auth_client):
@@ -82,9 +83,9 @@ def test_sms_parse_and_create(auth_client):
 
 def test_search_and_delete(auth_client):
     _add(auth_client, amount="100.00", merchant="KFC")
-    _add(auth_client, amount="500.00", merchant="Starbucks")
+    _add(auth_client, amount="500.00", merchant="Zomato")
     found = auth_client.get("/transactions?q=kfc")
-    assert b"KFC" in found.data and b"Starbucks" not in found.data
+    assert b"KFC" in found.data and b"Zomato" not in found.data
     import re
     m = re.search(rb"/transactions/([0-9a-f]+)/delete", found.data)
     tx_id = m.group(1).decode()
@@ -106,7 +107,8 @@ def test_dashboard_real_data(auth_client):
     _add(auth_client, amount="200.00", type="income", merchant="Salary")
     _add(auth_client, amount="50.00", merchant="KFC")
     dash = auth_client.get("/dashboard")
-    assert b"200.00" in dash.data and b"KFC" in dash.data
+    # Balance = 200 income - 50 expense = 150.00, and KFC is a top merchant.
+    assert b"150.00" in dash.data and b"KFC" in dash.data
 
 
 def test_categories_crud(auth_client):
@@ -136,3 +138,299 @@ def test_sms_parser_unit():
     r = parsing.parse_sms("INR 25,000.00 credited to your account from ACME on 01/02/2024")
     assert r.amount == 25000.0 and r.type == "income"
     assert parsing.parse_sms("Your OTP is 4567.").matched is False
+
+
+def _su_client(tmp_path, name="s.db"):
+    app = create_app(db_path=str(tmp_path / name), single_user=True, secret_key="t")
+    return app.test_client()
+
+
+def test_sms_ingest_auto_captures(tmp_path):
+    c = _su_client(tmp_path)
+    sms = "Rs.450.00 spent at SWIGGY on 12-06-2025 ref 553201998877 UPI"
+    r = c.post("/sms/ingest", data={"sender": "VK-HDFCBK", "body": sms})
+    j = r.get_json()
+    assert j["captured"] is True and j["needs_category"] is True
+    # The transaction is now in the app without any pasting.
+    page = c.get("/transactions")
+    assert b"SWIGGY" in page.data.upper()
+    # And the "which category?" popup is shown when the app opens.
+    dash = c.get("/dashboard")
+    assert b"New transaction from SMS" in dash.data
+
+
+def test_sms_ingest_ignores_non_financial(tmp_path):
+    c = _su_client(tmp_path)
+    r = c.post("/sms/ingest", data={"sender": "AX-OTP", "body": "Your OTP is 4567."})
+    assert r.get_json()["captured"] is False
+
+
+def test_sms_ingest_dedup_by_reference(tmp_path):
+    c = _su_client(tmp_path)
+    sms = "Rs.200 debited to UBER on 01/02/2025 ref ABCXYZ123456 UPI"
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["captured"] is True
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["reason"] == "duplicate"
+
+
+def test_sms_categorize_teaches_engine(tmp_path):
+    c = _su_client(tmp_path)
+    first = c.post("/sms/ingest", data={
+        "body": "Rs.350 debited to DOMINOS on 01/02/2025 ref REF111222333 UPI"}).get_json()
+    tx_id = first["id"]
+    # Pick a real category from the popup's chips (auto-provisioned defaults).
+    import re
+    cat_id = re.search(rb'name="category_id" value="([0-9a-f]+)"',
+                       c.get("/dashboard").data)
+    assert cat_id, "category chips should render in the popup"
+    cid = cat_id.group(1).decode()
+    c.post(f"/transactions/{tx_id}/categorize", data={"category_id": cid})
+    # Popup is gone, and a second DOMINOS SMS is auto-categorised (no prompt).
+    assert b"New transaction from SMS" not in c.get("/dashboard").data
+    second = c.post("/sms/ingest", data={
+        "body": "Rs.420 debited to DOMINOS on 02/02/2025 ref REF444555666 UPI"}).get_json()
+    assert second["captured"] is True and second["needs_category"] is False
+
+
+def test_sms_ingest_dedup_refless(tmp_path):
+    c = _su_client(tmp_path)
+    sms = "Rs.120 debited to LOCALCAFE on 03-04-2025 UPI"  # no parseable ref
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["captured"] is True
+    assert c.post("/sms/ingest", data={"body": sms}).get_json()["reason"] == "duplicate"
+
+
+def test_device_token_enforced(tmp_path):
+    app = create_app(db_path=str(tmp_path / "t.db"), single_user=True,
+                     secret_key="t", device_token="sekret")
+    c = app.test_client()
+    sms = "Rs.50 spent at TEA on 01-01-2025 ref AAA111222333 UPI"
+    assert c.post("/sms/ingest", data={"body": sms}).status_code == 403          # no token
+    assert c.post("/sms/ingest", data={"body": sms},
+                  headers={"X-SpendWise-Token": "wrong"}).status_code == 403       # bad token
+    ok = c.post("/sms/ingest", data={"body": sms}, headers={"X-SpendWise-Token": "sekret"})
+    assert ok.status_code == 200 and ok.get_json()["captured"] is True            # good token
+    assert c.post("/device/state", data={"sms_permission": "denied"}).status_code == 403
+
+
+def test_secret_key_persisted(tmp_path):
+    db = str(tmp_path / "p.db")
+    a1 = create_app(db_path=db, single_user=True)
+    a2 = create_app(db_path=db, single_user=True)
+    assert a1.secret_key and a1.secret_key == a2.secret_key  # survives "restart"
+
+
+def test_sms_permission_banner(tmp_path):
+    c = _su_client(tmp_path)
+    # No banner until the device reports a denial.
+    assert b"Auto-capture is paused" not in c.get("/dashboard").data
+    c.post("/device/state", data={"sms_permission": "denied"})
+    assert b"Auto-capture is paused" in c.get("/dashboard").data
+    # Granting clears it.
+    c.post("/device/state", data={"sms_permission": "granted"})
+    assert b"Auto-capture is paused" not in c.get("/dashboard").data
+
+
+def test_sms_prompts_dismiss_all(tmp_path):
+    c = _su_client(tmp_path)
+    c.post("/sms/ingest", data={"body": "Rs.99 debited to ACME on 01/02/2025 UPI"})
+    c.post("/sms/ingest", data={"body": "Rs.88 debited to BETA on 01/02/2025 UPI"})
+    assert b"New transaction from SMS" in c.get("/dashboard").data
+    c.post("/sms/prompts/dismiss")
+    assert b"New transaction from SMS" not in c.get("/dashboard").data
+
+
+def test_budget_set_progress_and_insight(auth_client):
+    import re
+    # Grab an existing expense category id from the budgets page.
+    page = auth_client.get("/categories")
+    m = re.search(rb'id="budget-([0-9a-f]+)"', page.data)
+    assert m, "expense categories should render budget sheets"
+    cat_id = m.group(1).decode()
+    # Set a monthly budget, then overspend it this month.
+    auth_client.post(f"/categories/{cat_id}/budget", data={"budget_amount": "100"})
+    _add(auth_client, amount="150.00", merchant="KFC", category_id=cat_id)
+    dash = auth_client.get("/dashboard")
+    assert b"Budgets" in dash.data and b"over budget" in dash.data
+    # Clearing removes it from the dashboard.
+    auth_client.post(f"/categories/{cat_id}/budget",
+                     data={"budget_amount": "100", "clear": "1"})
+    assert b"over budget" not in auth_client.get("/dashboard").data
+
+
+def test_export_csv(auth_client):
+    _add(auth_client, amount="123.45", merchant="ExportMart")
+    r = auth_client.get("/export.csv")
+    assert r.status_code == 200 and "text/csv" in r.headers["Content-Type"]
+    assert b"ExportMart" in r.data and b"123.45" in r.data
+    assert b"date,type,amount" in r.data  # header row
+
+
+def test_import_page_lists_recent_sms(tmp_path):
+    c = _su_client(tmp_path)
+    c.post("/sms/ingest", data={
+        "body": "Rs.777 debited to CAFERIO on 01/02/2025 ref REF777888999 UPI"})
+    page = c.get("/import")
+    assert b"Recently captured" in page.data and b"CAFERIO" in page.data.upper()
+
+
+def test_recurring_bill_detection(auth_client):
+    import datetime as dt
+    today = dt.date.today()
+    # Two similar charges are NOT a bill (coincidence guard) …
+    for days_ago in (60, 30):
+        _add(auth_client, amount="499.00", merchant="NETFLIX",
+             occurred_at=(today - dt.timedelta(days=days_ago)).isoformat())
+    assert b"Upcoming bills" not in auth_client.get("/dashboard").data
+    # … but three at a monthly cadence are.
+    _add(auth_client, amount="499.00", merchant="NETFLIX",
+         occurred_at=(today - dt.timedelta(days=90)).isoformat())
+    dash = auth_client.get("/dashboard")
+    assert b"Upcoming bills" in dash.data and b"NETFLIX" in dash.data
+
+
+def test_monthly_report_page(auth_client):
+    _add(auth_client, amount="900.00", type="income", merchant="Salary")
+    _add(auth_client, amount="300.00", merchant="BigBazaar")
+    r = auth_client.get("/report")
+    assert r.status_code == 200
+    assert b"Monthly report" in r.data and b"BigBazaar" in r.data
+    # Month navigation guards: future months clamp to the current month.
+    assert auth_client.get("/report?m=2999-01").status_code == 200
+    assert auth_client.get("/report?m=bogus").status_code == 200
+
+
+def test_transaction_filters(auth_client):
+    _add(auth_client, amount="100.00", type="income", merchant="PayIn")
+    _add(auth_client, amount="50.00", type="expense", merchant="PayOut")
+    inc = auth_client.get("/transactions?f=income")
+    assert b"PayIn" in inc.data and b"PayOut" not in inc.data
+    exp = auth_client.get("/transactions?f=expense")
+    assert b"PayOut" in exp.data and b"PayIn" not in exp.data
+    # The active chip row renders.
+    assert b"Needs review" in exp.data
+
+
+def test_dashboard_streak_card(auth_client):
+    import datetime as dt
+    # Expense yesterday, none today → a 1-day no-spend streak.
+    _add(auth_client, amount="80.00", merchant="KFC",
+         occurred_at=(dt.date.today() - dt.timedelta(days=1)).isoformat())
+    dash = auth_client.get("/dashboard")
+    assert b"no-spend streak" in dash.data
+
+
+def test_edit_transaction(auth_client):
+    import re
+    _add(auth_client, amount="200.00", merchant="OldName")
+    page = auth_client.get("/transactions")
+    tx_id = re.search(rb"/transactions/([0-9a-f]+)/edit", page.data).group(1).decode()
+    r = auth_client.post(f"/transactions/{tx_id}/edit", data={
+        "amount": "250.00", "merchant": "NewName", "type": "expense",
+        "occurred_at": "2026-01-15", "notes": "fixed"}, follow_redirects=True)
+    assert b"NewName" in r.data and b"250.00" in r.data and b"fixed" in r.data
+    # Invalid amount is rejected.
+    bad = auth_client.post(f"/transactions/{tx_id}/edit", data={"amount": "0"})
+    assert "error=amount" in bad.headers["Location"]
+
+
+def test_undo_delete(auth_client):
+    import re
+    _add(auth_client, amount="75.00", merchant="Oops")
+    page = auth_client.get("/transactions")
+    tx_id = re.search(rb"/transactions/([0-9a-f]+)/delete", page.data).group(1).decode()
+    gone = auth_client.post(f"/transactions/{tx_id}/delete", follow_redirects=True)
+    assert b"Undo" in gone.data          # undo bar offered
+    back = auth_client.post(f"/transactions/{tx_id}/restore", follow_redirects=True)
+    assert b"Oops" in back.data          # transaction is back
+
+
+def test_merchant_drilldown_page(auth_client):
+    _add(auth_client, amount="120.00", merchant="ChaiPoint")
+    _add(auth_client, amount="80.00", merchant="ChaiPoint")
+    r = auth_client.get("/merchant?n=ChaiPoint")
+    assert r.status_code == 200
+    assert b"ChaiPoint" in r.data and b"Merchant history" in r.data
+    assert auth_client.get("/merchant").status_code == 302  # no name → back
+
+
+def test_future_dated_tx_excluded_from_tiles(tmp_path):
+    import datetime as dt
+    from spendwise import analytics, db as sdb
+    path = str(tmp_path / "future.db")
+    c = create_app(db_path=path, single_user=True, secret_key="t").test_client()
+    future = (dt.date.today() + dt.timedelta(days=40)).isoformat()
+    c.post("/transactions", data={"amount": "9999.00", "type": "expense",
+           "merchant": "FutureRent", "category_id": "", "notes": "",
+           "occurred_at": future})
+    conn = sdb.connect(path)
+    uid = sdb.one(conn, "SELECT id FROM users")["id"]
+    d = analytics.build_dashboard(conn, uid)
+    # Next month's rent must not inflate today/week/month "so far" tiles.
+    assert d["daily_spend"] == 0 and d["weekly_spend"] == 0 and d["monthly_spend"] == 0
+
+
+def test_report_shows_vanished_category_drop(auth_client):
+    import datetime as dt, re
+    # Spend in a category ONLY last month; this month's report must still
+    # show the category with a negative delta.
+    page = auth_client.get("/categories")
+    cat_id = re.search(rb'id="budget-([0-9a-f]+)"', page.data).group(1).decode()
+    last_month = (dt.date.today().replace(day=1) - dt.timedelta(days=15))
+    _add(auth_client, amount="500.00", merchant="OneOff",
+         category_id=cat_id, occurred_at=last_month.isoformat())
+    r = auth_client.get("/report")
+    assert "▼".encode() in r.data  # the drop arrow renders
+
+
+def test_report_month_param_normalised(auth_client):
+    _add(auth_client, amount="10.00", merchant="X")
+    assert auth_client.get("/report?m=2025-7").status_code == 200  # unpadded ok
+
+
+def test_zero_amount_rejected(auth_client):
+    r = auth_client.post("/transactions", data={
+        "amount": "0", "type": "expense", "merchant": "Zero", "category_id": "",
+        "notes": "", "occurred_at": ""})
+    assert "error=amount" in r.headers["Location"]
+    assert b"Zero" not in auth_client.get("/transactions").data
+
+
+def test_weird_type_does_not_break_dashboard(auth_client):
+    auth_client.post("/transactions", data={
+        "amount": "10.00", "type": "banana", "merchant": "M", "category_id": "",
+        "notes": "", "occurred_at": ""})
+    assert auth_client.get("/dashboard").status_code == 200  # no KeyError 500
+
+
+def test_csv_formula_injection_neutralised(auth_client):
+    _add(auth_client, amount="5.00", merchant="=cmd()")
+    r = auth_client.get("/export.csv")
+    assert b"'=cmd()" in r.data  # dangerous prefix quoted
+
+
+def test_zero_amount_sms_and_import_rejected(tmp_path):
+    c = _su_client(tmp_path)
+    r = c.post("/sms/ingest", data={"body": "Rs.0.00 debited to GLITCH on 01/02/2025 UPI"})
+    assert r.get_json()["captured"] is False
+    bad = c.post("/import/create", data={
+        "amount": "0", "type": "expense", "raw_merchant": "GLITCH",
+        "reference_number": "", "occurred_at": ""})
+    assert b"error" in bad.data.lower()
+    assert c.get("/dashboard").status_code == 200  # no ZeroDivisionError
+
+
+def test_cross_origin_post_rejected(auth_client):
+    evil = auth_client.post("/transactions", data={
+        "amount": "10.00", "type": "expense", "merchant": "CSRF", "category_id": "",
+        "notes": "", "occurred_at": ""}, headers={"Origin": "https://evil.example"})
+    assert evil.status_code == 403
+    ok = auth_client.post("/transactions", data={
+        "amount": "10.00", "type": "expense", "merchant": "SameOrigin", "category_id": "",
+        "notes": "", "occurred_at": ""}, headers={"Origin": "http://127.0.0.1:8765"})
+    assert ok.status_code == 302  # same-origin still works
+
+
+def test_device_endpoints_disabled_in_web_mode(client):
+    # Multi-user web deployment (no single_user, no token): ingest is off.
+    sms = "Rs.50 spent at TEA on 01-01-2025 ref AAA111222333 UPI"
+    assert client.post("/sms/ingest", data={"body": sms}).status_code == 403
+    assert client.post("/device/state", data={"sms_permission": "denied"}).status_code == 403

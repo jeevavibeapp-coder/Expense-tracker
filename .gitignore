@@ -1,14 +1,1 @@
-node_modules/
-dist/
-coverage/
-graphify-out/
-expenses.db
-*.log
-.DS_Store
-.env*
-!env.example
-android/.gradle/
-android/build/
-android/app/build/
-__pycache__/
-*.pyc
+node_modules

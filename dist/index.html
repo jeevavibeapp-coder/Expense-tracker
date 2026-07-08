@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    // Surface startup errors on screen instead of showing a blank page.
+    window.addEventListener('error', function (e) {
+      var root = document.getElementById('root');
+      if (root && !root.hasChildNodes()) {
+        var detail = (e && e.message ? e.message : 'Unknown error') +
+          '\n' + (e && e.filename ? e.filename.split('/').pop() : '') +
+          ':' + (e && e.lineno) + ':' + (e && e.colno) +
+          '\n' + (e && e.error && e.error.stack ? e.error.stack : '');
+        root.innerHTML = '<div style="padding:24px;font-family:monospace;color:#e11d48;font-size:12px;white-space:pre-wrap;word-break:break-word;">App failed to start:\n' +
+          detail + '</div>';
+      }
+    });
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#4f46e5" />
+  <link rel="manifest" href="./assets/manifest-iSCo0wDT.json" />
+  <meta name="description"
+    content="SpendWise - Precision financial management and expense tracking for modern users." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>SpendWise | Smart Expense Tracker</title>
+  <script type="module" crossorigin src="./assets/index-nFLlWCa_.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BdquqaYG.css">
+</head>
+
+<body>
+  <div id="root"></div>
+</body>
+
+</html>
