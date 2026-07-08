@@ -1,1 +1,13 @@
-node_modules
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+*.db
+__pycache__/
+*.pyc
+android/app/build/
+android/build/
+android/.gradle/
