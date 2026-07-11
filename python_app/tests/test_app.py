@@ -434,3 +434,28 @@ def test_device_endpoints_disabled_in_web_mode(client):
     sms = "Rs.50 spent at TEA on 01-01-2025 ref AAA111222333 UPI"
     assert client.post("/sms/ingest", data={"body": sms}).status_code == 403
     assert client.post("/device/state", data={"sms_permission": "denied"}).status_code == 403
+
+
+def test_first_run_dashboard_is_onboarding_not_streak(tmp_path):
+    c = _su_client(tmp_path)
+    dash = c.get("/dashboard")
+    # No fake gamification on a fresh install…
+    assert b"no-spend streak" not in dash.data
+    assert b"Where your money goes" not in dash.data
+    # …but a setup checklist and a name prompt instead.
+    assert b"Get set up" in dash.data
+    assert b"What should we call you?" in dash.data
+    # After the first transaction, the real widgets appear.
+    c.post("/transactions", data={"amount": "50.00", "type": "expense",
+           "merchant": "Chai", "category_id": "", "notes": "", "occurred_at": ""})
+    dash = c.get("/dashboard")
+    assert b"Get set up" not in dash.data
+    assert b"Where your money goes" in dash.data
+
+
+def test_profile_name_update(tmp_path):
+    c = _su_client(tmp_path)
+    c.post("/profile", data={"full_name": "Jeeva"})
+    dash = c.get("/dashboard")
+    assert b"Hi, Jeeva" in dash.data
+    assert b"What should we call you?" not in dash.data

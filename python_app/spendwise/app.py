@@ -785,6 +785,19 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn.commit()
         return redirect(url_for("fraud_page"))
 
+    # ── Routes: profile & settings ───────────────────────────────────────
+    @app.post("/profile")
+    def profile_update():
+        """Set/change the display name (used to personalise the greeting)."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        name = (request.form.get("full_name") or "").strip()[:40]
+        if name:
+            db.execute(g.conn, "UPDATE users SET full_name=? WHERE id=?", (name, uid))
+            g.conn.commit()
+        return redirect(request.referrer or url_for("dashboard"))
+
     # ── Routes: settings ─────────────────────────────────────────────────
     @app.route("/settings", methods=["GET", "POST"])
     def settings_page():

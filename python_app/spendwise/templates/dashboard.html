@@ -18,6 +18,45 @@
     </div>
   </div>
 
+  {# First-run: personalise the greeting #}
+  {% if single_user and user['full_name'] == 'You' %}
+  <div class="card reveal" style="display:flex; gap:12px; align-items:center">
+    <span class="ai" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 42px">{{ m.icon('user') }}</span>
+    <form method="post" action="/profile" style="flex:1; display:flex; gap:8px; align-items:center">
+      <input name="full_name" placeholder="What should we call you?" maxlength="40" required
+             style="flex:1; padding:10px 12px; font-size:13.5px">
+      <button class="btn btn-sm" type="submit">Save</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {# First-run: compact setup checklist instead of empty widgets #}
+  {% if d.tx_count == 0 %}
+  <div class="card reveal stack" style="gap:12px">
+    <div style="font-weight:700; font-size:14px">Get set up</div>
+    <div style="display:flex; gap:10px; align-items:center">
+      <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex:0 0 34px;
+            background:{{ 'var(--expense-soft)' if sms_denied else 'rgba(54,211,154,.12)' }};
+            color:{{ 'var(--expense)' if sms_denied else 'var(--income)' }}">{{ m.icon('sms') }}</span>
+      <div style="flex:1; font-size:13px">Auto-capture bank &amp; UPI SMS</div>
+      {% if sms_denied %}
+      <button class="btn btn-sm" type="button"
+              onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow</button>
+      {% else %}<span class="pill pill-ok">On</span>{% endif %}
+    </div>
+    <a href="/transactions#add" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
+      <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('plus') }}</span>
+      <div style="flex:1; font-size:13px">Add your first transaction</div>
+      <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
+    </a>
+    <a href="/categories" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
+      <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('grid') }}</span>
+      <div style="flex:1; font-size:13px">Set a monthly budget</div>
+      <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
+    </a>
+  </div>
+  {% endif %}
+
   {# Money health score #}
   {% if d.total_income > 0 %}
   {% set rate = ((d.total_income - d.total_expense) / d.total_income * 100) %}
@@ -39,7 +78,7 @@
       <div class="mut" style="font-size:12.5px; margin-top:8px">You keep {{ rate|round|int }}% of your income. Aim for 20%+.</div>
     </div>
   </div>
-  {% else %}
+  {% elif d.tx_count > 0 %}
   <div class="card score-row reveal">
     <span class="ai" style="width:48px;height:48px;border-radius:15px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 48px">{{ m.icon('sparkles') }}</span>
     <div style="flex:1">
@@ -61,6 +100,7 @@
   </div>
 
   {# Streak + monthly report tiles #}
+  {% if d.tx_count > 0 %}
   <div class="tile-row reveal">
     <div class="tile">
       <span class="ti" style="background:rgba(251,191,36,.15); color:var(--warn)">{{ m.icon('flame') }}</span>
@@ -78,6 +118,7 @@
       <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
     </a>
   </div>
+  {% endif %}
 
   {# Last 14 days sparkline #}
   {% if d.daily_series and d.total_expense > 0 %}
@@ -182,7 +223,8 @@
   </div>
   {% endif %}
 
-  {# Spending by category — donut #}
+  {# Spending by category — donut (hidden until there's anything to show) #}
+  {% if d.tx_count > 0 %}
   <div class="section-h"><h2>Where your money goes</h2></div>
   <div class="card reveal">
     {% if d.category_breakdown %}
@@ -222,6 +264,7 @@
       <a class="btn btn-sm" href="/categories" style="margin-top:12px">Set up categories</a></div>
     {% endif %}
   </div>
+  {% endif %}
 
   {# Top merchants #}
   {% if d.top_merchants %}

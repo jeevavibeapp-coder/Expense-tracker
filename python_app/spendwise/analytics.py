@@ -360,6 +360,12 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     budgets = budget_status(conn, user_id, month_start.isoformat())
     recurring = detect_recurring(conn, user_id)
     streak = no_spend_stats(conn, user_id)
+    tx_count = db.one(conn, "SELECT COUNT(*) c FROM transactions WHERE user_id=? "
+                      "AND is_deleted=0", (user_id,))["c"]
+    # A streak is only meaningful once there's spending history — a brand-new
+    # install would otherwise claim a "60-day no-spend streak".
+    if expense <= 0:
+        streak = {"streak": 0, "month_free": 0}
 
     return {
         "currency": currency, "daily_spend": daily, "weekly_spend": weekly,
@@ -367,7 +373,7 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
         "balance": round(income - expense, 2), "top_merchants": top,
         "merchant_breakdown": top, "category_breakdown": cats,
         "trend": _trend(conn, user_id), "budgets": budgets,
-        "recurring": recurring, "streak": streak,
+        "recurring": recurring, "streak": streak, "tx_count": tx_count,
         "daily_series": daily_series(conn, user_id),
         "insights": _insights(monthly, weekly, top, cats_full, pending, fraud_open,
                               budgets, recurring, streak["streak"]),

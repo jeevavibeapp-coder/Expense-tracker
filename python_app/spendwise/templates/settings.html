@@ -8,8 +8,14 @@
 
   <div class="card" style="display:flex; align-items:center; gap:14px">
     <span class="avatar" style="width:48px;height:48px;font-size:18px">{{ user['full_name']|initials }}</span>
-    <div><div style="font-weight:700; font-size:16px">{{ user['full_name'] }}</div>
-      <div class="mut" style="font-size:13px">{{ user['email'] }}</div></div>
+    <form method="post" action="/profile" style="flex:1; display:flex; gap:8px; align-items:center">
+      <div style="flex:1">
+        <input name="full_name" value="{{ user['full_name'] }}" maxlength="40" required
+               style="font-weight:700; font-size:15px; padding:8px 10px">
+        {% if not single_user %}<div class="mut" style="font-size:12px; margin-top:4px">{{ user['email'] }}</div>{% endif %}
+      </div>
+      <button class="btn-ghost btn-sm" type="submit">Save</button>
+    </form>
   </div>
 
   <form method="post" action="/settings" class="stack">
