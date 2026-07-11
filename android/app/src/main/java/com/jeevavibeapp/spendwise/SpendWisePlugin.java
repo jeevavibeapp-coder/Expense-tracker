@@ -1,5 +1,10 @@
 package com.jeevavibeapp.spendwise;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+
+import androidx.core.content.ContextCompat;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -37,9 +42,11 @@ public class SpendWisePlugin extends Plugin {
 
     @PluginMethod
     public void checkPermissions(PluginCall call) {
-        // Implementation for checking SMS permissions
+        boolean granted = ContextCompat.checkSelfPermission(
+                getContext(), Manifest.permission.RECEIVE_SMS)
+                == PackageManager.PERMISSION_GRANTED;
         JSObject ret = new JSObject();
-        ret.put("granted", true); // Simplified for now
+        ret.put("granted", granted);
         call.resolve(ret);
     }
 }
