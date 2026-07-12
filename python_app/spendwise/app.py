@@ -246,10 +246,13 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 prompt_categories = db.all_rows(
                     g.conn, "SELECT * FROM categories WHERE user_id=? AND is_archived=0 "
                     "ORDER BY type DESC, name", (uid,))
+        # The add-transaction sheet lives in base.html (FAB opens it on every
+        # page), so every page needs the category list.
+        nav_categories = categories_for(uid) if uid else []
         return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
                 "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review,
                 "cat_prompts": cat_prompts, "prompt_categories": prompt_categories,
-                "sms_denied": sms_denied}
+                "nav_categories": nav_categories, "sms_denied": sms_denied}
 
     def require_login():
         if not session.get("user_id") or current_user() is None:
@@ -407,7 +410,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         s = settings_for(uid)
         r = analytics.build_report(g.conn, uid, m)
         return render_template("report.html", r=r, cur_m=cur_m, currency=s["currency"],
-                               user=current_user(), active="dashboard")
+                               user=current_user(), active="dashboard",
+                               back_href="/dashboard")
 
     # ── Routes: transactions ─────────────────────────────────────────────
     @app.get("/transactions")
@@ -436,6 +440,15 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             sql += " AND status IN ('pending_confirmation','needs_review')"
         sql += " ORDER BY occurred_at DESC, created_at DESC LIMIT 200"
         rows = db.all_rows(g.conn, sql, tuple(params))
+        # Deep link from a fraud alert: make sure the transaction is present
+        # and rendered expanded + highlighted.
+        focus_tx = (request.args.get("tx") or "").strip()
+        if focus_tx and not any(r["id"] == focus_tx for r in rows):
+            extra = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? "
+                           "AND is_deleted=0", (focus_tx, uid))
+            if extra:
+                rows = sorted(rows + [extra], key=lambda r: (r["occurred_at"],
+                              r["created_at"]), reverse=True)
         day_totals: dict = {}
         for r in rows:
             if r["type"] == "expense":
@@ -444,11 +457,29 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         undo_id = (request.args.get("undo") or "").strip()
         undo_tx = db.one(g.conn, "SELECT * FROM transactions WHERE id=? AND user_id=? "
                          "AND is_deleted=1", (undo_id, uid)) if undo_id else None
+        # One-tap merchant confirmation: give the review queue the engine's
+        # ranked candidates as chips instead of forcing typing.
+        s = settings_for(uid)
+        suggestions: dict = {}
+        for r in rows:
+            if (r["status"] in (TX_PENDING, TX_REVIEW) and r["raw_merchant"]
+                    and len(suggestions) < 12):
+                res = engine.resolve(g.conn, user_id=uid, raw_name=r["raw_merchant"],
+                                     amount=r["amount"],
+                                     auto=s["auto_save_threshold"],
+                                     confirm=s["confirm_threshold"])
+                names, seen = [], set()
+                for cand in res["candidates"][:3]:
+                    if cand["merchant_name"].lower() not in seen:
+                        names.append(cand["merchant_name"])
+                        seen.add(cand["merchant_name"].lower())
+                if names:
+                    suggestions[r["id"]] = names
         return render_template("transactions.html", transactions=rows, total=len(rows),
                                q=q, f=f, categories=categories_for(uid), user=current_user(),
-                               currency=settings_for(uid)["currency"],
+                               currency=s["currency"], focus_tx=focus_tx,
                                day_totals=day_totals, undo_tx=undo_tx,
-                               active="transactions")
+                               suggestions=suggestions, active="transactions")
 
     @app.post("/transactions")
     def transactions_create():
@@ -522,6 +553,18 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     (tx_id, uid))
         if tx:
             cat = request.form.get("category_id") or None
+            # Inline "create & assign" from the popup — no context switch.
+            new_name = (request.form.get("new_category") or "").strip()
+            if not cat and new_name:
+                existing = db.one(g.conn, "SELECT id FROM categories WHERE user_id=? "
+                                  "AND lower(name)=?", (uid, new_name.lower()))
+                if existing:
+                    cat = existing["id"]
+                else:
+                    cat = db.new_id()
+                    db.execute(g.conn, "INSERT INTO categories(id,user_id,name,type,icon,color) "
+                               "VALUES (?,?,?,?,?,?)",
+                               (cat, uid, new_name[:40], "expense", "Tag", "#7c5cff"))
             valid = cat and db.one(g.conn, "SELECT id FROM categories WHERE id=? AND user_id=?",
                                    (cat, uid))
             if valid and tx["raw_merchant"]:
@@ -645,7 +688,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                                avg=round(total / max(1, sum(1 for r in rows
                                          if r["type"] == "expense")), 2),
                                currency=s["currency"], user=current_user(),
-                               active="transactions")
+                               active="transactions", back_href="/transactions")
 
     # ── Routes: SMS import ───────────────────────────────────────────────
     @app.get("/import")
@@ -658,7 +701,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             "AND is_deleted=0 ORDER BY created_at DESC LIMIT 8", (uid,))
         return render_template("import.html", user=current_user(), active="import",
                                currency=settings_for(uid)["currency"],
-                               recent_sms=recent_sms)
+                               recent_sms=recent_sms, back_href="/transactions")
 
     @app.post("/import/parse")
     def import_parse():
@@ -842,10 +885,14 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         uid = require_login()
         if not uid:
             return redirect(url_for("login"))
-        alerts = db.all_rows(g.conn,
-                             "SELECT * FROM fraud_alerts WHERE user_id=? ORDER BY created_at DESC",
-                             (uid,))
-        return render_template("fraud.html", alerts=alerts, user=current_user(), active="fraud")
+        alerts = db.all_rows(
+            g.conn,
+            "SELECT a.*, t.merchant_name tx_merchant, t.raw_merchant tx_raw, "
+            "t.amount tx_amount, t.occurred_at tx_occurred, t.type tx_type "
+            "FROM fraud_alerts a LEFT JOIN transactions t ON t.id = a.transaction_id "
+            "WHERE a.user_id=? ORDER BY a.created_at DESC", (uid,))
+        return render_template("fraud.html", alerts=alerts, user=current_user(),
+                               currency=settings_for(uid)["currency"], active="fraud")
 
     @app.post("/fraud/<alert_id>/status")
     def fraud_update(alert_id):

@@ -219,7 +219,7 @@ a { color: var(--primary-2); text-decoration: none; }
 /* ── Charts ────────────────────────────────────────────────────────────── */
 .bars { display: flex; align-items: flex-end; gap: 10px; height: 110px; padding-top: 8px; }
 .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
-.bar { width: 100%; max-width: 26px; border-radius: 8px 8px 4px 4px; background: var(--grad); transition: height .7s var(--ease); }
+.bar { width: 100%; max-width: 26px; border-radius: 8px 8px 4px 4px; background: linear-gradient(180deg, var(--income), rgba(54,211,154,.5)); transition: height .7s var(--ease); }
 .bar.exp { background: linear-gradient(180deg, var(--expense), rgba(255,107,129,.5)); }
 .bar-lbl { font-size: 10px; color: var(--text-3); font-weight: 600; }
 
@@ -479,3 +479,19 @@ a.chip { text-decoration: none; }
 .tab { transition: color .18s var(--ease); }
 /* :target anchors are fixed so opening/closing a sheet never scrolls the page. */
 .sheet-target { position: fixed; top: 0; }
+
+/* ── Review queue (two-line rows) & timeline expand affordance ────────── */
+.qrow2 { padding: 12px 0; border-top: 1px solid var(--hairline); }
+.qrow2:first-of-type { border-top: none; }
+.qrow-top { display: flex; align-items: center; gap: 10px; }
+.qrow-top .qname { flex: 1; min-width: 0; font-size: 13px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qrow-act { display: flex; gap: 8px; margin-top: 8px; }
+.qrow-act input { flex: 1; padding: 10px 12px; font-size: 13px; }
+summary.tx { list-style: none; }
+summary.tx::-webkit-details-marker { display: none; }
+.tx-chev { flex: 0 0 16px; display: flex; color: var(--text-3);
+  transition: transform .2s var(--ease); }
+.tx-chev svg { width: 16px; height: 16px; }
+.tx-item[open] .tx-chev { transform: rotate(90deg); }
+.tx-item.tx-focus { outline: 2px solid var(--primary); border-radius: var(--r); }

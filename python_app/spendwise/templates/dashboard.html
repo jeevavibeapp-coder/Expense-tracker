@@ -44,7 +44,7 @@
               onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow</button>
       {% else %}<span class="pill pill-ok">On</span>{% endif %}
     </div>
-    <a href="/transactions#add" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
+    <a href="#add" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
       <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('plus') }}</span>
       <div style="flex:1; font-size:13px">Add your first transaction</div>
       <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
@@ -301,7 +301,7 @@
       {% endfor %}
     </div>
     <div style="display:flex; gap:16px; justify-content:center; margin-top:10px; font-size:12px" class="mut">
-      <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--primary);vertical-align:middle"></span> Income</span>
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--income);vertical-align:middle"></span> Income</span>
       <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--expense);vertical-align:middle"></span> Spending</span>
     </div>
   </div>

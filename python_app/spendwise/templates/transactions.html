@@ -61,16 +61,23 @@
     </div>
     <div class="mut" style="font-size:12.5px; margin-bottom:6px">Confirm the real merchant — the engine learns it for next time.</div>
     {% for t in pending %}
-    <form class="qrow" method="post" action="/transactions/{{ t['id'] }}/confirm">
-      {{ m.avatar(t['raw_merchant'] or t['merchant_name'] or '?') }}
-      <div style="flex:1; min-width:0">
-        <div style="font-size:13px; font-weight:700">“{{ t['raw_merchant'] or t['merchant_name'] }}”</div>
-        <input name="merchant" value="{{ t['merchant_name'] or '' }}" placeholder="Real merchant name"
-               style="margin-top:6px; padding:9px 11px; font-size:13px" required>
-      </div>
-      <div style="text-align:right">
+    <form class="qrow2" method="post" action="/transactions/{{ t['id'] }}/confirm">
+      <div class="qrow-top">
+        {{ m.avatar(t['raw_merchant'] or t['merchant_name'] or '?') }}
+        <div class="qname">“{{ t['raw_merchant'] or t['merchant_name'] }}”</div>
         <div class="num" style="font-weight:800; font-size:14px">{{ currency }} {{ m.money(t['amount']) }}</div>
-        <button class="btn btn-sm" type="submit" style="margin-top:6px">Confirm</button>
+      </div>
+      {% if suggestions.get(t['id']) %}
+      <div class="cat-chips" style="margin:8px 0 2px">
+        {% for name in suggestions[t['id']] %}
+        <button class="cat-chip" type="submit" name="merchant" value="{{ name }}">✓ {{ name }}</button>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="qrow-act">
+        <input name="merchant" value="{{ t['merchant_name'] or '' }}"
+               placeholder="Or type the real merchant" required>
+        <button class="btn btn-sm" type="submit">Confirm</button>
       </div>
     </form>
     {% endfor %}
@@ -89,8 +96,8 @@
       <div class="tx-list">
       {% set ns.day = day %}
     {% endif %}
-    <details class="tx-item">
-      <summary class="tx" style="list-style:none">
+    <details class="tx-item {{ 'tx-focus' if focus_tx == t['id'] }}" {{ 'open' if focus_tx == t['id'] }}>
+      <summary class="tx">
         {{ m.avatar(t['merchant_name'] or t['raw_merchant'] or '?') }}
         <div class="tx-main">
           <div class="tx-name">{{ t['merchant_name'] or t['raw_merchant'] or 'Unknown' }}</div>
@@ -102,6 +109,7 @@
           </div>
         </div>
         <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency }} {{ m.money(t['amount']) }}</div>
+        <span class="tx-chev">{{ m.icon('chevron') }}</span>
       </summary>
       <div style="padding:12px 16px 14px; background:var(--surface-2)">
         {# Inline edit — every field of the transaction #}
@@ -148,54 +156,5 @@
   {% endif %}
 </div>
 
-{# ── Add transaction bottom sheet (#add) ── #}
-<span id="add" class="sheet-target"></span>
-<a class="scrim" href="#!" aria-label="Close"></a>
-<div class="sheet" role="dialog" aria-label="Add transaction">
-  <div class="grip"></div>
-  <h3>Add transaction</h3>
-  <form method="post" action="/transactions">
-    <div class="seg exp" style="margin-bottom:14px">
-      <label><input type="radio" name="type" value="expense" checked><span>Expense</span></label>
-      <label><input type="radio" name="type" value="income"><span>Income</span></label>
-    </div>
-    <div class="field"><label class="lbl">Amount</label>
-      <input id="amt" name="amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required></div>
-    <div class="field"><label class="lbl">Merchant / payee</label>
-      <input id="merchant" name="merchant" autocomplete="off" placeholder="e.g. Starbucks">
-      <div id="resolve-preview"></div></div>
-    <div class="row">
-      <div class="field"><label class="lbl">Category</label>
-        <select name="category_id"><option value="">None</option>
-          {% for c in categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}</select></div>
-      <div class="field"><label class="lbl">Date</label><input name="occurred_at" type="date"></div>
-    </div>
-    <div class="field"><label class="lbl">Notes</label><input name="notes" placeholder="Optional"></div>
-    <button class="btn" type="submit">Add transaction</button>
-  </form>
-</div>
-
-<script>
-(function () {
-  var merchant = document.getElementById('merchant'), amt = document.getElementById('amt'),
-      out = document.getElementById('resolve-preview'), timer = null, ctrl = null;
-  if (!merchant) return;
-  merchant.addEventListener('input', function () {
-    clearTimeout(timer);
-    timer = setTimeout(function () {
-      var name = merchant.value.trim();
-      if (!name) { out.innerHTML = ''; return; }
-      if (ctrl) ctrl.abort();
-      ctrl = new AbortController();
-      out.innerHTML = '<div class="skeleton line" style="margin-top:10px;width:70%"></div>';
-      fetch('/transactions/resolve', { method: 'POST', signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ merchant: name, amount: amt.value || '' }) })
-        .then(function (r) { return r.text(); })
-        .then(function (h) { out.innerHTML = h; })
-        .catch(function () {});
-    }, 400);
-  });
-})();
-</script>
+{# The add-transaction sheet is app-wide in base.html (FAB → #add). #}
 {% endblock %}
