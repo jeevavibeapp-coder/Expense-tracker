@@ -341,11 +341,25 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     month_start = day_start.replace(day=1)
 
     until = _tomorrow_iso()
-    daily = round(_sum_expense_since(conn, user_id, day_start.isoformat(), until), 2)
-    weekly = round(_sum_expense_since(conn, user_id, week_start.isoformat(), until), 2)
-    monthly = round(_sum_expense_since(conn, user_id, month_start.isoformat(), until), 2)
-    income = round(_total(conn, user_id, "income"), 2)
-    expense = round(_total(conn, user_id, "expense"), 2)
+    # One conditional-aggregate pass for all three "so far" tiles.
+    lo = min(week_start, month_start).isoformat()
+    tiles = db.one(
+        conn,
+        "SELECT COALESCE(SUM(CASE WHEN occurred_at>=:d THEN amount END),0) d, "
+        "COALESCE(SUM(CASE WHEN occurred_at>=:w THEN amount END),0) w, "
+        "COALESCE(SUM(CASE WHEN occurred_at>=:m THEN amount END),0) m "
+        "FROM transactions WHERE user_id=:u AND type='expense' AND is_deleted=0 "
+        "AND occurred_at>=:lo AND occurred_at<:until",
+        {"u": user_id, "d": day_start.isoformat(), "w": week_start.isoformat(),
+         "m": month_start.isoformat(), "lo": lo, "until": until})
+    daily, weekly, monthly = (round(float(tiles["d"]), 2), round(float(tiles["w"]), 2),
+                              round(float(tiles["m"]), 2))
+    # One pass for all-time totals + transaction count.
+    totals = {r["type"]: (float(r["s"]), r["c"]) for r in db.all_rows(
+        conn, "SELECT type, COALESCE(SUM(amount),0) s, COUNT(*) c FROM transactions "
+        "WHERE user_id=? AND is_deleted=0 GROUP BY type", (user_id,))}
+    income = round(totals.get("income", (0.0, 0))[0], 2)
+    expense = round(totals.get("expense", (0.0, 0))[0], 2)
     top = _top_merchants(conn, user_id)
     cats_full = _category_breakdown(conn, user_id)
     cats = _cap_breakdown(cats_full)
@@ -360,8 +374,7 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     budgets = budget_status(conn, user_id, month_start.isoformat())
     recurring = detect_recurring(conn, user_id)
     streak = no_spend_stats(conn, user_id)
-    tx_count = db.one(conn, "SELECT COUNT(*) c FROM transactions WHERE user_id=? "
-                      "AND is_deleted=0", (user_id,))["c"]
+    tx_count = sum(v[1] for v in totals.values())
     # A streak is only meaningful once there's spending history — a brand-new
     # install would otherwise claim a "60-day no-spend streak".
     if expense <= 0:

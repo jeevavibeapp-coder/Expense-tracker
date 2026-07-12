@@ -113,14 +113,35 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     def _close_db(exc):
         conn = g.pop("conn", None)
         if conn is not None:
+            # Safety net: a route that forgot g.conn.commit() must not lose
+            # the user's data silently; a route that raised must not persist
+            # a half-applied write.
+            try:
+                if exc is None:
+                    conn.commit()
+                else:
+                    conn.rollback()
+            except sqlite3.Error:
+                pass
             conn.close()
+
+    @app.errorhandler(500)
+    def _server_error(exc):
+        if request.path.startswith(("/sms/", "/device/")):
+            return {"captured": False, "reason": "error"}, 500
+        return ("<div style='font-family:sans-serif;padding:40px;text-align:center'>"
+                "<h2>Something went wrong</h2><p>Your data is safe. "
+                "<a href='/dashboard'>Back to SpendWise</a></p></div>"), 500
 
     # ── Helpers ──────────────────────────────────────────────────────────
     def current_user():
         uid = session.get("user_id")
         if not uid:
             return None
-        return auth.get_user(g.conn, uid)
+        cached = getattr(g, "_user", None)
+        if cached is None or cached["id"] != uid:
+            cached = g._user = auth.get_user(g.conn, uid)
+        return cached
 
     def device_authorized() -> bool:
         """Loopback-only AND (when a device token is configured) a matching
@@ -140,13 +161,18 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             return hmac.compare_digest(sent, token)
         return True
 
-    def settings_for(uid: str) -> dict:
-        row = db.one(g.conn, "SELECT * FROM settings WHERE user_id=?", (uid,))
-        if row is None:
-            db.execute(g.conn, "INSERT INTO settings(user_id) VALUES (?)", (uid,))
-            g.conn.commit()
+    def settings_for(uid: str, fresh: bool = False) -> dict:
+        cache = getattr(g, "_settings", None)
+        if cache is None:
+            cache = g._settings = {}
+        if fresh or uid not in cache:
             row = db.one(g.conn, "SELECT * FROM settings WHERE user_id=?", (uid,))
-        return dict(row)
+            if row is None:
+                db.execute(g.conn, "INSERT INTO settings(user_id) VALUES (?)", (uid,))
+                g.conn.commit()
+                row = db.one(g.conn, "SELECT * FROM settings WHERE user_id=?", (uid,))
+            cache[uid] = dict(row)
+        return cache[uid]
 
     def categories_for(uid: str, include_archived: bool = False):
         sql = "SELECT * FROM categories WHERE user_id=?"
@@ -203,14 +229,14 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         sms_denied = bool(st and st["value"] == "denied")
         uid = session.get("user_id")
         if uid:
-            row = db.one(g.conn, "SELECT theme FROM settings WHERE user_id=?", (uid,))
-            if row:
-                theme = row["theme"]
-            nav_fraud = db.one(g.conn, "SELECT COUNT(*) c FROM fraud_alerts WHERE "
-                               "user_id=? AND status='open'", (uid,))["c"]
-            nav_review = db.one(g.conn, "SELECT COUNT(*) c FROM transactions WHERE "
-                                "user_id=? AND is_deleted=0 AND status IN "
-                                "('pending_confirmation','needs_review')", (uid,))["c"]
+            theme = settings_for(uid)["theme"]
+            counts = db.one(
+                g.conn,
+                "SELECT (SELECT COUNT(*) FROM fraud_alerts WHERE user_id=:u AND "
+                "status='open') f, (SELECT COUNT(*) FROM transactions WHERE "
+                "user_id=:u AND is_deleted=0 AND status IN "
+                "('pending_confirmation','needs_review')) r", {"u": uid})
+            nav_fraud, nav_review = counts["f"], counts["r"]
             # Auto-captured SMS transactions still awaiting a category → popup.
             cat_prompts = db.all_rows(
                 g.conn, "SELECT * FROM transactions WHERE user_id=? AND category_id IS NULL "
@@ -793,10 +819,20 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
 
     @app.post("/categories/<cat_id>/delete")
     def categories_delete(cat_id):
+        """Delete a category — but if transactions still reference it, archive
+        instead: a hard delete would orphan category_id everywhere and make
+        the donut/report silently disagree with the headline totals."""
         uid = require_login()
         if not uid:
             return redirect(url_for("login"))
-        db.execute(g.conn, "DELETE FROM categories WHERE id=? AND user_id=?", (cat_id, uid))
+        used = db.one(g.conn, "SELECT COUNT(*) c FROM transactions WHERE user_id=? "
+                      "AND category_id=? AND is_deleted=0", (uid, cat_id))["c"]
+        if used:
+            db.execute(g.conn, "UPDATE categories SET is_archived=1, budget_amount=NULL "
+                       "WHERE id=? AND user_id=?", (cat_id, uid))
+        else:
+            db.execute(g.conn, "DELETE FROM categories WHERE id=? AND user_id=?",
+                       (cat_id, uid))
         g.conn.commit()
         return redirect(url_for("categories_page"))
 
@@ -863,8 +899,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                         hv, uid))
             g.conn.commit()
             flash = "Settings saved."
-        return render_template("settings.html", s=settings_for(uid), user=current_user(),
-                               active="settings", flash=flash)
+        return render_template("settings.html", s=settings_for(uid, fresh=True),
+                               user=current_user(), active="settings", flash=flash)
 
     # ── Routes: data export ──────────────────────────────────────────────
     @app.get("/export.csv")

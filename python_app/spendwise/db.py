@@ -145,6 +145,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
                      "WHERE dedup_key IS NOT NULL AND is_deleted=0")
     except sqlite3.IntegrityError:
         pass
+    # Hot-path indexes: analytics aggregates run index-only; the two COUNTs in
+    # the every-request context processor and the merchant drill-down stop
+    # scanning as a year of SMS history accumulates.
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_analytics ON transactions"
+                 "(user_id, type, occurred_at, amount, category_id, merchant_name) "
+                 "WHERE is_deleted=0")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_user_status ON transactions"
+                 "(user_id, status) WHERE is_deleted=0")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_user_merchant ON transactions"
+                 "(user_id, merchant_name) WHERE is_deleted=0")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_fraud_user_status ON fraud_alerts"
+                 "(user_id, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_cat_prompts ON transactions"
+                 "(user_id, occurred_at) "
+                 "WHERE source='sms' AND category_id IS NULL AND is_deleted=0")
 
 
 def one(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:
