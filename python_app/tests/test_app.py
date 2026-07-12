@@ -147,16 +147,27 @@ def _su_client(tmp_path, name="s.db"):
 
 def test_sms_ingest_auto_captures(tmp_path):
     c = _su_client(tmp_path)
-    sms = "Rs.450.00 spent at SWIGGY on 12-06-2025 ref 553201998877 UPI"
+    # Unknown merchant: captured, but the app must ask for a category.
+    sms = "Rs.450.00 spent at RAJUKIRANA on 12-06-2025 ref 553201998877 UPI"
     r = c.post("/sms/ingest", data={"sender": "VK-HDFCBK", "body": sms})
     j = r.get_json()
     assert j["captured"] is True and j["needs_category"] is True
     # The transaction is now in the app without any pasting.
     page = c.get("/transactions")
-    assert b"SWIGGY" in page.data.upper()
+    assert b"RAJUKIRANA" in page.data.upper()
     # And the "which category?" popup is shown when the app opens.
     dash = c.get("/dashboard")
     assert b"New transaction from SMS" in dash.data
+
+
+def test_sms_ingest_seed_merchant_auto_categorised(tmp_path):
+    c = _su_client(tmp_path)
+    # SWIGGY is in the built-in Indian seed: resolved + categorised on day one.
+    sms = "Rs.450.00 spent at SWIGGY on 12-06-2025 ref 553201998877 UPI"
+    j = c.post("/sms/ingest", data={"body": sms}).get_json()
+    assert j["captured"] is True and j["needs_category"] is False
+    assert j["merchant"] == "Swiggy"
+    assert b"New transaction from SMS" not in c.get("/dashboard").data
 
 
 def test_sms_ingest_ignores_non_financial(tmp_path):
@@ -175,7 +186,7 @@ def test_sms_ingest_dedup_by_reference(tmp_path):
 def test_sms_categorize_teaches_engine(tmp_path):
     c = _su_client(tmp_path)
     first = c.post("/sms/ingest", data={
-        "body": "Rs.350 debited to DOMINOS on 01/02/2025 ref REF111222333 UPI"}).get_json()
+        "body": "Rs.350 debited to SHARMAJI on 01/02/2025 ref REF111222333 UPI"}).get_json()
     tx_id = first["id"]
     # Pick a real category from the popup's chips (auto-provisioned defaults).
     import re
@@ -184,10 +195,10 @@ def test_sms_categorize_teaches_engine(tmp_path):
     assert cat_id, "category chips should render in the popup"
     cid = cat_id.group(1).decode()
     c.post(f"/transactions/{tx_id}/categorize", data={"category_id": cid})
-    # Popup is gone, and a second DOMINOS SMS is auto-categorised (no prompt).
+    # Popup is gone, and a second SHARMAJI SMS is auto-categorised (no prompt).
     assert b"New transaction from SMS" not in c.get("/dashboard").data
     second = c.post("/sms/ingest", data={
-        "body": "Rs.420 debited to DOMINOS on 02/02/2025 ref REF444555666 UPI"}).get_json()
+        "body": "Rs.420 debited to SHARMAJI on 02/02/2025 ref REF444555666 UPI"}).get_json()
     assert second["captured"] is True and second["needs_category"] is False
 
 
@@ -459,3 +470,45 @@ def test_profile_name_update(tmp_path):
     dash = c.get("/dashboard")
     assert b"Hi, Jeeva" in dash.data
     assert b"What should we call you?" not in dash.data
+
+
+def test_sms_parser_indian_bank_formats():
+    # SBI: verb-anchored amount with no Rs prefix; trailing Avl Bal ignored.
+    r = parsing.parse_sms("A/C X9218 debited by 199.0 on 08Jul26 trf to SWIGGY "
+                          "Refno 553201998877. Avl Bal Rs 12,430.50")
+    assert r.matched and r.amount == 199.0
+    assert "SWIGGY" in r.raw_merchant.upper()
+    # ICICI: payee appears before 'credited'; amount after 'debited for'.
+    r = parsing.parse_sms("ICICI Bank Acct XX823 debited for Rs 320.00 on "
+                          "08-Jul-26; SWIGGY credited. UPI:519023481234")
+    assert r.matched and r.amount == 320.0 and r.type == "expense"
+    assert "SWIGGY" in r.raw_merchant.upper()
+    # Axis: merchant lives inside the UPI/P2M/<ref>/NAME path.
+    r = parsing.parse_sms("INR 460.00 debited A/c no. XX1234 08-07-26 "
+                          "UPI/P2M/519023481234/ZOMATO/pay. Not you? SMS BLOCKUPI to 919551")
+    assert r.matched and r.amount == 460.0
+    assert "ZOMATO" in r.raw_merchant.upper()
+    # Kotak: the 'to' payee must win over the 'from' bank-account fragment.
+    r = parsing.parse_sms("Sent Rs.20.00 from Kotak Bank AC X1234 to swiggy8@ybl "
+                          "on 08-07-26. UPI Ref 519023481234")
+    assert r.matched and r.amount == 20.0
+    assert "SWIGGY" in r.raw_merchant.upper()
+
+
+def test_sms_parser_rejects_non_transactions():
+    # Promotions, UPI collect requests and pre-debit reminders are not money
+    # movements and must never be auto-captured.
+    assert not parsing.parse_sms(
+        "Flat Rs.200 OFF on your first purchase at KFC! Order now").matched
+    assert not parsing.parse_sms(
+        "Payment request of Rs.999 from netflix@icici. Approve in your app").matched
+    assert not parsing.parse_sms(
+        "Rs.199 will be debited on 15-07 for NETFLIX autopay").matched
+
+
+def test_engine_normalize_vpa_variants():
+    from spendwise import engine
+    # Handle variants of the same merchant share one learning row.
+    assert engine.normalize_merchant("swiggy8@ybl") == "SWIGGY"
+    assert engine.normalize_merchant("SWIGGY LIMITED") == "SWIGGY"
+    assert engine.normalize_merchant("AMAZON PAY INDIA") == "AMAZON PAY"

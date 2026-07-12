@@ -34,9 +34,11 @@ DECISION_MANUAL = "manual_required"
 _NOISE_TOKENS = {
     "UPI", "VPA", "P2M", "P2A", "POS", "NEFT", "IMPS", "RTGS", "ACH",
     "PVT", "LTD", "LIMITED", "PRIVATE", "AND", "THE",
+    "PAYMENTS", "PAYMENT", "INDIA", "ONLINE", "RETAIL", "STORES", "STORE",
 }
 _NOISE_RE = re.compile(r"[^A-Z0-9& ]+")
 _LONG_DIGITS_RE = re.compile(r"\b\d{4,}\b")
+_GLUED_DIGITS_RE = re.compile(r"(?<=[A-Z])\d{1,3}\b")
 
 
 def normalize_merchant(raw: str) -> str:
@@ -46,9 +48,55 @@ def normalize_merchant(raw: str) -> str:
     s = s.split("@", 1)[0]
     s = s.replace("/", " ").replace("-", " ").replace("_", " ").replace(".", " ")
     s = _LONG_DIGITS_RE.sub(" ", s)
+    # VPA-style digit suffixes glued to the name: SWIGGY8 -> SWIGGY, so every
+    # handle variant of the same merchant shares one learning row.
+    s = _GLUED_DIGITS_RE.sub("", s)
     s = _NOISE_RE.sub(" ", s)
     tokens = [t for t in s.split() if t and t not in _NOISE_TOKENS]
+    # Trailing pure-digit tokens are references, not names.
+    while tokens and tokens[-1].isdigit():
+        tokens.pop()
     return " ".join(tokens).strip()
+
+
+# Built-in Indian merchant seed: instant recognition on a fresh install, before
+# any learning exists. Keys are normalized first tokens; values are
+# (display name, default category name from auth.DEFAULT_CATEGORIES).
+SEED_MERCHANTS = {
+    "SWIGGY": ("Swiggy", "Food & Dining"), "ZOMATO": ("Zomato", "Food & Dining"),
+    "DOMINOS": ("Dominos", "Food & Dining"), "KFC": ("KFC", "Food & Dining"),
+    "MCDONALD": ("McDonalds", "Food & Dining"), "MCDONALDS": ("McDonalds", "Food & Dining"),
+    "STARBUCKS": ("Starbucks", "Food & Dining"), "PIZZAHUT": ("Pizza Hut", "Food & Dining"),
+    "BLINKIT": ("Blinkit", "Groceries"), "ZEPTO": ("Zepto", "Groceries"),
+    "BIGBASKET": ("BigBasket", "Groceries"), "DMART": ("DMart", "Groceries"),
+    "JIOMART": ("JioMart", "Groceries"), "INSTAMART": ("Swiggy Instamart", "Groceries"),
+    "AMAZON": ("Amazon", "Shopping"), "FLIPKART": ("Flipkart", "Shopping"),
+    "MYNTRA": ("Myntra", "Shopping"), "AJIO": ("Ajio", "Shopping"),
+    "MEESHO": ("Meesho", "Shopping"), "NYKAA": ("Nykaa", "Shopping"),
+    "UBER": ("Uber", "Transport"), "OLA": ("Ola", "Transport"),
+    "RAPIDO": ("Rapido", "Transport"), "IRCTC": ("IRCTC", "Transport"),
+    "REDBUS": ("RedBus", "Transport"), "INDIGO": ("IndiGo", "Transport"),
+    "JIO": ("Jio", "Bills & Utilities"), "AIRTEL": ("Airtel", "Bills & Utilities"),
+    "VODAFONE": ("Vi", "Bills & Utilities"), "BSNL": ("BSNL", "Bills & Utilities"),
+    "TATAPOWER": ("Tata Power", "Bills & Utilities"), "BESCOM": ("BESCOM", "Bills & Utilities"),
+    "NETFLIX": ("Netflix", "Entertainment"), "HOTSTAR": ("Disney+ Hotstar", "Entertainment"),
+    "SPOTIFY": ("Spotify", "Entertainment"), "PRIMEVIDEO": ("Prime Video", "Entertainment"),
+    "BOOKMYSHOW": ("BookMyShow", "Entertainment"), "SONYLIV": ("SonyLIV", "Entertainment"),
+    "APOLLO": ("Apollo Pharmacy", "Health"), "PHARMEASY": ("PharmEasy", "Health"),
+    "NETMEDS": ("Netmeds", "Health"), "PRACTO": ("Practo", "Health"),
+}
+SEED_CONFIDENCE = 90
+
+
+def seed_lookup(normalized: str):
+    """Return (display_name, category_name) for a known Indian merchant."""
+    if not normalized:
+        return None
+    key = normalized.replace(" ", "")
+    if key in SEED_MERCHANTS:
+        return SEED_MERCHANTS[key]
+    first = normalized.split()[0]
+    return SEED_MERCHANTS.get(first)
 
 
 def _f(v) -> float:
@@ -136,6 +184,26 @@ def resolve(conn, *, user_id: str, raw_name: str, amount=None, category_id=None,
                            "merchant_name": row["merchant_name"],
                            "confidence": bd["total"], "breakdown": bd})
     candidates.sort(key=lambda c: c["confidence"], reverse=True)
+
+    # Cold start: no learning yet, but the merchant is a well-known Indian
+    # brand — resolve it (with its category) from the built-in seed so the
+    # flagship feature works on day one.
+    if not candidates:
+        seeded = seed_lookup(normalized)
+        if seeded:
+            display, cat_name = seeded
+            cat = db.one(conn, "SELECT id FROM categories WHERE user_id=? AND name=? "
+                         "AND is_archived=0", (user_id, cat_name))
+            merchant = get_or_create_merchant(
+                conn, user_id=user_id, canonical_name=display,
+                category_id=cat["id"] if cat else None)
+            bd = {"past_mapping": 0.0, "amount_pattern": 0.0, "category_pattern": 0.0,
+                  "correction_history": 0.0, "time_pattern": 0.0,
+                  "total": SEED_CONFIDENCE, "seeded": True}
+            candidates = [{"merchant_id": merchant["id"],
+                           "merchant_name": merchant["canonical_name"],
+                           "confidence": SEED_CONFIDENCE, "breakdown": bd}]
+
     best = candidates[0] if candidates else None
     decision = (decide(best["confidence"], auto=auto, confirm=confirm)
                 if best else DECISION_MANUAL)
