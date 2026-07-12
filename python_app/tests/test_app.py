@@ -219,7 +219,20 @@ def test_device_token_enforced(tmp_path):
                   headers={"X-SpendWise-Token": "wrong"}).status_code == 403       # bad token
     ok = c.post("/sms/ingest", data={"body": sms}, headers={"X-SpendWise-Token": "sekret"})
     assert ok.status_code == 200 and ok.get_json()["captured"] is True            # good token
-    assert c.post("/device/state", data={"sms_permission": "denied"}).status_code == 403
+
+
+def test_device_token_gates_every_route(tmp_path):
+    app = create_app(db_path=str(tmp_path / "g.db"), single_user=True,
+                     secret_key="t", device_token="sekret")
+    c = app.test_client()
+    # A co-installed app hitting loopback gets nothing…
+    assert c.get("/dashboard").status_code == 403
+    assert c.get("/export.csv").status_code == 403
+    assert c.get("/healthz").status_code == 200  # native readiness poll stays open
+    # …but the WebView authenticates once via ?tk= and then navigates freely.
+    assert c.get("/?tk=sekret").status_code == 302
+    assert c.get("/dashboard").status_code == 200
+    assert c.get("/export.csv").status_code == 200
 
 
 def test_secret_key_persisted(tmp_path):

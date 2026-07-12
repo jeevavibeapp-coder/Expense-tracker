@@ -291,11 +291,14 @@ public class MainActivity extends BridgeActivity {
 
         if (waitForServer()) {
             reportPermissionState(false);
+            // ?tk= authenticates this WebView once (server sets a session
+            // flag); afterwards every navigation carries the session cookie.
+            final String entryUrl = SERVER_URL + "/?tk=" + token;
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        getBridge().getWebView().loadUrl(SERVER_URL);
+                        getBridge().getWebView().loadUrl(entryUrl);
                     } catch (Throwable t) {
                         Log.e(TAG, "Failed to load server URL in WebView", t);
                     }

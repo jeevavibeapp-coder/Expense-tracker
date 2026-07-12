@@ -55,7 +55,45 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     app.secret_key = secret
     init_conn.close()
 
+    # Session & static-asset hardening. Secure=False is deliberate: transport
+    # is loopback HTTP inside the WebView.
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Strict",
+        SEND_FILE_MAX_AGE_DEFAULT=31536000,  # static/ is immutable per APK build
+    )
+    app.jinja_env.globals["asset_v"] = os.environ.get("SPENDWISE_ASSET_V", "2")
+
+    @app.after_request
+    def _security_headers(resp):
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'")
+        return resp
+
     # ── Request lifecycle ────────────────────────────────────────────────
+    @app.before_request
+    def _device_gate():
+        """On-device, EVERY route requires the per-install token — otherwise
+        any co-installed app could read /export.csv or post forms via
+        loopback. The WebView authenticates once via ?tk= on the URL the
+        native layer loads (which sets a session flag); the SMS receiver
+        sends the header on every call."""
+        token = app.config["DEVICE_TOKEN"]
+        if not token or request.path == "/healthz":
+            return None
+        if session.get("device_ok"):
+            return None
+        sent = request.headers.get("X-SpendWise-Token", "") or request.args.get("tk", "")
+        if sent and hmac.compare_digest(sent, token):
+            session["device_ok"] = True
+            return None
+        abort(403)
+
     @app.before_request
     def _open_db():
         # Cross-origin write protection: state-changing requests must come

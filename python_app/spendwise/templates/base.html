@@ -9,8 +9,8 @@
   {% else %}<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef0f6">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0f">{% endif %}
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ asset_v }}">
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ asset_v }}" defer></script>
 </head>
 <body>
 {% import "_macros.html" as m %}

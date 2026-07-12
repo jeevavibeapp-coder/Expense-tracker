@@ -46,10 +46,14 @@ android {
     }
     signingConfigs {
         spendwise {
-            storeFile file('spendwise.jks')
-            storePassword 'spendwise'
-            keyAlias 'spendwise'
-            keyPassword 'spendwise'
+            // CI/local overrides via environment; the committed dev keystore is
+            // the fallback so builds stay reproducible. Before a store release,
+            // set these secrets and rotate the key (see README).
+            def ksFile = System.getenv('SPENDWISE_KEYSTORE_FILE')
+            storeFile file(ksFile ?: 'spendwise.jks')
+            storePassword System.getenv('SPENDWISE_KEYSTORE_PASSWORD') ?: 'spendwise'
+            keyAlias System.getenv('SPENDWISE_KEY_ALIAS') ?: 'spendwise'
+            keyPassword System.getenv('SPENDWISE_KEY_PASSWORD') ?: 'spendwise'
         }
     }
     buildTypes {
