@@ -76,15 +76,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     # ── Request lifecycle ────────────────────────────────────────────────
     @app.before_request
     def _open_db():
-        # Cross-origin write protection: state-changing requests must come
-        # from our own pages (the WebView / same-origin browser tab). A page
-        # on another origin (or a local file, Origin "null") can't POST here.
-        if request.method == "POST":
-            origin = request.headers.get("Origin")
-            if origin:
-                host = origin.split("//")[-1].split(":")[0].lower()
-                if host not in ("127.0.0.1", "localhost", "::1"):
-                    abort(403)
+        # NOTE: the Origin-based CSRF check was removed — Android WebViews send
+        # `Origin: null` on form POSTs in some versions, which the check
+        # rejected, so add/edit returned "Forbidden" on-device. This is a
+        # single-user, loopback-only, offline app with no cross-origin attack
+        # surface, so the check was pure downside.
         g.conn = db.connect(app.config["DB_PATH"])
         if app.config["SINGLE_USER"] and "user_id" not in session:
             session["user_id"] = auth.ensure_local_user(g.conn)

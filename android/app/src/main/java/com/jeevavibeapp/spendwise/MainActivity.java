@@ -154,24 +154,15 @@ public class MainActivity extends BridgeActivity {
         reportPermissionState(true);
     }
 
-    /** Hardware/gesture back should walk the in-app history (it's a multi-page
-     *  server-rendered app), not exit to the launcher from every screen. Only
-     *  loopback entries count — the first history entry is the bundled splash
-     *  assets, and backing into that stale page would look broken. */
+    /** Hardware/gesture back walks the in-app WebView history (it's a
+     *  multi-page server-rendered app); only exit at the first page. */
     @Override
     public void onBackPressed() {
         try {
             android.webkit.WebView wv = getBridge().getWebView();
             if (wv != null && wv.canGoBack()) {
-                android.webkit.WebBackForwardList list = wv.copyBackForwardList();
-                int prev = list.getCurrentIndex() - 1;
-                if (prev >= 0) {
-                    String url = list.getItemAtIndex(prev).getUrl();
-                    if (url != null && url.startsWith(SERVER_URL)) {
-                        wv.goBack();
-                        return;
-                    }
-                }
+                wv.goBack();
+                return;
             }
         } catch (Throwable ignored) {
         }

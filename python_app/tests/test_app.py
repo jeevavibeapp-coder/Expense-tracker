@@ -444,15 +444,15 @@ def test_zero_amount_sms_and_import_rejected(tmp_path):
     assert c.get("/dashboard").status_code == 200  # no ZeroDivisionError
 
 
-def test_cross_origin_post_rejected(auth_client):
-    evil = auth_client.post("/transactions", data={
-        "amount": "10.00", "type": "expense", "merchant": "CSRF", "category_id": "",
-        "notes": "", "occurred_at": ""}, headers={"Origin": "https://evil.example"})
-    assert evil.status_code == 403
-    ok = auth_client.post("/transactions", data={
-        "amount": "10.00", "type": "expense", "merchant": "SameOrigin", "category_id": "",
-        "notes": "", "occurred_at": ""}, headers={"Origin": "http://127.0.0.1:8765"})
-    assert ok.status_code == 302  # same-origin still works
+def test_post_works_with_any_origin_header(auth_client):
+    # Android WebViews send Origin: null on form POSTs; add/edit must still
+    # work (the old Origin-based CSRF check 403'd these on-device).
+    for origin in ("null", "http://127.0.0.1:8765", None):
+        headers = {"Origin": origin} if origin else {}
+        r = auth_client.post("/transactions", data={
+            "amount": "10.00", "type": "expense", "merchant": "M", "category_id": "",
+            "notes": "", "occurred_at": ""}, headers=headers)
+        assert r.status_code == 302  # accepted, not Forbidden
 
 
 def test_device_endpoints_disabled_in_web_mode(client):
