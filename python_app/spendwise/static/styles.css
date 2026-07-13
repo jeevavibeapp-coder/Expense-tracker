@@ -92,8 +92,9 @@ a { color: var(--primary-2); text-decoration: none; }
 .appbar {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; gap: var(--s3);
-  padding: 12px 18px 10px; background: linear-gradient(var(--bg), rgba(10,10,15,0));
-  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  /* Solid bg (no scroll-repainting backdrop blur) — the header is short so an
+     opaque fill reads the same and stays smooth on low-end devices. */
+  padding: 12px 18px 10px; background: var(--bg);
 }
 [data-theme="light"] .appbar { background: linear-gradient(var(--bg), rgba(238,240,246,0)); }
 .appbar h1 { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -.02em; flex: 1; }
@@ -258,8 +259,9 @@ input[type="color"] { padding: 4px; height: 48px; }
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; width: 100%; max-width: var(--app-w);
   height: calc(var(--tabbar-h) + var(--safe-b)); padding-bottom: var(--safe-b);
   display: flex; align-items: stretch; z-index: 40;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  /* Opaque surface (no backdrop blur): a fixed element with backdrop-filter
+     repaints every scroll frame and janks scrolling on low-end devices. */
+  background: var(--surface);
   border-top: 1px solid var(--hairline);
 }
 .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-3); font-size: 10px; font-weight: 700; text-decoration: none; position: relative; }
@@ -334,15 +336,10 @@ input[type="color"] { padding: 4px; height: 48px; }
 html { scroll-behavior: smooth; }
 body { overscroll-behavior-y: contain; }
 
-/* Smooth cross-document page transitions (Chromium WebView; degrades silently) */
-@view-transition { navigation: auto; }
-.appbar { view-transition-name: appbar; }
-.tabbar { view-transition-name: tabbar; }
-.fab { view-transition-name: fab; }
-::view-transition-old(root) { animation: vt-out .2s var(--ease) both; }
-::view-transition-new(root) { animation: vt-in .28s var(--ease) both; }
-@keyframes vt-in { from { opacity: 0; transform: translateY(10px) scale(.99); } to { opacity: 1; transform: none; } }
-@keyframes vt-out { to { opacity: 0; transform: translateY(-6px); } }
+/* NOTE: cross-document @view-transition was removed — the MPA View
+   Transitions API is unreliable across Android WebView versions and could
+   stall or show a blank frame mid-navigation (tap a tab → black screen).
+   Plain instant navigation is more reliable on real devices. */
 .fab { transition: transform .18s var(--ease); }
 
 /* Ripple */
@@ -358,12 +355,11 @@ body { overscroll-behavior-y: contain; }
 .skeleton.line { height: 12px; margin: 8px 0; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
-/* Scroll reveal */
-/* Visible by default; only hidden once JS proves it's alive (html.js), so a
-   script failure can never leave content stuck invisible. */
-.reveal { opacity: 1; transform: none; transition: opacity .5s var(--ease), transform .55s var(--ease); }
-html.js .reveal { opacity: 0; transform: translateY(16px); }
-html.js .reveal.in { opacity: 1; transform: none; }
+/* Scroll reveal — PURE CSS. The entrance animation plays once on load and
+   ALWAYS ends at opacity:1, so a JavaScript failure can never leave content
+   stuck invisible (previously a black, scrollable, empty screen on-device). */
+.reveal { animation: revealIn .5s var(--ease) both; }
+@keyframes revealIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
 /* Premium card sheen on the balance hero */
 .hero { overflow: hidden; }
@@ -384,7 +380,7 @@ html.js .reveal.in { opacity: 1; transform: none; }
 .score-tag { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; display: inline-block; }
 @media (prefers-reduced-motion: reduce) {
   .hero::before { animation: none; display: none; }
-  .reveal { opacity: 1; transform: none; }
+  .reveal { animation: none; opacity: 1; transform: none; }
 }
 
 /* ── Auto-captured SMS → category popup ───────────────────────────────── */
