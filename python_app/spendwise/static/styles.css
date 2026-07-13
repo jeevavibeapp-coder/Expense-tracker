@@ -495,3 +495,14 @@ summary.tx::-webkit-details-marker { display: none; }
 .tx-chev svg { width: 16px; height: 16px; }
 .tx-item[open] .tx-chev { transform: rotate(90deg); }
 .tx-item.tx-focus { outline: 2px solid var(--primary); border-radius: var(--r); }
+
+/* ── Shared 3-stat strip (dashboard, report, merchant) ─────────────────── */
+.stat-strip { display: flex; justify-content: space-between; text-align: center; padding: 16px 8px; }
+.stat-strip .stat { flex: 1; min-width: 0; }
+.stat-strip .stat + .stat { border-left: 1px solid var(--hairline); }
+.stat-strip .k { font-size: 11px; font-weight: 600; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .03em; }
+.stat-strip .v { font-size: 18px; font-weight: 800; margin-top: 4px; letter-spacing: -.01em; }
+
+/* ── A11y: comfortable touch targets on chips ──────────────────────────── */
+.chip, .cat-chip { min-height: 40px; }

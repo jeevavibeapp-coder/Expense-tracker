@@ -297,9 +297,61 @@ def _trend(conn, user_id: str, months: int = 6) -> list[dict]:
     return out[-months:]
 
 
+def behaviour_insights(conn, user_id: str, month_start: dt.datetime,
+                       monthly: float) -> list[str]:
+    """Data-driven behaviour insights — every line comes from real numbers."""
+    out: list[str] = []
+    now = _now()
+    prev_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+    prev_cut = min(prev_start + dt.timedelta(days=now.day), month_start)
+
+    # Category movement vs the same days of last month.
+    cat_sql = ("SELECT c.name n, SUM(t.amount) v FROM transactions t "
+               "JOIN categories c ON c.id = t.category_id WHERE t.user_id=? "
+               "AND t.type='expense' AND t.is_deleted=0 AND t.occurred_at>=? "
+               "AND t.occurred_at<? GROUP BY c.id")
+    cur = {r["n"]: float(r["v"]) for r in db.all_rows(
+        conn, cat_sql, (user_id, month_start.isoformat(), _tomorrow_iso()))}
+    prev = {r["n"]: float(r["v"]) for r in db.all_rows(
+        conn, cat_sql, (user_id, prev_start.isoformat(), prev_cut.isoformat()))}
+    moves = []
+    for name, v in cur.items():
+        pv = prev.get(name, 0.0)
+        if pv >= 100 and abs(v - pv) >= 100:
+            moves.append((name, (v - pv) / pv * 100))
+    if moves:
+        name, pct = max(moves, key=lambda x: abs(x[1]))
+        if pct >= 15:
+            out.append(f"{name} spending is up {pct:.0f}% vs last month.")
+        elif pct <= -15:
+            out.append(f"{name} spending is down {abs(pct):.0f}% vs last month.")
+
+    # Most-visited merchant this month.
+    visits = db.one(
+        conn, "SELECT merchant_name n, COUNT(*) c FROM transactions WHERE user_id=? "
+        "AND type='expense' AND is_deleted=0 AND merchant_name IS NOT NULL "
+        "AND occurred_at>=? GROUP BY merchant_name ORDER BY c DESC LIMIT 1",
+        (user_id, month_start.isoformat()))
+    if visits and visits["c"] >= 3:
+        out.append(f"You've paid {visits['n']} {visits['c']} times this month.")
+
+    # Weekend concentration (Sat=5 / Sun=6 in strftime %w -> 6/0; use SQLite).
+    if monthly > 0:
+        wk = db.one(
+            conn, "SELECT COALESCE(SUM(amount),0) s FROM transactions WHERE user_id=? "
+            "AND type='expense' AND is_deleted=0 AND occurred_at>=? "
+            "AND strftime('%w', substr(occurred_at,1,10)) IN ('0','6')",
+            (user_id, month_start.isoformat()))
+        share = float(wk["s"]) / monthly * 100
+        if share >= 45 and float(wk["s"]) >= 200:
+            out.append(f"Weekend spending is unusually high — {share:.0f}% of this month.")
+    return out
+
+
 def _insights(monthly, weekly, top_merchants, category_breakdown, pending, fraud_open,
-              budgets=(), recurring=(), streak=0) -> list[str]:
+              budgets=(), recurring=(), streak=0, behaviour=()) -> list[str]:
     out = []
+    out.extend(behaviour)
     over = [b for b in budgets if b["pct"] > 100]
     near = [b for b in budgets if 85 <= b["pct"] <= 100]
     if over:
@@ -389,6 +441,7 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
         "recurring": recurring, "streak": streak, "tx_count": tx_count,
         "daily_series": daily_series(conn, user_id),
         "insights": _insights(monthly, weekly, top, cats_full, pending, fraud_open,
-                              budgets, recurring, streak["streak"]),
+                              budgets, recurring, streak["streak"],
+                              behaviour_insights(conn, user_id, month_start, monthly)),
         "open_fraud_alerts": fraud_open, "pending_confirmations": pending,
     }

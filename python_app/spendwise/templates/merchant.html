@@ -20,23 +20,35 @@
   </div>
 
   {# Stats #}
-  <div class="card reveal" style="display:flex; justify-content:space-between; text-align:center; padding:16px 8px">
-    <div style="flex:1">
-      <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase">Average</div>
-      <div class="num" style="font-size:18px; font-weight:800; margin-top:4px">{{ m.money_k(avg) }}</div>
-    </div>
-    <div style="width:1px; background:var(--hairline)"></div>
-    <div style="flex:1">
-      <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase">Visits</div>
-      <div class="num" style="font-size:18px; font-weight:800; margin-top:4px">{{ count }}</div>
-    </div>
-    <div style="width:1px; background:var(--hairline)"></div>
-    <div style="flex:1">
-      <div class="faint" style="font-size:11px; font-weight:600; text-transform:uppercase">Last visit</div>
-      <div class="num" style="font-size:18px; font-weight:800; margin-top:4px">
-        {{ transactions[0]['occurred_at'][8:10] ~ '/' ~ transactions[0]['occurred_at'][5:7] if transactions else '–' }}</div>
-    </div>
+  <div class="card stat-strip reveal">
+    <div class="stat"><div class="k">Average</div><div class="v num">{{ m.money_k(avg) }}</div></div>
+    <div class="stat"><div class="k">Visits</div><div class="v num">{{ count }}</div></div>
+    <div class="stat"><div class="k">Last visit</div>
+      <div class="v num">{{ transactions[0]['occurred_at'][8:10] ~ '/' ~ transactions[0]['occurred_at'][5:7] if transactions else '–' }}</div></div>
   </div>
+
+  {# Merchant intelligence — what the engine has learned #}
+  {% if learning %}
+  <div class="section-h"><h2>Merchant intelligence</h2></div>
+  <div class="card reveal stack" style="gap:12px">
+    {% for l in learning %}
+    <div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="pill" style="background:var(--surface-3); font-family:monospace; font-size:11.5px">{{ l['raw_name'] }}</span>
+        <span style="flex:1"></span>
+        {{ m.confidence_badge(l['confidence']) }}
+      </div>
+      <div class="mut" style="font-size:12.5px; margin-top:6px">
+        Confirmed {{ l['confirmation_count'] }}×
+        {%- if l['correction_count'] %} · corrected {{ l['correction_count'] }}×{% endif %}
+        {%- if l['sample_count'] %} · usually {{ currency }} {{ '%.0f'|format(l['amount_min']) }}–{{ '%.0f'|format(l['amount_max']) }}{% endif %}
+        {%- if l['category_name'] %} · {{ l['category_name'] }}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <div class="faint" style="font-size:11.5px">These are the SMS names SpendWise has learned to resolve to {{ name }}. Every confirmation makes predictions stronger.</div>
+  </div>
+  {% endif %}
 
   {# Monthly trend #}
   {% if trend and trend|length > 1 %}

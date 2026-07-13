@@ -525,3 +525,56 @@ def test_engine_normalize_vpa_variants():
     assert engine.normalize_merchant("swiggy8@ybl") == "SWIGGY"
     assert engine.normalize_merchant("SWIGGY LIMITED") == "SWIGGY"
     assert engine.normalize_merchant("AMAZON PAY INDIA") == "AMAZON PAY"
+
+
+def test_sms_parser_wallet_formats():
+    # PhonePe / GPay / Paytm / BHIM confirmations.
+    r = parsing.parse_sms("Paid Rs.240 to SHARMA STORES via PhonePe. UPI Ref 553201998877")
+    assert r.matched and r.amount == 240.0 and "SHARMA" in r.raw_merchant.upper()
+    r = parsing.parse_sms("You paid ₹150 to Ramesh Kumar using Google Pay. "
+                          "UPI transaction ID: 519023481234")
+    assert r.matched and r.amount == 150.0 and r.raw_merchant.startswith("Ramesh Kumar")
+    r = parsing.parse_sms("Payment of Rs.349 made to CLOUDTAIL INDIA on 08-07-26 "
+                          "via Amazon Pay UPI. Ref 553201998877")
+    assert r.matched and r.amount == 349.0 and "CLOUDTAIL" in r.raw_merchant.upper()
+
+
+def test_fuzzy_alias_reuses_learning(auth_client):
+    # Teach the engine SWIGGY GOURMET a few times, then a NEW alias variant
+    # should still resolve to the same merchant (discounted, not cold).
+    for _ in range(4):
+        auth_client.post("/import/create", data={
+            "amount": "300.00", "type": "expense", "raw_merchant": "SWIGGY GOURMET",
+            "reference_number": "", "occurred_at": ""})
+        import re
+        page = auth_client.get("/transactions")
+        mm = re.search(rb"/transactions/([0-9a-f]+)/confirm", page.data)
+        if mm:
+            auth_client.post(f"/transactions/{mm.group(1).decode()}/confirm",
+                             data={"merchant": "Swiggy Gourmet"})
+    res = auth_client.post("/transactions/resolve",
+                           data={"merchant": "SWIGGY GOURMET KITCHENS", "amount": "300"})
+    assert b"Swiggy Gourmet" in res.data  # fuzzy token overlap found the training
+
+
+def test_resolve_preview_explains_why(auth_client):
+    for _ in range(3):
+        _add(auth_client, amount="250.00", merchant="ChaiWala")
+    res = auth_client.post("/transactions/resolve",
+                           data={"merchant": "ChaiWala", "amount": "250"})
+    assert b"You confirmed this match" in res.data  # human-readable reason
+
+
+def test_merchant_intelligence_section(auth_client):
+    for _ in range(2):
+        _add(auth_client, amount="90.00", merchant="MilkVendor")
+    page = auth_client.get("/merchant?n=MilkVendor")
+    assert b"Merchant intelligence" in page.data
+    assert b"Confirmed" in page.data
+
+
+def test_behaviour_insight_most_visited(auth_client):
+    for _ in range(4):
+        _add(auth_client, amount="120.00", merchant="MetroCafe")
+    dash = auth_client.get("/dashboard")
+    assert b"4 times this month" in dash.data and b"MetroCafe" in dash.data

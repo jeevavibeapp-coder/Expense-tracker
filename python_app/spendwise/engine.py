@@ -167,6 +167,40 @@ def decide(total: int, *, auto: int, confirm: int) -> str:
     return DECISION_MANUAL
 
 
+def _token_overlap(a: str, b: str) -> float:
+    """Jaccard overlap between token sets — 'SWIGGY INSTAMART' vs 'SWIGGY'
+    still finds the learning the user already did."""
+    ta, tb = set(a.split()), set(b.split())
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def explain(breakdown: dict, row=None) -> list[str]:
+    """Human-readable reasons for a prediction — users should see WHY."""
+    reasons = []
+    if breakdown.get("seeded"):
+        reasons.append("Well-known Indian merchant (built-in)")
+        return reasons
+    if row is not None:
+        n = row["confirmation_count"]
+        if n:
+            reasons.append(f"You confirmed this match {n} time{'s' if n != 1 else ''}")
+        if breakdown.get("amount_pattern", 0) >= W_AMOUNT * 0.5 and row["sample_count"]:
+            lo, hi = row["amount_min"], row["amount_max"]
+            reasons.append(f"Amount fits its usual {lo:.0f}–{hi:.0f} range")
+        if breakdown.get("time_pattern", 0) >= W_TIME * 0.5:
+            reasons.append("Usually paid around this time of day")
+        if breakdown.get("category_pattern", 0) >= W_CATEGORY:
+            reasons.append("Matches its learned category")
+        if row["correction_count"]:
+            reasons.append(f"But corrected away {row['correction_count']} "
+                           f"time{'s' if row['correction_count'] != 1 else ''}")
+    if not reasons:
+        reasons.append("Closest match to what you've taught SpendWise")
+    return reasons
+
+
 def resolve(conn, *, user_id: str, raw_name: str, amount=None, category_id=None,
             occurred_at: Optional[dt.datetime] = None, auto: int = 80,
             confirm: int = 50) -> dict:
@@ -177,12 +211,29 @@ def resolve(conn, *, user_id: str, raw_name: str, amount=None, category_id=None,
     rows = db.all_rows(
         conn, "SELECT * FROM learning WHERE user_id=? AND raw_name=?",
         (user_id, normalized))
+    # Fuzzy fallback: a new alias of a known merchant ("SWIGGY INSTAMART" vs
+    # learned "SWIGGY") should reuse the training, mildly discounted.
+    fuzzy_penalty = 1.0
+    if not rows:
+        all_rows_ = db.all_rows(
+            conn, "SELECT * FROM learning WHERE user_id=? ORDER BY "
+            "confirmation_count DESC LIMIT 400", (user_id,))
+        scored = [(r, _token_overlap(normalized, r["raw_name"])) for r in all_rows_]
+        scored = [(r, o) for r, o in scored if o >= 0.5]
+        if scored:
+            best_overlap = max(o for _, o in scored)
+            rows = [r for r, o in scored if o == best_overlap]
+            fuzzy_penalty = 0.85
     candidates = []
     for row in rows:
         bd = score(row, amount=amount, category_id=category_id, occurred_at=occurred_at)
+        if fuzzy_penalty < 1.0:
+            bd["total"] = int(round(bd["total"] * fuzzy_penalty))
+            bd["fuzzy"] = True
         candidates.append({"merchant_id": row["merchant_id"],
                            "merchant_name": row["merchant_name"],
-                           "confidence": bd["total"], "breakdown": bd})
+                           "confidence": bd["total"], "breakdown": bd,
+                           "reasons": explain(bd, row)})
     candidates.sort(key=lambda c: c["confidence"], reverse=True)
 
     # Cold start: no learning yet, but the merchant is a well-known Indian
@@ -202,7 +253,8 @@ def resolve(conn, *, user_id: str, raw_name: str, amount=None, category_id=None,
                   "total": SEED_CONFIDENCE, "seeded": True}
             candidates = [{"merchant_id": merchant["id"],
                            "merchant_name": merchant["canonical_name"],
-                           "confidence": SEED_CONFIDENCE, "breakdown": bd}]
+                           "confidence": SEED_CONFIDENCE, "breakdown": bd,
+                           "reasons": explain(bd)}]
 
     best = candidates[0] if candidates else None
     decision = (decide(best["confidence"], auto=auto, confirm=confirm)

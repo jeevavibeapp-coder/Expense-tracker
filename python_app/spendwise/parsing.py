@@ -37,7 +37,7 @@ _DEBIT_RE = re.compile(r"\b(debited|spent|paid|sent|withdrawn|purchase(?:d)?)\b"
 # message is promotional / informational and must not be auto-captured.
 _TXN_VERB_RE = re.compile(
     r"\b(debited|credited|spent|paid|sent|received|withdrawn|purchase(?:d)?|"
-    r"deposit(?:ed)?|transferred)\b", re.IGNORECASE)
+    r"deposit(?:ed)?|transferred|payment)\b", re.IGNORECASE)
 # Messages describing money that has NOT moved: offers, UPI collect requests,
 # autopay pre-debit reminders, EMI due notices, declined transactions.
 _NON_TXN_RE = re.compile(
@@ -48,7 +48,7 @@ _NON_TXN_RE = re.compile(
     r"declined|failed|reversed|refund initiated|otp|one.?time password)",
     re.IGNORECASE)
 
-_BOUNDARY = r"(?=\s+(?:on|ref|txn|utr|upi|avl|a/c|bal|info|via|to|not)\b|[.,;]|$)"
+_BOUNDARY = r"(?=\s+(?:on|ref|txn|utr|upi|avl|a/c|bal|info|via|using|to|not|is)\b|[.,;]|$)"
 # Ordered payee markers for debits; "from" is the payer side and only trusted
 # for credits (Kotak: "Sent Rs.20 from Kotak Bank AC X1234 to swiggy8@ybl").
 _TO_RE = re.compile(

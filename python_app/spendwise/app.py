@@ -682,8 +682,16 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 p = r["occurred_at"][:7]
                 monthly[p] = round(monthly.get(p, 0.0) + r["amount"], 2)
         trend = [{"period": p, "value": monthly[p]} for p in sorted(monthly)][-6:]
+        # Merchant intelligence: what the engine has learned about this
+        # merchant — aliases, confirmations, corrections, typical amounts.
+        learning = db.all_rows(
+            g.conn, "SELECT l.*, c.name category_name FROM learning l "
+            "LEFT JOIN categories c ON c.id = l.category_id "
+            "WHERE l.user_id=? AND l.merchant_name=? "
+            "ORDER BY l.confirmation_count DESC", (uid, name))
         s = settings_for(uid)
         return render_template("merchant.html", name=name, transactions=rows,
+                               learning=learning,
                                total=total, count=len(rows), trend=trend,
                                avg=round(total / max(1, sum(1 for r in rows
                                          if r["type"] == "expense")), 2),
