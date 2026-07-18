@@ -105,6 +105,40 @@ def main() -> int:
             check("Forbidden" not in page.content(),
                   f"Navigation to {sel} hit a Forbidden page")
 
+        # 6) INSTANT (client-side) navigation: mark the window, click a tab, and
+        #    verify the marker survived (no full document reload) while the
+        #    heading + URL changed.
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        page.evaluate("window.__spa_probe = 'alive'")
+        page.click("a.tab[href='/transactions']")
+        page.wait_for_selector("h1:has-text('Activity')", timeout=4000)
+        survived = page.evaluate("window.__spa_probe")
+        check(survived == "alive",
+              "Tab nav did a FULL page reload (window marker lost) — instant nav not active")
+        check("/transactions" in page.url, "URL did not update after instant nav")
+
+        # 7) Back button restores the previous page's content (client-side).
+        page.go_back()
+        page.wait_for_selector("text=Total balance", timeout=4000)
+        check("/dashboard" in page.url, "Back did not return to the dashboard")
+
+        # 8) The #add hash link (CSS :target sheet) is NOT hijacked by the nav
+        #    interceptor — the sheet must still open, and window marker survives.
+        page.evaluate("window.__spa_probe2 = 'alive'")
+        page.click(".fab")
+        page.wait_for_timeout(300)
+        sheet2 = page.query_selector(".sheet[aria-label='Add transaction']")
+        check(sheet2 is not None and sheet2.is_visible(),
+              "FAB #add hash link was hijacked by the nav interceptor (sheet didn't open)")
+        check(page.evaluate("window.__spa_probe2") == "alive",
+              "Opening the #add sheet caused a page reload")
+
+        # 9) The export.csv download link must not be intercepted (has download attr).
+        page.goto(BASE + "/settings", wait_until="networkidle")
+        dl = page.query_selector("a[href='/export.csv']")
+        check(dl is not None and dl.get_attribute("download") is not None,
+              "export.csv link lost its download attribute (would be intercepted)")
+
         browser.close()
 
     # Report

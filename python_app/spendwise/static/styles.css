@@ -109,7 +109,7 @@ a { color: var(--primary-2); text-decoration: none; }
   width: 40px; height: 40px; border-radius: var(--r-pill); display: grid; place-items: center;
   font-weight: 800; font-size: 15px; color: #fff; background: var(--grad);
 }
-.screen { padding: 4px 18px 8px; animation: fadeUp .36s var(--ease) both; }
+.screen { padding: 4px 18px 8px; }
 
 /* ── Cards ─────────────────────────────────────────────────────────────── */
 .card {
@@ -136,7 +136,6 @@ a { color: var(--primary-2); text-decoration: none; }
 .hero-row { display: flex; gap: 10px; position: relative; }
 .hero-pill {
   flex: 1; background: rgba(255,255,255,.16); border-radius: var(--r); padding: 10px 12px;
-  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
 }
 .hero-pill .k { font-size: 11px; opacity: .85; font-weight: 600; }
 .hero-pill .v { font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
@@ -322,18 +321,11 @@ input[type="color"] { padding: 4px; height: 48px; }
 /* ── Animations ────────────────────────────────────────────────────────── */
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
-.stagger > * { animation: fadeUp .4s var(--ease) both; }
-.stagger > *:nth-child(2) { animation-delay: .04s; }
-.stagger > *:nth-child(3) { animation-delay: .08s; }
-.stagger > *:nth-child(4) { animation-delay: .12s; }
-.stagger > *:nth-child(5) { animation-delay: .16s; }
-.stagger > *:nth-child(6) { animation-delay: .2s; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* ─── CRED-style motion & micro-interactions ─────────────────────────────── */
 :root { --spring: cubic-bezier(.34,1.55,.64,1); }
 * { -webkit-tap-highlight-color: transparent; }
-html { scroll-behavior: smooth; }
 body { overscroll-behavior-y: contain; }
 
 /* NOTE: cross-document @view-transition was removed — the MPA View
@@ -355,19 +347,13 @@ body { overscroll-behavior-y: contain; }
 .skeleton.line { height: 12px; margin: 8px 0; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
-/* Scroll reveal — PURE CSS. The entrance animation plays once on load and
-   ALWAYS ends at opacity:1, so a JavaScript failure can never leave content
-   stuck invisible (previously a black, scrollable, empty screen on-device). */
-.reveal { animation: revealIn .5s var(--ease) both; }
-@keyframes revealIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+/* .reveal is intentionally a no-op: content is visible the instant it paints,
+   with no entrance animation competing with layout right after a navigation.
+   (Kept as a class so templates/QA that reference it stay valid.) */
+.reveal { }
 
-/* Premium card sheen on the balance hero */
 .hero { overflow: hidden; }
-.hero::before { content: ""; position: absolute; inset: 0; z-index: 1;
-  background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.18) 50%, transparent 58%);
-  transform: translateX(-130%); animation: sheen 2.6s ease-in-out 1 .3s both; }
 .hero > * { position: relative; z-index: 2; }
-@keyframes sheen { 0%, 100% { transform: translateX(-130%); } 55% { transform: translateX(130%); } }
 .card-chip { width: 32px; height: 23px; border-radius: 6px;
   background: linear-gradient(135deg, #ffe9a8, #d6ad2e); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
 .card-chip::after { content: ""; display: block; width: 100%; height: 100%; border-radius: 6px;
@@ -378,16 +364,12 @@ body { overscroll-behavior-y: contain; }
 /* Money-health score ring */
 .score-row { display: flex; align-items: center; gap: 16px; }
 .score-tag { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; display: inline-block; }
-@media (prefers-reduced-motion: reduce) {
-  .hero::before { animation: none; display: none; }
-  .reveal { animation: none; opacity: 1; transform: none; }
-}
 
 /* ── Auto-captured SMS → category popup ───────────────────────────────── */
 .cat-modal { position: fixed; inset: 0; z-index: 80; display: flex;
   align-items: flex-end; justify-content: center;
   padding: 0 12px calc(12px + var(--safe-b, 0px));
-  background: rgba(4, 4, 10, .58); backdrop-filter: blur(3px);
+  background: rgba(4, 4, 10, .58);
   animation: cat-scrim .2s var(--ease, ease) both; }
 @keyframes cat-scrim { from { opacity: 0; } to { opacity: 1; } }
 @keyframes cat-up { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
@@ -502,3 +484,16 @@ summary.tx::-webkit-details-marker { display: none; }
 
 /* ── A11y: comfortable touch targets on chips ──────────────────────────── */
 .chip, .cat-chip { min-height: 40px; }
+
+/* ── Instant-nav top progress bar (created on demand by app.js) ─────────── */
+/* Sits above the sticky appbar; theme-aware via --grad. The global
+   prefers-reduced-motion rule sets transition:none, so it snaps instead of
+   animating — fine. Inert (never rendered) if app.js is absent. */
+#nprogress {
+  position: fixed; top: 0; left: 0; height: 2.5px; width: 0; z-index: 100;
+  pointer-events: none; opacity: 0;
+  background: var(--grad, linear-gradient(135deg, #8b5cff, #5b8cff));
+  box-shadow: 0 0 10px rgba(124, 92, 255, .7), 0 0 4px rgba(124, 92, 255, .5);
+  transition: width .18s var(--ease, ease), opacity .3s ease;
+}
+#nprogress.active { opacity: 1; }

@@ -92,29 +92,9 @@
     </form>
   </div>
 
-  <script>
-  (function () {
-    var merchant = document.getElementById('merchant'), amt = document.getElementById('amt'),
-        out = document.getElementById('resolve-preview'), timer = null, ctrl = null;
-    if (!merchant) return;
-    merchant.addEventListener('input', function () {
-      clearTimeout(timer);
-      timer = setTimeout(function () {
-        var name = merchant.value.trim();
-        if (!name) { out.innerHTML = ''; return; }
-        if (ctrl) ctrl.abort();
-        ctrl = new AbortController();
-        out.innerHTML = '<div class="skeleton line" style="margin-top:10px;width:70%"></div>';
-        fetch('/transactions/resolve', { method: 'POST', signal: ctrl.signal,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ merchant: name, amount: amt.value || '' }) })
-          .then(function (r) { return r.text(); })
-          .then(function (h) { out.innerHTML = h; })
-          .catch(function () {});
-      }, 400);
-    });
-  })();
-  </script>
+  {# Merchant resolve-preview is handled by a delegated 'input' listener in
+     app.js (keyed on #merchant), so it survives instant-nav swaps without
+     re-attaching. No inline script needed here. #}
 
   {# ── Auto-captured SMS → "which category?" popup ── #}
   {% if cat_prompts %}
