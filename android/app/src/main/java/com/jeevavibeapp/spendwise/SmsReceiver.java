@@ -114,13 +114,32 @@ public class SmsReceiver extends BroadcastReceiver {
      *  Shared with the launch-time inbox scanner. */
     static boolean looksFinancial(String body) {
         String b = body.toLowerCase();
+        // Reject marketing/lending/scam messages up front. They carry amounts
+        // and even transaction words, so without this they flood the queue
+        // (a real device ended up with 134 junk "transactions"). The Python
+        // parser is still the authoritative gate; this keeps the volume down.
+        String[] junk = {
+            "credit score", "cibil", "pre-approved", "preapproved", "loan offer",
+            "personal loan", "instant loan", "apply now", "click here", "bit.ly",
+            "tinyurl", "congratulations", "you have won", "claim now", "lucky draw",
+            "t&c apply", "unsubscribe", "verify kyc", "kyc update", "will be blocked",
+            "cashback", "discount", "coupon", "% off", "offer", "recharge",
+            "amount due", "bill generated", "statement generated", "emi of",
+            "otp", "one time password", "low interest", "no documents",
+        };
+        for (String j : junk) {
+            if (b.contains(j)) {
+                return false;
+            }
+        }
         // NOTE: no bare "rs" — it substring-matches ordinary words ("offers",
-        // "hours"), which would forward personal messages to the queue.
+        // "hours"). No bare "credit"/"debit" either: those match "credit score"
+        // and "debit card blocked". Only inflected transaction verbs count.
         String[] keys = {
             "debited", "credited", "spent", "txn", "transaction", "a/c", "acct",
-            "account", "upi", "inr", "rs.", "rs ", "₹", "paid", "received",
-            "withdrawn", "balance", "purchase", "payment", "transfer", "imps",
-            "neft", "deposited", "debit", "credit",
+            "upi", "inr", "rs.", "rs ", "₹", "paid", "received",
+            "withdrawn", "purchase", "payment", "transfer", "imps",
+            "neft", "deposited",
         };
         for (String k : keys) {
             if (b.contains(k)) {

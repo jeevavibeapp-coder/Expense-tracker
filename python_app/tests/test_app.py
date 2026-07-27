@@ -611,3 +611,74 @@ def test_queued_sms_counted_in_diagnostics(tmp_path):
         '{"sender":"Y","body":"Rs.2 debited to B"}\n', encoding="utf-8")
     page = app.test_client().get("/settings")
     assert b"In queue" in page.data
+
+
+PROMO_JUNK = [
+    "Improve your credit score now! Get pre-approved loan of Rs 70481.31. Proceed to bit.ly/xy",
+    "Rs 70481.31 paid to improve your credit score. Check CIBIL now",
+    "Your card bill of Rs 12,340.00 is generated for 11-JUN-26. Total amount due Rs 12340",
+    "Congratulations! Rs 5000.00 credited as bonus. Proceed to claim now",
+    "Rs 743.00 spent on 11-JUN-26. Apply now for instant loan, low interest",
+    "URGENT: account will be blocked. Verify KYC to receive Rs 10000 refund",
+    "Recharge of Rs 239 successful for 9876543210. Plan validity 28 days",
+    "You have won Rs 50000 lucky draw! Claim now, T&C apply",
+    "EMI of Rs 4,500 due on 15-07-26 for your personal loan",
+]
+
+REAL_BANK = [
+    "Rs.450.00 debited from a/c **1234 on 05-Jan-24 to ZOMATO Ref 883120114455 UPI",
+    "Dear UPI user A/C X1234 debited by 199.0 on date 08Jul26 trf to SWIGGY Refno 553201998877",
+    "ICICI Bank Acct XX823 debited for Rs 320.00 on 08-Jul-26; SWIGGY credited. UPI:519023481234",
+    "Sent Rs.20.00 from Kotak Bank AC X1234 to swiggy8@ybl on 08-07-26. UPI Ref 519023481234",
+    "Rs.99 spent on your HDFC Bank Card xx1234 at SPOTIFY on 08-07-25. Avl Lmt Rs 45,000",
+]
+
+
+def test_promotional_and_scam_sms_never_captured():
+    # These flooded a real device's ledger (balance went to -18 lakh).
+    for body in PROMO_JUNK:
+        assert parsing.parse_sms(body).matched is False, f"leaked: {body}"
+
+
+def test_real_bank_sms_still_captured():
+    # Precision must not cost recall.
+    for body in REAL_BANK:
+        assert parsing.parse_sms(body).matched is True, f"missed: {body}"
+
+
+def test_garbage_merchant_names_rejected():
+    # Dates, call-to-actions and scraped prose are not merchants.
+    for body, bad in [
+        ("Rs.500 debited from a/c XX12 on 11-JUN-26 Ref 123456789012", "11-JUN-26"),
+        ("Rs.500 debited a/c XX12 to Proceed Ref 123456789012", "Proceed"),
+    ]:
+        r = parsing.parse_sms(body)
+        assert r.raw_merchant != bad, f"garbage merchant kept: {r.raw_merchant}"
+
+
+def test_ingest_stores_sms_context_for_later_review(tmp_path):
+    # Without the original message you cannot identify a month-old capture.
+    # Use a merchant the seed doesn't know, so the categorize popup appears.
+    c = _su_client(tmp_path)
+    body = "Rs.450.00 debited from a/c **1234 on 05-Jan-24 to RAJUKIRANA Ref 883120114455 UPI"
+    c.post("/sms/ingest", data={"sender": "VK-HDFCBK", "body": body})
+    dash = c.get("/dashboard").data
+    assert b"VK-HDFCBK" in dash            # sender shown
+    assert b"debited from a/c" in dash     # original message shown
+    assert b"05-Jan-24" in dash            # date context
+
+
+def test_sms_purge_clears_unreviewed_only(tmp_path):
+    c = _su_client(tmp_path)
+    # One unreviewed auto-capture (unknown merchant -> needs review)…
+    c.post("/sms/ingest", data={
+        "body": "Rs.500 debited from a/c XX12 to RANDOMSHOP99 on 01/02/2025 Ref 123456789012"})
+    # …and one the user already categorised.
+    c.post("/sms/ingest", data={
+        "body": "Rs.450.00 spent at SWIGGY on 12-06-2025 ref 553201998877 UPI"})
+    before = c.get("/transactions").data
+    assert b"SWIGGY" in before.upper()
+    c.post("/sms/purge")
+    after = c.get("/transactions").data
+    assert b"RANDOMSHOP99" not in after.upper()   # junk gone
+    assert b"SWIGGY" in after.upper()             # auto-categorised kept

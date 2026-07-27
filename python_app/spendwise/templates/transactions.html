@@ -64,9 +64,13 @@
     <form class="qrow2" method="post" action="/transactions/{{ t['id'] }}/confirm">
       <div class="qrow-top">
         {{ m.avatar(t['raw_merchant'] or t['merchant_name'] or '?') }}
-        <div class="qname">“{{ t['raw_merchant'] or t['merchant_name'] }}”</div>
+        <div style="flex:1; min-width:0">
+          <div class="qname">“{{ t['raw_merchant'] or t['merchant_name'] or 'Unknown' }}”</div>
+          <div class="faint" style="font-size:11px">{{ t['occurred_at'][:10] }}{% if t['sms_sender'] %} · {{ t['sms_sender'] }}{% endif %}</div>
+        </div>
         <div class="num" style="font-weight:800; font-size:14px">{{ currency }} {{ m.money(t['amount']) }}</div>
       </div>
+      {% if t['sms_body'] %}<div class="cat-sms" style="margin-top:8px">{{ t['sms_body'] }}</div>{% endif %}
       {% if suggestions.get(t['id']) %}
       <div class="cat-chips" style="margin:8px 0 2px">
         {% for name in suggestions[t['id']] %}

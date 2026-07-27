@@ -89,6 +89,22 @@
     {% else %}
     <div class="mut" style="font-size:12.5px">Bank &amp; UPI messages are captured automatically and parsed on this device — they never leave your phone.</div>
     {% endif %}
+
+    {% if request.args.get('purged') %}
+    <div class="flash">Removed {{ request.args.get('purged') }} unreviewed capture(s).</div>
+    {% endif %}
+    {% if sms.unreviewed %}
+    <form method="post" action="/sms/purge"
+          onsubmit="return confirm('Remove {{ sms.unreviewed }} unreviewed SMS captures? Confirmed and categorised transactions are kept.')">
+      <button class="btn-soft btn-sm" type="submit" style="width:100%; color:var(--expense)">
+        Clear {{ sms.unreviewed }} unreviewed capture{{ '' if sms.unreviewed == 1 else 's' }}
+      </button>
+      <div class="faint" style="font-size:11.5px; margin-top:6px">
+        Use this to wipe junk captured before filtering improved. Anything you
+        already confirmed or categorised is kept.
+      </div>
+    </form>
+    {% endif %}
   </div>
 
   <div class="card stack">

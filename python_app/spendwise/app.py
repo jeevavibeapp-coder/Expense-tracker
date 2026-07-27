@@ -239,7 +239,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     def create_transaction(uid: str, *, amount: float, type_: str, category_id=None,
                            merchant=None, raw_merchant=None, notes=None,
                            reference_number=None, occurred_at: Optional[dt.datetime] = None,
-                           source="manual", resolve=True, dedup_key=None) -> dict:
+                           source="manual", resolve=True, dedup_key=None,
+                           sms_body=None, sms_sender=None) -> dict:
         s = settings_for(uid)
         # Same clock domain as stored SMS times: local wall-clock stamped UTC.
         occ = occurred_at or dt.datetime.now().replace(microsecond=0,
@@ -300,11 +301,12 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         db.execute(g.conn,
                    "INSERT INTO transactions(id,user_id,amount,type,category_id,raw_merchant,"
                    "merchant_id,merchant_name,notes,reference_number,occurred_at,source,"
-                   "confidence,status,dedup_key,is_deleted,created_at) VALUES "
-                   "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
+                   "confidence,status,dedup_key,sms_body,sms_sender,is_deleted,created_at) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
                    (tx_id, uid, amount, type_, category_id, raw, merchant_id, merchant_name,
                     notes, reference_number, occ.isoformat(), source, confidence, status,
-                    dedup_key, dt.datetime.now(dt.timezone.utc).isoformat()))
+                    dedup_key, sms_body, sms_sender,
+                    dt.datetime.now(dt.timezone.utc).isoformat()))
 
         alert_ids = fraud.evaluate_transaction(
             g.conn, user_id=uid,
@@ -562,6 +564,32 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn.commit()
         return redirect(request.referrer or url_for("dashboard"))
 
+    @app.post("/sms/purge")
+    def sms_purge():
+        """Delete unreviewed SMS captures in one tap.
+
+        Needed after a bad-precision build let promotional/scam messages in:
+        re-running the (now stricter) parser over hundreds of rows by hand is
+        not reasonable. Only untouched auto-captures are removed — anything
+        confirmed, categorised or hand-edited is kept — and rows are
+        soft-deleted, so nothing is destroyed.
+        """
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        cur = db.execute(
+            g.conn,
+            "UPDATE transactions SET is_deleted=1 WHERE user_id=? AND source='sms' "
+            "AND is_deleted=0 AND status IN (?,?) AND category_id IS NULL",
+            (uid, TX_PENDING, TX_REVIEW))
+        removed = cur.rowcount if cur else 0
+        # Their fraud alerts are meaningless once the transactions are gone.
+        db.execute(g.conn, "UPDATE fraud_alerts SET status='dismissed' WHERE user_id=? "
+                   "AND status='open' AND transaction_id IN (SELECT id FROM transactions "
+                   "WHERE user_id=? AND is_deleted=1)", (uid, uid))
+        g.conn.commit()
+        return redirect(url_for("settings_page", purged=removed))
+
     @app.post("/sms/prompts/dismiss")
     def sms_prompts_dismiss():
         uid = require_login()
@@ -751,7 +779,9 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             result = create_transaction(
                 uid, amount=parsed.amount, type_=parsed.type,
                 raw_merchant=parsed.raw_merchant, reference_number=parsed.reference_number,
-                occurred_at=parsed.occurred_at, source="sms", resolve=True, dedup_key=dedup_key)
+                occurred_at=parsed.occurred_at, source="sms", resolve=True,
+                dedup_key=dedup_key, sms_body=body.strip()[:400],
+                sms_sender=(request.form.get("sender") or "").strip()[:32] or None)
         except sqlite3.IntegrityError:
             # Lost the check-then-insert race (live POST + queue drain landing
             # together) — the unique dedup index made the second insert fail.
@@ -907,8 +937,12 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     queued = sum(1 for line in f if line.strip())
         except OSError:
             queued = 0
+        unreviewed = db.one(
+            g.conn, "SELECT COUNT(*) c FROM transactions WHERE user_id=? AND source='sms' "
+            "AND is_deleted=0 AND status IN (?,?) AND category_id IS NULL",
+            (uid, TX_PENDING, TX_REVIEW))["c"]
         return {"captured": row["c"], "last": row["last"], "permission": perm,
-                "queued": queued}
+                "queued": queued, "unreviewed": unreviewed}
 
     # ── Routes: profile & settings ───────────────────────────────────────
     @app.post("/profile")

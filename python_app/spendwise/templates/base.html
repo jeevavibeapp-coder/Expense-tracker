@@ -113,14 +113,20 @@
         {{ m.avatar(cp['merchant_name'] or cp['raw_merchant'] or '?') }}
         <div style="flex:1; min-width:0">
           <div class="cat-merch">{{ cp['merchant_name'] or cp['raw_merchant'] or 'Unknown merchant' }}</div>
-          {% if cp['raw_merchant'] and cp['merchant_name'] and cp['raw_merchant'] != cp['merchant_name'] %}
-          <div class="cat-raw">from “{{ cp['raw_merchant'] }}”</div>{% endif %}
+          <div class="cat-raw">
+            {{ cp['occurred_at'][:10] }}{% if cp['sms_sender'] %} · {{ cp['sms_sender'] }}{% endif %}
+          </div>
         </div>
         <div class="cat-amt num {{ cp['type'] }}">{{ '+' if cp['type']=='income' else '–' }}{{ m.money(cp['amount']) }}</div>
       </div>
+      {# The original message — without it you cannot identify a month-old capture. #}
+      {% if cp['sms_body'] %}
+      <div class="cat-sms">{{ cp['sms_body'] }}</div>
+      {% endif %}
       <form method="post" action="/transactions/{{ cp['id'] }}/categorize">
         <div class="cat-chips">
-          {% for c in prompt_categories %}
+          {# Only categories matching the transaction's direction. #}
+          {% for c in prompt_categories if c['type'] == cp['type'] %}
           <button class="cat-chip" type="submit" name="category_id" value="{{ c['id'] }}">{{ c['name'] }}</button>
           {% endfor %}
         </div>

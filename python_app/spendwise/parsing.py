@@ -45,8 +45,43 @@ _NON_TXN_RE = re.compile(
     r"payment request|requested|collect request|is requesting|"
     r"will be (?:debited|deducted|charged)|due on|due by|overdue|"
     r"e-?mandate|autopay.{0,20}(?:scheduled|upcoming)|"
-    r"declined|failed|reversed|refund initiated|otp|one.?time password)",
+    r"declined|failed|reversed|refund initiated|otp|one.?time password|"
+    # Marketing / lending / scam vocabulary — these carry amounts and
+    # sometimes even transaction verbs, but no money has moved.
+    r"credit score|cibil|pre-?approved|pre-?qualified|eligible for|"
+    r"loan offer|personal loan|instant loan|apply now|click here|"
+    r"congratulations|you have won|claim now|lucky (?:winner|draw)|"
+    r"limited period|hurry|t&c apply|terms and conditions apply|"
+    r"unsubscribe|click .{0,12}(?:link|bit\.ly|tinyurl)|bit\.ly|tinyurl|"
+    r"verify (?:your )?kyc|kyc (?:update|pending|expired)|will be blocked|"
+    r"account will be (?:blocked|suspended|closed)|"
+    r"bill (?:is )?generated|statement (?:is )?generated|minimum amount due|"
+    r"total amount due|outstanding|emi of|recharge|plan validity|"
+    r"interest rate|low interest|no documents|approved)",
     re.IGNORECASE)
+
+# Positive evidence that this is a REAL bank/UPI transaction: essentially every
+# genuine debit/credit alert cites an account, card, UPI handle or reference.
+# Promotional and scam messages carry amounts but never this. Requiring it is
+# the single highest-precision signal available offline.
+_ACCOUNT_EVIDENCE_RE = re.compile(
+    r"(a/c|a/c no|acct|account\s*(?:no|number|xx|\*|ending)|"
+    r"\bac\b\s*[xX*\d]|card\s*(?:no\.?\s*)?[xX*\d]|"
+    r"\bupi\b|\bvpa\b|@[a-z]{2,}|"
+    r"ref(?:erence)?\s*(?:no|number|id)?[:\s.#-]*[A-Za-z0-9]{6,}|"
+    r"\butr\b|\btxn\b|transaction\s*id|\bimps\b|\bneft\b|\brtgs\b|"
+    r"[xX*]{2,}\d{3,}|\d{4,}\b(?=\s*(?:on|dated)))",
+    re.IGNORECASE)
+
+# Merchant strings that are obviously not a merchant: bare dates, generic
+# call-to-action verbs, and marketing phrases the payee regex can latch onto.
+_BAD_MERCHANT_RE = re.compile(
+    r"^(?:\d{1,2}[-/][A-Za-z]{3,9}[-/]\d{2,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|"
+    r"\d[\d,.]*|"
+    r"(?:proceed|continue|click|apply|claim|verify|confirm|know more|"
+    r"activate|register|download|login|update|check|call|contact|"
+    r"low interest|no documents|improve.*|your .*score.*|avail.*|get .*)"
+    r")$", re.IGNORECASE)
 
 _BOUNDARY = r"(?=\s+(?:on|ref|txn|utr|upi|avl|a/c|bal|info|via|using|to|not|is)\b|[.,;]|$)"
 # Ordered payee markers for debits; "from" is the payer side and only trusted
@@ -137,6 +172,13 @@ def _clean_merchant(raw: str) -> Optional[str]:
     # Reject pure digits / account fragments ("X1234", "919…").
     if not name or not re.search(r"[A-Za-z]{2}", name):
         return None
+    # Reject dates, call-to-action verbs and marketing phrases the payee
+    # regex can latch onto ("11-JUN-26", "Proceed", "improve your credit score").
+    if _BAD_MERCHANT_RE.match(name):
+        return None
+    # A real payee is short. Anything sentence-like is scraped prose.
+    if len(name.split()) > 4:
+        return None
     return name
 
 
@@ -165,9 +207,14 @@ def parse_sms(text: str) -> ParsedSMS:
     ref = _REF_RE.search(text)
     result.reference_number = ref.group(1) if ref else None
     result.occurred_at = _parse_date(text)
-    # Only a message with an amount AND a money-movement verb AND no
-    # promo/request/pre-debit language is a real transaction.
+    # A real transaction needs ALL of: an amount, a money-movement verb, no
+    # promo/request/pre-debit language, and positive account evidence (an
+    # account/card/UPI/reference). The last condition is what keeps
+    # promotional and scam messages — which happily carry amounts and even
+    # verbs — out of the user's ledger.
     result.matched = bool(result.amount is not None
+                          and result.amount > 0
                           and _TXN_VERB_RE.search(text)
-                          and not _NON_TXN_RE.search(text))
+                          and not _NON_TXN_RE.search(text)
+                          and _ACCOUNT_EVIDENCE_RE.search(text))
     return result

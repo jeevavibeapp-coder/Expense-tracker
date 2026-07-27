@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     status TEXT NOT NULL DEFAULT 'confirmed',
     category_prompted INTEGER NOT NULL DEFAULT 0,
     dedup_key TEXT,
+    sms_body TEXT,
+    sms_sender TEXT,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
@@ -133,6 +135,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
                      "category_prompted INTEGER NOT NULL DEFAULT 0")
     if "dedup_key" not in cols:
         conn.execute("ALTER TABLE transactions ADD COLUMN dedup_key TEXT")
+    # The original message, so a month-old capture can still be identified.
+    if "sms_body" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN sms_body TEXT")
+    if "sms_sender" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN sms_sender TEXT")
     cat_cols = {row["name"] for row in conn.execute("PRAGMA table_info(categories)")}
     if "budget_amount" not in cat_cols:
         conn.execute("ALTER TABLE categories ADD COLUMN budget_amount REAL")
