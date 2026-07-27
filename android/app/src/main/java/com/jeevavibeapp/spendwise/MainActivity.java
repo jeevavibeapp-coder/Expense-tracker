@@ -318,13 +318,26 @@ public class MainActivity extends BridgeActivity {
                         wv.loadUrl(SERVER_URL);
                         // Drop the bundled loading shell from history once the
                         // real app is up, so Back can never return to it.
+                        // Only clears while the shell is still the OLDEST entry,
+                        // so it can never discard real in-app history if the
+                        // user navigates before this runs.
                         wv.postDelayed(new Runnable() {
                             @Override
                             public void run() {
                                 try {
                                     String cur = wv.getUrl();
-                                    if (cur != null && cur.startsWith(SERVER_URL)) {
-                                        wv.clearHistory();
+                                    if (cur == null || !cur.startsWith(SERVER_URL)) {
+                                        return;
+                                    }
+                                    android.webkit.WebBackForwardList list =
+                                            wv.copyBackForwardList();
+                                    if (list.getSize() > 0) {
+                                        String first = list.getItemAtIndex(0).getUrl();
+                                        boolean shellStillFirst =
+                                                first == null || !first.startsWith(SERVER_URL);
+                                        if (shellStillFirst) {
+                                            wv.clearHistory();
+                                        }
                                     }
                                 } catch (Throwable ignored) {
                                 }

@@ -682,3 +682,62 @@ def test_sms_purge_clears_unreviewed_only(tmp_path):
     after = c.get("/transactions").data
     assert b"RANDOMSHOP99" not in after.upper()   # junk gone
     assert b"SWIGGY" in after.upper()             # auto-categorised kept
+
+
+# Corpus audit: the SMS gate must stay strict WITHOUT losing real transactions.
+# Both lists are regression locks — precision and recall are equally load-bearing.
+BANK_CORPUS = [
+    "Rs.450.00 debited from a/c **1234 on 05-Jan-24 to ZOMATO Ref 883120114455 UPI",
+    "Dear UPI user A/C X1234 debited by 199.0 on date 08Jul26 trf to SWIGGY Refno 553201998877",
+    "ICICI Bank Acct XX823 debited for Rs 320.00 on 08-Jul-26; SWIGGY credited. UPI:519023481234",
+    "INR 460.00 debited A/c no. XX1234 08-07-26 UPI/P2M/519023481234/ZOMATO/pay",
+    "Sent Rs.20.00 from Kotak Bank AC X1234 to swiggy8@ybl on 08-07-26. UPI Ref 519023481234",
+    "Rs.1500.00 debited from A/c XX4567 on 08-07-26 to RAMESH STORE. UPI Ref 512345678901 -PNB",
+    "Dear Customer, Rs.750.00 debited from A/c XX8899 on 08Jul26 UPI/512345678901/BIGBAZAAR",
+    "INR 2,300.00 debited from YES BANK A/c XX3344 on 08-Jul-26 towards MYNTRA. Ref 883120114455",
+    "Rs 899 debited from IDFC FIRST Bank A/c XX7788 on 08-07-26 to NETFLIX UPI Ref 519023481234",
+    "Rs.340.00 spent using AU Bank Card xx5566 at DMART on 08-07-26",
+    "Rs.120 paid to CHAIWALA from Paytm Payments Bank A/c XX2211. UPI Ref 553201998877",
+    "Paid Rs.240 to SHARMA STORES via PhonePe. UPI Ref 553201998877",
+    "You paid Rs.150 to Ramesh Kumar using Google Pay. UPI transaction ID: 519023481234",
+    "Payment of Rs.349 made to CLOUDTAIL INDIA on 08-07-26 via Amazon Pay UPI. Ref 553201998877",
+    "Rs.85 paid to teastall@upi via BHIM. UPI Ref No 512345678901",
+    "Rs.99 spent on your HDFC Bank Card xx1234 at SPOTIFY on 08-07-25. Avl Lmt Rs 45,000",
+    "Rs.2000.00 withdrawn from A/c XX1234 at ATM on 08-07-26. Avl Bal Rs 15,000.00",
+    "INR 45,000.00 credited to A/c XX1234 by NEFT from ACME PVT LTD on 08-07-26 Ref N123456789012",
+    "Rs.5,000.00 credited to your A/c XX9012 via IMPS Ref 512345678901 from RAHUL",
+    "INR 62,500.00 credited to A/c XX1234 on 01-07-26 towards SALARY JUL26. Ref 998877665544",
+    "Rs.599.00 credited to your A/c XX1234 on 08-07-26 from AMAZON refund. Ref 553201998877",
+    "Rs.199.00 debited from A/c XX1234 for NETFLIX autopay on 08-07-26. UPI Ref 512345678901",
+]
+
+# Junk that deliberately carries account numbers and reference ids — the
+# hardest false positives, since account evidence alone must not be enough.
+JUNK_WITH_ACCOUNT_EVIDENCE = [
+    "Your HDFC Card XX1234 statement: total amount due Rs 12,340.00 by 15-07-26. Ref 553201998877",
+    "EMI of Rs 4,500 for loan A/c XX9988 is due on 15-07-26. Ref 512345678901",
+    "Payment request of Rs.999 from netflix@icici on your UPI A/c. Ref 512345678901",
+    "Rs.199 will be debited from A/c XX1234 on 15-07 for NETFLIX autopay. Ref 512345678901",
+    "Txn of Rs.5000 on Card XX1234 at AMAZON was declined on 08-07-26. Ref 553201998877",
+    "OTP 456789 for txn of Rs.2,500 on your A/c XX1234. Do not share. Ref 512345678901",
+    "Pre-approved personal loan of Rs 5,00,000 on your A/c XX1234. Apply now Ref OFFER123456",
+    "Your CIBIL score updated. Get credit card on A/c XX1234. Ref 553201998877",
+    "URGENT: A/c XX1234 will be blocked. Verify KYC to receive Rs 10000. Ref 512345678901",
+    "Congratulations! Rs 50000 credited to A/c XX1234. Claim now! Ref 553201998877",
+    "Recharge of Rs 239 successful for 9876543210. Txn ID 512345678901. Plan validity 28 days",
+    "Rs.500 transaction on A/c XX1234 has been reversed on 08-07-26. Ref 512345678901",
+    "Your A/c XX1234 balance is Rs 15,230.50 as on 08-07-26",
+    "Dear customer, minimum balance in A/c XX1234 is Rs 10,000. Maintain to avoid charges",
+]
+
+
+def test_recall_across_major_indian_banks():
+    """Strict filtering must not silently drop real transactions."""
+    missed = [s for s in BANK_CORPUS if not parsing.parse_sms(s).matched]
+    assert not missed, f"real bank SMS rejected: {missed}"
+
+
+def test_no_false_positives_even_with_account_evidence():
+    """An account number or ref id alone must never make junk a transaction."""
+    leaked = [s for s in JUNK_WITH_ACCOUNT_EVIDENCE if parsing.parse_sms(s).matched]
+    assert not leaked, f"junk captured as transactions: {leaked}"
