@@ -437,6 +437,7 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
         conn, "SELECT COUNT(*) c FROM fraud_alerts WHERE user_id=? AND status='open'",
         (user_id,))["c"]
     budgets = budget_status(conn, user_id, month_start.isoformat())
+    flow = money_flow(conn, user_id)
     recurring = detect_recurring(conn, user_id)
     streak = no_spend_stats(conn, user_id)
     tx_count = sum(v[1] for v in totals.values())
@@ -452,9 +453,142 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
         "merchant_breakdown": top, "category_breakdown": cats,
         "trend": _trend(conn, user_id), "budgets": budgets,
         "recurring": recurring, "streak": streak, "tx_count": tx_count,
+        "flow": flow,
         "daily_series": daily_series(conn, user_id),
         "insights": _insights(monthly, weekly, top, cats_full, pending, fraud_open,
                               budgets, recurring, streak["streak"],
                               behaviour_insights(conn, user_id, month_start, monthly)),
         "open_fraud_alerts": fraud_open, "pending_confirmations": pending,
+    }
+
+
+# ── Transfer & refund detection ───────────────────────────────────────────
+# Both correct the *headline numbers*. Without them a self-transfer between the
+# user's own accounts is counted as both spending and income, and a refund
+# inflates income instead of reducing the original spend — so "Total spent" and
+# "Money health" are simply wrong.
+
+TRANSFER_WINDOW_MIN = 90        # a self-transfer settles within ~1.5h
+REFUND_WINDOW_DAYS = 45         # merchant refunds typically land within 45d
+_AMOUNT_EPS = 0.01
+
+
+def _parse_iso(value: str):
+    try:
+        return dt.datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def detect_transfers(conn, user_id: str, window_days: int = 400) -> list[dict]:
+    """Debit+credit of the same amount within minutes = money that never left.
+
+    Returns pairs of transaction ids. Conservative on purpose: equal amounts,
+    a short window, and opposite directions. A false pair would hide real
+    spending, so the bar is deliberately high.
+    """
+    since = (_now() - dt.timedelta(days=window_days)).isoformat()
+    rows = db.all_rows(
+        conn,
+        "SELECT id, amount, type, occurred_at, merchant_name FROM transactions "
+        "WHERE user_id=? AND is_deleted=0 AND occurred_at>=? ORDER BY occurred_at",
+        (user_id, since))
+    debits = [r for r in rows if r["type"] == "expense"]
+    credits = [r for r in rows if r["type"] == "income"]
+    used: set = set()
+    pairs: list[dict] = []
+    for d in debits:
+        dt_d = _parse_iso(d["occurred_at"])
+        if dt_d is None:
+            continue
+        for c in credits:
+            if c["id"] in used:
+                continue
+            if abs(float(c["amount"]) - float(d["amount"])) > _AMOUNT_EPS:
+                continue
+            dt_c = _parse_iso(c["occurred_at"])
+            if dt_c is None:
+                continue
+            if abs((dt_c - dt_d).total_seconds()) <= TRANSFER_WINDOW_MIN * 60:
+                used.add(c["id"])
+                pairs.append({"debit_id": d["id"], "credit_id": c["id"],
+                              "amount": round(float(d["amount"]), 2),
+                              "at": d["occurred_at"]})
+                break
+    return pairs
+
+
+def detect_refunds(conn, user_id: str, window_days: int = 400) -> list[dict]:
+    """A credit from a merchant the user previously paid is a refund.
+
+    Matched to the most recent debit from the same merchant that is at least
+    as large, within the refund window. Reported (not auto-applied) so the
+    user's ledger is never silently rewritten.
+    """
+    since = (_now() - dt.timedelta(days=window_days)).isoformat()
+    rows = db.all_rows(
+        conn,
+        "SELECT id, amount, type, occurred_at, merchant_name FROM transactions "
+        "WHERE user_id=? AND is_deleted=0 AND merchant_name IS NOT NULL "
+        "AND merchant_name != '' AND occurred_at>=? ORDER BY occurred_at",
+        (user_id, since))
+    by_merchant: dict[str, list] = {}
+    for r in rows:
+        by_merchant.setdefault(r["merchant_name"], []).append(r)
+
+    out: list[dict] = []
+    for name, items in by_merchant.items():
+        debits = [i for i in items if i["type"] == "expense"]
+        if not debits:
+            continue
+        for credit in (i for i in items if i["type"] == "income"):
+            c_at = _parse_iso(credit["occurred_at"])
+            if c_at is None:
+                continue
+            best = None
+            for d in debits:
+                d_at = _parse_iso(d["occurred_at"])
+                if d_at is None or d_at > c_at:
+                    continue
+                if (c_at - d_at).days > REFUND_WINDOW_DAYS:
+                    continue
+                if float(d["amount"]) + _AMOUNT_EPS < float(credit["amount"]):
+                    continue        # a refund cannot exceed what was paid
+                if best is None or _parse_iso(d["occurred_at"]) > _parse_iso(best["occurred_at"]):
+                    best = d
+            if best is not None:
+                out.append({"credit_id": credit["id"], "debit_id": best["id"],
+                            "merchant": name,
+                            "amount": round(float(credit["amount"]), 2),
+                            "at": credit["occurred_at"]})
+    return out
+
+
+def money_flow(conn, user_id: str) -> dict:
+    """All-time totals with self-transfers and refunds removed.
+
+    `spent_net` is what the user actually spent; `income_net` excludes money
+    that was only ever their own. The raw figures are kept alongside so the UI
+    can explain the adjustment rather than silently changing a number.
+    """
+    totals = {r["type"]: float(r["s"]) for r in db.all_rows(
+        conn, "SELECT type, COALESCE(SUM(amount),0) s FROM transactions "
+        "WHERE user_id=? AND is_deleted=0 GROUP BY type", (user_id,))}
+    income = round(totals.get("income", 0.0), 2)
+    expense = round(totals.get("expense", 0.0), 2)
+
+    transfers = detect_transfers(conn, user_id)
+    refunds = detect_refunds(conn, user_id)
+    transfer_ids = {p["credit_id"] for p in transfers} | {p["debit_id"] for p in transfers}
+    # A transaction already counted as a transfer must not be counted again.
+    refunds = [r for r in refunds if r["credit_id"] not in transfer_ids]
+
+    transfer_amt = round(sum(p["amount"] for p in transfers), 2)
+    refund_amt = round(sum(r["amount"] for r in refunds), 2)
+    return {
+        "income_raw": income, "expense_raw": expense,
+        "transfer_total": transfer_amt, "refund_total": refund_amt,
+        "income_net": round(income - transfer_amt - refund_amt, 2),
+        "expense_net": round(expense - transfer_amt - refund_amt, 2),
+        "transfers": transfers, "refunds": refunds,
     }

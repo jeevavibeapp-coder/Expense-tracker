@@ -786,3 +786,70 @@ def test_bulk_delete_removes_junk_group(tmp_path):
                                  "action": "delete"})
     assert b"WEIRDSENDER" not in c.get("/transactions").data.upper()
     assert b"All caught up" in c.get("/review").data
+
+
+def test_self_transfer_not_counted_as_spending(tmp_path):
+    """A debit+credit of the same amount minutes apart is the user's own money
+    moving — counting it as both spend and income makes totals simply wrong."""
+    from spendwise import analytics, db as sdb
+    import datetime as _dt
+    path = str(tmp_path / "tf.db")
+    c = create_app(db_path=path, single_user=True, secret_key="s").test_client()
+    today = _dt.date.today().isoformat()
+    for kind in ("expense", "income"):
+        c.post("/transactions", data={"amount": "5000.00", "type": kind,
+               "merchant": "SELF", "category_id": "", "notes": "", "occurred_at": today})
+    conn = sdb.connect(path)
+    uid = sdb.one(conn, "SELECT id FROM users")["id"]
+    flow = analytics.money_flow(conn, uid)
+    assert len(flow["transfers"]) == 1
+    assert flow["transfer_total"] == 5000.0
+    assert flow["expense_net"] == 0.0 and flow["income_net"] == 0.0
+
+
+def test_refund_is_netted_against_the_original_spend(tmp_path):
+    from spendwise import analytics, db as sdb
+    import datetime as _dt
+    path = str(tmp_path / "rf.db")
+    c = create_app(db_path=path, single_user=True, secret_key="s").test_client()
+    today = _dt.date.today()
+    c.post("/transactions", data={"amount": "1200.00", "type": "expense",
+           "merchant": "Amazon", "category_id": "", "notes": "",
+           "occurred_at": (today - _dt.timedelta(days=5)).isoformat()})
+    c.post("/transactions", data={"amount": "1200.00", "type": "income",
+           "merchant": "Amazon", "category_id": "", "notes": "",
+           "occurred_at": today.isoformat()})
+    conn = sdb.connect(path)
+    uid = sdb.one(conn, "SELECT id FROM users")["id"]
+    flow = analytics.money_flow(conn, uid)
+    assert len(flow["refunds"]) == 1 and flow["refund_total"] == 1200.0
+    assert flow["expense_net"] == 0.0
+
+
+def test_refund_larger_than_purchase_is_not_matched(tmp_path):
+    """A credit bigger than any prior debit is income, not a refund."""
+    from spendwise import analytics, db as sdb
+    import datetime as _dt
+    path = str(tmp_path / "rf2.db")
+    c = create_app(db_path=path, single_user=True, secret_key="s").test_client()
+    today = _dt.date.today()
+    c.post("/transactions", data={"amount": "100.00", "type": "expense",
+           "merchant": "Acme", "category_id": "", "notes": "",
+           "occurred_at": (today - _dt.timedelta(days=3)).isoformat()})
+    c.post("/transactions", data={"amount": "50000.00", "type": "income",
+           "merchant": "Acme", "category_id": "", "notes": "",
+           "occurred_at": today.isoformat()})
+    conn = sdb.connect(path)
+    uid = sdb.one(conn, "SELECT id FROM users")["id"]
+    assert analytics.money_flow(conn, uid)["refunds"] == []
+
+
+def test_ingest_rate_limited(tmp_path):
+    """Even with a valid token, ingest must not accept unbounded writes."""
+    c = _su_client(tmp_path)
+    codes = set()
+    for i in range(140):
+        r = c.post("/sms/ingest", data={"body":
+            f"Rs.{10 + i}.00 debited from a/c XX12 to SHOP{i} on 01-07-26 Ref {i:012d}"})
+        codes.add(r.status_code)
+    assert 429 in codes, "rate limit never engaged"

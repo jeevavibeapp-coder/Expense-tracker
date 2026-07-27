@@ -95,6 +95,23 @@
     {% endfor %}
   </div>
 
+  {# Transfers / refunds excluded from real spending — otherwise the headline
+     numbers are simply wrong (a self-transfer counts as both spend and income). #}
+  {% if d.flow and (d.flow.transfer_total > 0 or d.flow.refund_total > 0) %}
+  <div class="card reveal" style="display:flex; gap:10px; align-items:flex-start">
+    <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('repeat') }}</span>
+    <div style="flex:1">
+      <div style="font-weight:700; font-size:13.5px">Not counted as spending</div>
+      <div class="mut" style="font-size:12.5px; margin-top:4px">
+        {% if d.flow.transfer_total > 0 %}{{ cur }} {{ m.money_k(d.flow.transfer_total) }} moved between your own accounts{% endif %}
+        {%- if d.flow.transfer_total > 0 and d.flow.refund_total > 0 %} · {% endif %}
+        {%- if d.flow.refund_total > 0 %}{{ cur }} {{ m.money_k(d.flow.refund_total) }} refunded{% endif %}.
+        Real spending: <b class="num">{{ cur }} {{ m.money_k(d.flow.expense_net) }}</b>.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# Streak + monthly report tiles #}
   {% if d.tx_count > 0 %}
   <div class="tile-row reveal">

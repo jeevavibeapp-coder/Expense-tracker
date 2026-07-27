@@ -125,6 +125,22 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             cached = g._user = auth.get_user(g.conn, uid)
         return cached
 
+    # Bounded in-memory rate limit for the device endpoints. Even with a valid
+    # token, a malfunctioning receiver or a hostile co-installed app must not
+    # be able to drive unbounded writes into the ledger.
+    _ingest_hits: list = []
+    INGEST_MAX_PER_MIN = 120
+
+    def rate_limited() -> bool:
+        now = dt.datetime.now().timestamp()
+        cutoff = now - 60
+        while _ingest_hits and _ingest_hits[0] < cutoff:
+            _ingest_hits.pop(0)
+        if len(_ingest_hits) >= INGEST_MAX_PER_MIN:
+            return True
+        _ingest_hits.append(now)
+        return False
+
     def device_authorized() -> bool:
         """Loopback-only AND (when a device token is configured) a matching
         token header — so a co-installed app can't reach these endpoints.
@@ -625,8 +641,9 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
 
         if action == "delete":
             # "Not a transaction" — junk from one sender, cleared in one tap.
-            for r in rows:
-                db.execute(g.conn, "UPDATE transactions SET is_deleted=1 WHERE id=?", (r["id"],))
+            # Single statement: a 200-row group was previously 200 UPDATEs.
+            db.executemany(g.conn, "UPDATE transactions SET is_deleted=1 WHERE id=?",
+                           [(r["id"],) for r in rows])
             g.conn.commit()
             return redirect(url_for("review_page", removed=len(rows)))
 
@@ -653,14 +670,14 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         canonical = (request.form.get("merchant") or key).strip() or key
         merchant = engine.get_or_create_merchant(
             g.conn, user_id=uid, canonical_name=canonical, category_id=cat) if canonical else None
-        for r in rows:
-            db.execute(g.conn,
-                       "UPDATE transactions SET category_id=?, category_prompted=1, status=?, "
-                       "merchant_id=COALESCE(?, merchant_id), "
-                       "merchant_name=COALESCE(?, merchant_name) WHERE id=?",
-                       (cat, TX_CONFIRMED,
-                        merchant["id"] if merchant else None,
-                        merchant["canonical_name"] if merchant else None, r["id"]))
+        db.executemany(
+            g.conn,
+            "UPDATE transactions SET category_id=?, category_prompted=1, status=?, "
+            "merchant_id=COALESCE(?, merchant_id), "
+            "merchant_name=COALESCE(?, merchant_name) WHERE id=?",
+            [(cat, TX_CONFIRMED,
+              merchant["id"] if merchant else None,
+              merchant["canonical_name"] if merchant else None, r["id"]) for r in rows])
         if merchant:
             # Learn from EVERY transaction the user just confirmed, not just
             # one — a bulk confirmation is that many pieces of evidence, so the
@@ -872,6 +889,9 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         """
         if not device_authorized():
             abort(403)
+        if rate_limited():
+            # 429 tells the receiver to re-queue rather than drop the message.
+            return {"captured": False, "reason": "rate_limited"}, 429
         uid = auth.ensure_local_user(g.conn)
         body = request.form.get("body") or request.form.get("sms") or ""
         parsed = parse_sms(body)
