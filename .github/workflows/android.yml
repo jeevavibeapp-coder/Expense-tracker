@@ -22,8 +22,8 @@ jobs:
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Build React App
-        run: npm run build
+      # NOTE: no web build step. The APK bundles only webshell/ (a static
+      # loading screen); the real UI is served by the embedded Flask app.
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4

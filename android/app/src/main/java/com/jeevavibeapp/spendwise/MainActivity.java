@@ -161,8 +161,18 @@ public class MainActivity extends BridgeActivity {
         try {
             android.webkit.WebView wv = getBridge().getWebView();
             if (wv != null && wv.canGoBack()) {
-                wv.goBack();
-                return;
+                // Only walk back into the app's own (loopback) pages. Anything
+                // else in history is the bundled loading shell — backing into
+                // it would strand the user outside the real app.
+                android.webkit.WebBackForwardList list = wv.copyBackForwardList();
+                int prev = list.getCurrentIndex() - 1;
+                if (prev >= 0) {
+                    String url = list.getItemAtIndex(prev).getUrl();
+                    if (url != null && url.startsWith(SERVER_URL)) {
+                        wv.goBack();
+                        return;
+                    }
+                }
             }
         } catch (Throwable ignored) {
         }
@@ -304,7 +314,22 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void run() {
                     try {
-                        getBridge().getWebView().loadUrl(SERVER_URL);
+                        final android.webkit.WebView wv = getBridge().getWebView();
+                        wv.loadUrl(SERVER_URL);
+                        // Drop the bundled loading shell from history once the
+                        // real app is up, so Back can never return to it.
+                        wv.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    String cur = wv.getUrl();
+                                    if (cur != null && cur.startsWith(SERVER_URL)) {
+                                        wv.clearHistory();
+                                    }
+                                } catch (Throwable ignored) {
+                                }
+                            }
+                        }, 1200);
                     } catch (Throwable t) {
                         Log.e(TAG, "Failed to load server URL in WebView", t);
                     }
