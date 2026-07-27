@@ -741,3 +741,48 @@ def test_no_false_positives_even_with_account_evidence():
     """An account number or ref id alone must never make junk a transaction."""
     leaked = [s for s in JUNK_WITH_ACCOUNT_EVIDENCE if parsing.parse_sms(s).matched]
     assert not leaked, f"junk captured as transactions: {leaked}"
+
+
+def test_bulk_review_groups_by_merchant(tmp_path):
+    """209 captures one-by-one is unusable; they must group by merchant."""
+    c = _su_client(tmp_path)
+    # Three captures from one unknown merchant + one from another.
+    for i, ref in enumerate(("111111111111", "222222222222", "333333333333")):
+        c.post("/sms/ingest", data={"sender": "VK-HDFCBK", "body":
+               f"Rs.{100 + i}.00 debited from a/c XX12 to RAJUKIRANA on 0{i+1}-07-26 Ref {ref}"})
+    c.post("/sms/ingest", data={"body":
+           "Rs.500.00 debited from a/c XX12 to LOCALSTORE on 05-07-26 Ref 444444444444"})
+    page = c.get("/review")
+    assert page.status_code == 200
+    assert b"RAJUKIRANA" in page.data.upper() and b"LOCALSTORE" in page.data.upper()
+    assert b"3 transactions" in page.data          # grouped, not listed individually
+
+
+def test_bulk_categorize_clears_whole_group_and_teaches(tmp_path):
+    c = _su_client(tmp_path)
+    for i, ref in enumerate(("111111111111", "222222222222", "333333333333")):
+        c.post("/sms/ingest", data={"body":
+               f"Rs.{100 + i}.00 debited from a/c XX12 to RAJUKIRANA on 0{i+1}-07-26 Ref {ref}"})
+    import re
+    cat_id = re.search(rb'name="category_id" value="([0-9a-f]+)"',
+                       c.get("/review").data).group(1).decode()
+    c.post("/review/bulk", data={"key": "RAJUKIRANA", "type": "expense",
+                                 "category_id": cat_id})
+    # All three sorted in one action.
+    assert b"All caught up" in c.get("/review").data
+    assert b"New transaction from SMS" not in c.get("/dashboard").data
+    # And the engine learned it: a new RAJUKIRANA message needs no category.
+    j = c.post("/sms/ingest", data={"body":
+        "Rs.999.00 debited from a/c XX12 to RAJUKIRANA on 09-07-26 Ref 555555555555"}).get_json()
+    assert j["captured"] is True and j["needs_category"] is False
+
+
+def test_bulk_delete_removes_junk_group(tmp_path):
+    c = _su_client(tmp_path)
+    for ref in ("111111111111", "222222222222"):
+        c.post("/sms/ingest", data={"body":
+               f"Rs.700.00 debited from a/c XX12 to WEIRDSENDER on 01-07-26 Ref {ref}"})
+    c.post("/review/bulk", data={"key": "WEIRDSENDER", "type": "expense",
+                                 "action": "delete"})
+    assert b"WEIRDSENDER" not in c.get("/transactions").data.upper()
+    assert b"All caught up" in c.get("/review").data

@@ -181,6 +181,23 @@
       if (cur && nxt) cur.innerHTML = nxt.innerHTML;
     }
 
+    /* Overlays live OUTSIDE <main>, so a plain main-swap would leave them
+       stale — e.g. the SMS categorize modal staying mounted on top of the
+       bulk-review screen, which is exactly the page meant to clear it.
+       Add / replace / remove them to match the incoming page. */
+    function syncOverlay(doc, sel) {
+      var cur = document.querySelector(sel), nxt = doc.querySelector(sel);
+      if (nxt) {
+        if (cur) cur.parentNode.replaceChild(nxt.cloneNode(true), cur);
+        else {
+          var host = document.querySelector(".app") || document.body;
+          host.appendChild(nxt.cloneNode(true));
+        }
+      } else if (cur) {
+        cur.parentNode.removeChild(cur);
+      }
+    }
+
     function render(payload, url, opts) {
       var doc;
       try { doc = new DOMParser().parseFromString(payload.html, "text/html"); }
@@ -197,6 +214,8 @@
       var main = document.querySelector("main");
       main.innerHTML = nextMain.innerHTML; // swap ONLY the page body — shell stays mounted
       execScripts(main);                   // re-run per-page inline scripts (import.html)
+      syncOverlay(doc, ".cat-modal");      // SMS categorize popup
+      syncOverlay(doc, ".perm-banner");    // SMS permission nudge
 
       var finalUrl = payload.url || url;
       if (opts.push) { history.pushState({ spa: 1, scroll: 0 }, "", finalUrl); window.scrollTo(0, 0); }

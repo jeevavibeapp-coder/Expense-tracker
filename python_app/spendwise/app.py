@@ -214,6 +214,13 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 "('pending_confirmation','needs_review')) r", {"u": uid})
             nav_fraud, nav_review = counts["f"], counts["r"]
             # Auto-captured SMS transactions still awaiting a category → popup.
+            # Never on the bulk-review screen: the popup is a modal overlay and
+            # would cover the very page built to clear these in bulk.
+            if request.endpoint == "review_page":
+                return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
+                        "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review,
+                        "cat_prompts": [], "prompt_categories": [],
+                        "nav_categories": categories_for(uid), "sms_denied": sms_denied}
             cat_prompts = db.all_rows(
                 g.conn, "SELECT * FROM transactions WHERE user_id=? AND category_id IS NULL "
                 "AND source='sms' AND is_deleted=0 AND COALESCE(category_prompted,0)=0 "
@@ -563,6 +570,106 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 db.execute(g.conn, "UPDATE transactions SET category_prompted=1 WHERE id=?", (tx_id,))
             g.conn.commit()
         return redirect(request.referrer or url_for("dashboard"))
+
+    @app.get("/review")
+    def review_page():
+        """Bulk review: group everything awaiting review BY MERCHANT.
+
+        Reviewing hundreds of captures one at a time is not realistic — but
+        they come from far fewer merchants, so one decision per merchant
+        clears them all.
+        """
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        rows = db.all_rows(
+            g.conn,
+            "SELECT COALESCE(NULLIF(merchant_name,''), NULLIF(raw_merchant,''), '') k, "
+            "COUNT(*) n, SUM(amount) total, MIN(occurred_at) first_at, "
+            "MAX(occurred_at) last_at, type, MAX(sms_body) sample, MAX(sms_sender) sender "
+            "FROM transactions WHERE user_id=? AND is_deleted=0 AND source='sms' "
+            "AND (category_id IS NULL OR status IN (?,?)) "
+            "GROUP BY k, type ORDER BY n DESC, total DESC",
+            (uid, TX_PENDING, TX_REVIEW))
+        groups = [dict(r) for r in rows]
+        pending_total = sum(gp["n"] for gp in groups)
+        s = settings_for(uid)
+        return render_template("review.html", groups=groups, pending_total=pending_total,
+                               categories=categories_for(uid), currency=s["currency"],
+                               user=current_user(), active="transactions",
+                               back_href="/transactions")
+
+    @app.post("/review/bulk")
+    def review_bulk():
+        """Apply one decision to every unreviewed capture from a merchant."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        key = (request.form.get("key") or "").strip()
+        type_ = request.form.get("type") or "expense"
+        action = request.form.get("action") or "categorize"
+        rows = db.all_rows(
+            g.conn,
+            "SELECT * FROM transactions WHERE user_id=? AND is_deleted=0 AND source='sms' "
+            "AND COALESCE(NULLIF(merchant_name,''), NULLIF(raw_merchant,''), '')=? "
+            "AND type=? AND (category_id IS NULL OR status IN (?,?))",
+            (uid, key, type_, TX_PENDING, TX_REVIEW))
+        if not rows:
+            return redirect(url_for("review_page"))
+
+        if action == "delete":
+            # "Not a transaction" — junk from one sender, cleared in one tap.
+            for r in rows:
+                db.execute(g.conn, "UPDATE transactions SET is_deleted=1 WHERE id=?", (r["id"],))
+            g.conn.commit()
+            return redirect(url_for("review_page", removed=len(rows)))
+
+        cat = request.form.get("category_id") or None
+        new_name = (request.form.get("new_category") or "").strip()
+        if not cat and new_name:
+            existing = db.one(g.conn, "SELECT id FROM categories WHERE user_id=? "
+                              "AND lower(name)=?", (uid, new_name.lower()))
+            if existing:
+                cat = existing["id"]
+            else:
+                cat = db.new_id()
+                db.execute(g.conn, "INSERT INTO categories(id,user_id,name,type,icon,color) "
+                           "VALUES (?,?,?,?,?,?)",
+                           (cat, uid, new_name[:40], type_, "Tag", "#7c5cff"))
+        if cat and not db.one(g.conn, "SELECT id FROM categories WHERE id=? AND user_id=?",
+                              (cat, uid)):
+            cat = None
+        if not cat:
+            return redirect(url_for("review_page"))
+
+        # Name the merchant once for the whole group, and teach the engine so
+        # future messages from it are categorised automatically.
+        canonical = (request.form.get("merchant") or key).strip() or key
+        merchant = engine.get_or_create_merchant(
+            g.conn, user_id=uid, canonical_name=canonical, category_id=cat) if canonical else None
+        for r in rows:
+            db.execute(g.conn,
+                       "UPDATE transactions SET category_id=?, category_prompted=1, status=?, "
+                       "merchant_id=COALESCE(?, merchant_id), "
+                       "merchant_name=COALESCE(?, merchant_name) WHERE id=?",
+                       (cat, TX_CONFIRMED,
+                        merchant["id"] if merchant else None,
+                        merchant["canonical_name"] if merchant else None, r["id"]))
+        if merchant:
+            # Learn from EVERY transaction the user just confirmed, not just
+            # one — a bulk confirmation is that many pieces of evidence, so the
+            # engine ends up genuinely confident about this merchant's amounts
+            # and timing. Capped so a huge group stays fast.
+            for taught in rows[:25]:
+                if not taught["raw_merchant"]:
+                    continue
+                engine.record_confirmation(
+                    g.conn, user_id=uid, raw_name=taught["raw_merchant"],
+                    merchant_name=merchant["canonical_name"], amount=taught["amount"],
+                    category_id=cat,
+                    occurred_at=dt.datetime.fromisoformat(taught["occurred_at"]))
+        g.conn.commit()
+        return redirect(url_for("review_page", done=len(rows)))
 
     @app.post("/sms/purge")
     def sms_purge():

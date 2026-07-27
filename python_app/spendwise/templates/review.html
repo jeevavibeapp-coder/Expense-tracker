@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Review · {{ app_name }}{% endblock %}
+{% block heading %}Review{% endblock %}
+{% block subhead %}<div class="sub">{{ pending_total }} to sort · grouped by merchant</div>{% endblock %}
+{% block content %}
+<div class="screen stack">
+
+  {% if request.args.get('done') %}
+  <div class="flash">Sorted {{ request.args.get('done') }} transaction(s).</div>{% endif %}
+  {% if request.args.get('removed') %}
+  <div class="flash">Removed {{ request.args.get('removed') }} transaction(s).</div>{% endif %}
+
+  {% if groups %}
+  <div class="card" style="display:flex; gap:10px; align-items:center; padding:12px 14px">
+    <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 34px">{{ m.icon('sparkles') }}</span>
+    <div style="flex:1; font-size:12.5px" class="mut">
+      One tap sorts <b>every</b> transaction from that merchant — and teaches
+      SpendWise to file the next one automatically.
+    </div>
+  </div>
+
+  {% for gp in groups %}
+  {% set key = gp['k'] or 'Unknown merchant' %}
+  <div class="card stack" style="gap:10px">
+    <div style="display:flex; align-items:center; gap:10px">
+      {{ m.avatar(key) }}
+      <div style="flex:1; min-width:0">
+        <div style="font-weight:700; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ key }}</div>
+        <div class="faint" style="font-size:11.5px">
+          {{ gp['n'] }} transaction{{ '' if gp['n'] == 1 else 's' }} ·
+          {{ gp['first_at'][:10] }}{% if gp['first_at'][:10] != gp['last_at'][:10] %} → {{ gp['last_at'][:10] }}{% endif %}
+          {%- if gp['sender'] %} · {{ gp['sender'] }}{% endif %}
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="num {{ gp['type'] }}" style="font-weight:800; font-size:14px">
+          {{ '+' if gp['type']=='income' else '–' }}{{ currency }} {{ m.money_k(gp['total']) }}</div>
+        <div class="faint" style="font-size:11px">{{ gp['type'] }}</div>
+      </div>
+    </div>
+
+    {% if gp['sample'] %}
+    <details>
+      <summary class="faint" style="font-size:11.5px; cursor:pointer">Show a sample message</summary>
+      <div class="cat-sms" style="margin-top:8px">{{ gp['sample'] }}</div>
+    </details>
+    {% endif %}
+
+    <form method="post" action="/review/bulk">
+      <input type="hidden" name="key" value="{{ gp['k'] }}">
+      <input type="hidden" name="type" value="{{ gp['type'] }}">
+      <div class="cat-chips">
+        {% for c in categories if c['type'] == gp['type'] %}
+        <button class="cat-chip" type="submit" name="category_id" value="{{ c['id'] }}">{{ c['name'] }}</button>
+        {% endfor %}
+      </div>
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <input name="new_category" placeholder="Or a new category…" maxlength="40"
+               style="flex:1; padding:9px 11px; font-size:13px">
+        <button class="btn-soft btn-sm" type="submit">Create</button>
+      </div>
+    </form>
+
+    <form method="post" action="/review/bulk"
+          onsubmit="return confirm('Delete all {{ gp['n'] }} transaction(s) from “{{ key }}”? Use this for messages that were not real transactions.')">
+      <input type="hidden" name="key" value="{{ gp['k'] }}">
+      <input type="hidden" name="type" value="{{ gp['type'] }}">
+      <input type="hidden" name="action" value="delete">
+      <button class="btn-ghost btn-sm" type="submit" style="width:100%; color:var(--expense)">
+        Not a transaction — remove all {{ gp['n'] }}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <div class="empty"><div class="ei" style="color:var(--income)">{{ m.icon('check') }}</div>
+    <h3>All caught up</h3>
+    <p>Nothing is waiting for review. New captures will appear here.</p>
+    <a class="btn btn-sm" href="/transactions" style="margin-top:14px">Back to activity</a></div>
+  {% endif %}
+</div>
+{% endblock %}

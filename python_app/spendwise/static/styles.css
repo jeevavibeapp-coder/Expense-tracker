@@ -507,3 +507,9 @@ summary.tx::-webkit-details-marker { display: none; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   max-height: 78px; overflow: auto; word-break: break-word;
 }
+
+/* Every inline icon needs an intrinsic size. Without this an <svg> with only
+   a viewBox stretches to fill its container — which rendered a full-width
+   envelope inside the Add-transaction sheet. Specific rules (.tab svg, .fab
+   svg, …) still win on specificity. */
+.ic { width: 20px; height: 20px; flex: none; vertical-align: -4px; }

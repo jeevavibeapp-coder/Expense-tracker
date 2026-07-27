@@ -59,7 +59,12 @@
       <h3 style="flex:1">Needs your review</h3>
       <span class="badge badge-mid">{{ pending|length }}</span>
     </div>
-    <div class="mut" style="font-size:12.5px; margin-bottom:6px">Confirm the real merchant — the engine learns it for next time.</div>
+    <div class="mut" style="font-size:12.5px; margin-bottom:8px">Confirm the real merchant — the engine learns it for next time.</div>
+    {% if pending|length > 3 %}
+    <a class="btn btn-sm" href="/review" style="display:block; text-align:center; margin-bottom:10px">
+      Sort all {{ nav_review }} by merchant →
+    </a>
+    {% endif %}
     {% for t in pending %}
     <form class="qrow2" method="post" action="/transactions/{{ t['id'] }}/confirm">
       <div class="qrow-top">

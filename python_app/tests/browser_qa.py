@@ -133,7 +133,26 @@ def main() -> int:
         check(page.evaluate("window.__spa_probe2") == "alive",
               "Opening the #add sheet caused a page reload")
 
-        # 9) The export.csv download link must not be intercepted (has download attr).
+        # 9) Overlays outside <main> must not go stale across instant-nav:
+        #    the SMS popup must not linger on top of the bulk-review screen.
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        if page.locator(".cat-modal").count() > 0:
+            page.evaluate("document.querySelector('.cat-modal a[href=\"/review\"]')"
+                          "?.click()")
+            page.wait_for_timeout(900)
+            check(page.locator(".cat-modal").count() == 0,
+                  "SMS popup stayed mounted after navigating to /review")
+
+        # 10) No icon may render oversized (a bare viewBox svg once filled the sheet).
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        page.click(".fab")
+        page.wait_for_timeout(400)
+        oversized = page.evaluate(
+            "()=>[...document.querySelectorAll('svg')]"
+            ".filter(s=>s.getBoundingClientRect().width>80).length")
+        check(oversized == 0, f"{oversized} oversized icon(s) rendered in the add sheet")
+
+        # 11) The export.csv download link must not be intercepted (has download attr).
         page.goto(BASE + "/settings", wait_until="networkidle")
         dl = page.query_selector("a[href='/export.csv']")
         check(dl is not None and dl.get_attribute("download") is not None,

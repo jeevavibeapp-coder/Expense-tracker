@@ -137,6 +137,9 @@
         </div>
         <div class="cat-foot">
           <button class="btn-ghost btn-sm" type="submit" name="new_category" value="">Skip</button>
+          {% if cat_prompts|length > 3 %}
+          <a class="btn-ghost btn-sm" href="/review">Sort all {{ cat_prompts|length }} at once →</a>
+          {% endif %}
         </div>
       </form>
       <form method="post" action="/sms/prompts/dismiss">
