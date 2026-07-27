@@ -31,7 +31,9 @@ android {
             version "3.11"
             buildPython "python3"
             pip {
-                install "Flask"
+                install "Flask==3.1.0"
+                // Production WSGI server (pure Python, Chaquopy-compatible).
+                install "waitress==3.0.2"
             }
         }
     }
@@ -45,24 +47,44 @@ android {
         }
     }
     signingConfigs {
-        spendwise {
-            // CI/local overrides via environment; the committed dev keystore is
-            // the fallback so builds stay reproducible. Before a store release,
-            // set these secrets and rotate the key (see README).
+        // DEBUG-ONLY key. Debug signing material is not a secret by design
+        // (Android ships a world-known debug keystore), and keeping a stable
+        // one means sideloaded debug builds keep updating over an existing
+        // install instead of forcing an uninstall — which would destroy the
+        // user's on-device financial history.
+        // It MUST NOT be used for release.
+        devDebug {
+            storeFile file('spendwise.jks')
+            storePassword 'spendwise'
+            keyAlias 'spendwise'
+            keyPassword 'spendwise'
+        }
+        // Release signing comes ONLY from the environment (CI secrets or a
+        // local, gitignored keystore). No production key material lives in the
+        // repo: a committed release key lets anyone sign an APK that installs
+        // as a legitimate update over the real app and inherits its sandbox —
+        // including the finance database.
+        release {
             def ksFile = System.getenv('SPENDWISE_KEYSTORE_FILE')
-            storeFile file(ksFile ?: 'spendwise.jks')
-            storePassword System.getenv('SPENDWISE_KEYSTORE_PASSWORD') ?: 'spendwise'
-            keyAlias System.getenv('SPENDWISE_KEY_ALIAS') ?: 'spendwise'
-            keyPassword System.getenv('SPENDWISE_KEY_PASSWORD') ?: 'spendwise'
+            if (ksFile) {
+                storeFile file(ksFile)
+                storePassword System.getenv('SPENDWISE_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('SPENDWISE_KEY_ALIAS')
+                keyPassword System.getenv('SPENDWISE_KEY_PASSWORD')
+            }
         }
     }
     buildTypes {
         debug {
-            signingConfig signingConfigs.spendwise
+            signingConfig signingConfigs.devDebug
         }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.spendwise
+            // Only sign when real credentials are present; otherwise emit an
+            // unsigned APK rather than silently signing with a fallback key.
+            if (System.getenv('SPENDWISE_KEYSTORE_FILE')) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

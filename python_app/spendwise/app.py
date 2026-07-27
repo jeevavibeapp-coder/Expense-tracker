@@ -22,7 +22,11 @@ from flask import (
 )
 
 from . import analytics, auth, db, engine, fraud
-from .parsing import parse_sms
+from .parsing import PARSER_VERSION, parse_sms
+
+
+def parsing_version() -> str:
+    return PARSER_VERSION
 
 TX_CONFIRMED, TX_PENDING, TX_REVIEW = "confirmed", "pending_confirmation", "needs_review"
 
@@ -36,9 +40,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     # co-installed app can't POST to the loopback ingest endpoints.
     app.config["DEVICE_TOKEN"] = device_token or os.environ.get("SPENDWISE_DEVICE_TOKEN") or None
 
-    # Initialise the schema once at startup.
-    init_conn = db.connect(app.config["DB_PATH"])
-    db.init_db(init_conn)
+    # Open with integrity verification, pre-migration backup and automatic
+    # recovery. db_status records anything unusual so the UI can be honest
+    # about it rather than failing silently.
+    init_conn, db_status = db.open_database(app.config["DB_PATH"])
+    app.config["DB_STATUS"] = db_status
 
     # A stable secret so sessions survive process restarts on-device. Explicit
     # arg / env win; otherwise persist a generated key in app_state.
@@ -870,6 +876,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         body = request.form.get("body") or request.form.get("sms") or ""
         parsed = parse_sms(body)
         if not parsed.matched or not parsed.amount or parsed.amount <= 0:
+            # Record what we could not read. Banks change formats without
+            # notice, and the failure is otherwise SILENT — transactions just
+            # stop appearing. Stored on-device only; nothing is transmitted.
+            _record_parse_miss(uid, body, request.form.get("sender"),
+                               "no_amount" if not parsed.amount else "not_transactional")
             return {"captured": False, "reason": "not_financial"}, 200
         # Idempotency: the same message must not be captured twice (the receiver
         # may both POST live and re-queue on a flaky connection). Prefer the bank
@@ -1027,6 +1038,38 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn.commit()
         return redirect(url_for("fraud_page"))
 
+    def _record_parse_miss(uid: str, body: str, sender, reason: str) -> None:
+        """Local-only log of unreadable bank messages (see /sms/misses).
+
+        Only messages that already looked financial reach ingest, so this stays
+        small. Deduplicated by content hash with a seen counter so a repeated
+        format shows its true frequency.
+        """
+        body = (body or "").strip()
+        if not body:
+            return
+        digest = hashlib.sha1(body.encode("utf-8")).hexdigest()
+        now = dt.datetime.now().isoformat()
+        try:
+            db.execute(
+                g.conn,
+                "INSERT INTO parse_misses(id,user_id,sender,body,body_hash,reason,"
+                "parser_version,seen_count,first_seen_at,last_seen_at) "
+                "VALUES (?,?,?,?,?,?,?,1,?,?) "
+                "ON CONFLICT(user_id, body_hash) DO UPDATE SET "
+                "seen_count = seen_count + 1, last_seen_at = excluded.last_seen_at, "
+                "parser_version = excluded.parser_version",
+                (db.new_id(), uid, (sender or "")[:32] or None, body[:600], digest,
+                 reason, parsing_version(), now, now))
+            g.conn.commit()
+        except sqlite3.DatabaseError:
+            pass          # diagnostics must never break capture
+
+    def _csv_cell(v):
+        """Neutralise spreadsheet formula injection (=, +, -, @ prefixes)."""
+        text = "" if v is None else str(v)
+        return "'" + text if text[:1] in ("=", "+", "-", "@") else text
+
     def sms_status(uid: str) -> dict:
         """Diagnostics for the auto-capture pipeline, so the user can SEE
         whether SMS capture is working instead of guessing."""
@@ -1044,12 +1087,19 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     queued = sum(1 for line in f if line.strip())
         except OSError:
             queued = 0
+        try:
+            misses = db.one(g.conn, "SELECT COUNT(*) c, COALESCE(SUM(seen_count),0) n "
+                            "FROM parse_misses WHERE user_id=?", (uid,))
+            miss_kinds, miss_total = misses["c"], misses["n"]
+        except sqlite3.DatabaseError:
+            miss_kinds, miss_total = 0, 0
         unreviewed = db.one(
             g.conn, "SELECT COUNT(*) c FROM transactions WHERE user_id=? AND source='sms' "
             "AND is_deleted=0 AND status IN (?,?) AND category_id IS NULL",
             (uid, TX_PENDING, TX_REVIEW))["c"]
         return {"captured": row["c"], "last": row["last"], "permission": perm,
-                "queued": queued, "unreviewed": unreviewed}
+                "queued": queued, "unreviewed": unreviewed,
+                "miss_kinds": miss_kinds, "miss_total": miss_total}
 
     # ── Routes: profile & settings ───────────────────────────────────────
     @app.post("/profile")
@@ -1107,22 +1157,45 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             "SELECT t.*, c.name category_name FROM transactions t "
             "LEFT JOIN categories c ON c.id = t.category_id "
             "WHERE t.user_id=? AND t.is_deleted=0 ORDER BY t.occurred_at DESC", (uid,))
-        def _cell(v):
-            # Neutralise spreadsheet formula injection (=, +, -, @ prefixes).
-            s = "" if v is None else str(v)
-            return "'" + s if s[:1] in ("=", "+", "-", "@") else s
-
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["date", "type", "amount", "merchant", "category", "notes",
                     "reference", "source", "status"])
         for r in rows:
             w.writerow([r["occurred_at"], r["type"], r["amount"],
-                        _cell(r["merchant_name"] or r["raw_merchant"]),
-                        _cell(r["category_name"]), _cell(r["notes"]),
-                        _cell(r["reference_number"]), r["source"], r["status"]])
+                        _csv_cell(r["merchant_name"] or r["raw_merchant"]),
+                        _csv_cell(r["category_name"]), _csv_cell(r["notes"]),
+                        _csv_cell(r["reference_number"]), r["source"], r["status"]])
         return Response(buf.getvalue(), mimetype="text/csv", headers={
             "Content-Disposition": "attachment; filename=spendwise-transactions.csv"})
+
+    @app.get("/sms/misses.csv")
+    def export_parse_misses():
+        """Export unreadable bank messages so a parser gap can be diagnosed.
+
+        Explicit user action, local file — consistent with zero telemetry:
+        nothing is ever transmitted automatically.
+        """
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        try:
+            rows = db.all_rows(
+                g.conn, "SELECT sender, body, reason, parser_version, seen_count, "
+                "first_seen_at, last_seen_at FROM parse_misses WHERE user_id=? "
+                "ORDER BY seen_count DESC", (uid,))
+        except sqlite3.DatabaseError:
+            rows = []
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["sender", "body", "reason", "parser_version", "seen_count",
+                    "first_seen_at", "last_seen_at"])
+        for r in rows:
+            w.writerow([_csv_cell(r["sender"]), _csv_cell(r["body"]), r["reason"],
+                        r["parser_version"], r["seen_count"], r["first_seen_at"],
+                        r["last_seen_at"]])
+        return Response(buf.getvalue(), mimetype="text/csv", headers={
+            "Content-Disposition": "attachment; filename=spendwise-parse-misses.csv"})
 
     @app.get("/healthz")
     def healthz():

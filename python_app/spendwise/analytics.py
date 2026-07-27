@@ -6,6 +6,10 @@ import datetime as dt
 from . import db
 
 
+# Recurrence beyond this cannot predict a next due date; bounds the scan.
+RECURRING_WINDOW_DAYS = 400
+
+
 def _now() -> dt.datetime:
     """Device-local wall-clock time stamped as UTC.
 
@@ -136,11 +140,16 @@ def detect_recurring(conn, user_id: str) -> list[dict]:
     date. A merchant qualifies with ≥3 charges (≥4 for weekly) at a
     weekly/monthly/quarterly cadence and a stable amount (range within 25% of
     the mean) — two coincidental purchases are not a bill."""
+    # Bounded window: recurrence older than ~13 months cannot inform a "next
+    # due" prediction, and an unbounded scan made this O(total history) on the
+    # most-visited screen (≈18k rows after 5 years).
+    since = (_now() - dt.timedelta(days=RECURRING_WINDOW_DAYS)).isoformat()
     rows = db.all_rows(
         conn,
         "SELECT merchant_name n, amount, occurred_at FROM transactions WHERE user_id=? "
         "AND type='expense' AND is_deleted=0 AND merchant_name IS NOT NULL "
-        "AND merchant_name != '' ORDER BY merchant_name, occurred_at", (user_id,))
+        "AND merchant_name != '' AND occurred_at >= ? "
+        "ORDER BY merchant_name, occurred_at", (user_id, since))
     by_merchant: dict[str, list] = {}
     for r in rows:
         by_merchant.setdefault(r["n"], []).append((r["occurred_at"][:10], float(r["amount"])))
@@ -269,10 +278,14 @@ def build_report(conn, user_id: str, month: str) -> dict:
 
 
 def _trend(conn, user_id: str, months: int = 6) -> list[dict]:
+    # Only the rendered months are needed; scanning all history to then slice
+    # the last N was pure waste.
+    since = (_now() - dt.timedelta(days=31 * (months + 1))).isoformat()
     rows = db.all_rows(
         conn,
         "SELECT substr(occurred_at,1,7) p, type, SUM(amount) v FROM transactions "
-        "WHERE user_id=? AND is_deleted=0 GROUP BY p, type ORDER BY p", (user_id,))
+        "WHERE user_id=? AND is_deleted=0 AND occurred_at >= ? "
+        "GROUP BY p, type ORDER BY p", (user_id, since))
     buckets: dict[str, dict] = {}
     for r in rows:
         b = buckets.setdefault(r["p"], {"income": 0.0, "expense": 0.0})

@@ -90,6 +90,18 @@
     <div class="mut" style="font-size:12.5px">Bank &amp; UPI messages are captured automatically and parsed on this device — they never leave your phone.</div>
     {% endif %}
 
+    {% if sms.miss_kinds %}
+    <div style="border-top:1px solid var(--hairline); padding-top:12px">
+      <div style="font-size:13px; font-weight:700">{{ sms.miss_kinds }} message type(s) not understood</div>
+      <div class="mut" style="font-size:12px; margin-top:4px">
+        {{ sms.miss_total }} bank message(s) looked financial but could not be read —
+        usually a format this build doesn't know yet. They stay on your device.
+      </div>
+      <a class="btn-soft btn-sm" href="/sms/misses.csv" download
+         style="display:block; text-align:center; margin-top:8px">Export unreadable messages</a>
+    </div>
+    {% endif %}
+
     {% if request.args.get('purged') %}
     <div class="flash">Removed {{ request.args.get('purged') }} unreviewed capture(s).</div>
     {% endif %}

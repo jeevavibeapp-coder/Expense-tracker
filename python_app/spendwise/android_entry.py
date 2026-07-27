@@ -29,8 +29,23 @@ def _run(db_path: str, host: str, port: int, token: "str | None") -> None:
     from spendwise.app import create_app
 
     app = create_app(db_path=db_path, single_user=True, device_token=token)
-    # Werkzeug's dev server is sufficient for a single on-device user.
-    app.run(host=host, port=port, threaded=True, use_reloader=False, debug=False)
+    try:
+        # waitress is pure Python (py3-none-any), so it runs under Chaquopy.
+        # Werkzeug's dev server is explicitly not for production: it has no
+        # connection cap or timeouts, so any co-installed app could open
+        # sockets to the loopback port until the process is killed — taking an
+        # in-flight ledger write with it. These limits bound that.
+        from waitress import serve
+        serve(app, host=host, port=port,
+              threads=4,               # a single on-device user
+              connection_limit=32,     # refuse floods instead of exhausting RAM
+              channel_timeout=30,      # reap slow/stalled sockets (slowloris)
+              ident=None,              # don't advertise the server banner
+              clear_untrusted_proxy_headers=True)
+    except ImportError:
+        # Never leave the user without an app if the wheel is missing from a
+        # given build; fall back with the same bounded intent.
+        app.run(host=host, port=port, threaded=True, use_reloader=False, debug=False)
 
 
 def _ingest(base_url: str, token: "str | None", item: dict) -> None:

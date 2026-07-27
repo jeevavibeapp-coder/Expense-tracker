@@ -167,6 +167,36 @@ def decide(total: int, *, auto: int, confirm: int) -> str:
     return DECISION_MANUAL
 
 
+def _learning_pool(conn, user_id: str) -> list:
+    """Candidate rows for fuzzy matching, cached for the life of the request.
+
+    resolve() is called once per pending row when rendering the review queue
+    (up to 12), and every miss previously re-read 400 learning rows — ~4,800
+    row loads for one page view. The table is small and immutable within a
+    request, so read it at most once.
+    """
+    cache = getattr(conn, "_sw_learning_pool", None)
+    if cache is not None and cache[0] == user_id:
+        return cache[1]
+    rows = db.all_rows(
+        conn, "SELECT * FROM learning WHERE user_id=? ORDER BY "
+        "confirmation_count DESC LIMIT 400", (user_id,))
+    try:
+        conn._sw_learning_pool = (user_id, rows)
+    except AttributeError:          # pragma: no cover - exotic connection types
+        pass
+    return rows
+
+
+def invalidate_learning_cache(conn) -> None:
+    """Drop the per-request fuzzy pool after any write to `learning`, so a
+    confirmation is never resolved against stale training."""
+    try:
+        conn._sw_learning_pool = None
+    except AttributeError:          # pragma: no cover
+        pass
+
+
 def _token_overlap(a: str, b: str) -> float:
     """Jaccard overlap between token sets — 'SWIGGY INSTAMART' vs 'SWIGGY'
     still finds the learning the user already did."""
@@ -215,9 +245,7 @@ def resolve(conn, *, user_id: str, raw_name: str, amount=None, category_id=None,
     # learned "SWIGGY") should reuse the training, mildly discounted.
     fuzzy_penalty = 1.0
     if not rows:
-        all_rows_ = db.all_rows(
-            conn, "SELECT * FROM learning WHERE user_id=? ORDER BY "
-            "confirmation_count DESC LIMIT 400", (user_id,))
+        all_rows_ = _learning_pool(conn, user_id)
         scored = [(r, _token_overlap(normalized, r["raw_name"])) for r in all_rows_]
         scored = [(r, o) for r, o in scored if o >= 0.5]
         if scored:
@@ -363,3 +391,5 @@ def record_confirmation(conn, *, user_id: str, raw_name: str, merchant_name: str
     final = db.one(conn, "SELECT * FROM learning WHERE id=?", (row["id"],))
     db.execute(conn, "UPDATE learning SET confidence=? WHERE id=?",
                (_baseline_confidence(final), row["id"]))
+    # Training changed — the request-scoped fuzzy pool is now stale.
+    invalidate_learning_cache(conn)

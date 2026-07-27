@@ -54,6 +54,13 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug assembleRelease
+        env:
+          # Empty unless configured as repository secrets; the build then
+          # produces an unsigned release rather than signing with a repo key.
+          SPENDWISE_KEYSTORE_FILE: ${{ secrets.SPENDWISE_KEYSTORE_FILE }}
+          SPENDWISE_KEYSTORE_PASSWORD: ${{ secrets.SPENDWISE_KEYSTORE_PASSWORD }}
+          SPENDWISE_KEY_ALIAS: ${{ secrets.SPENDWISE_KEY_ALIAS }}
+          SPENDWISE_KEY_PASSWORD: ${{ secrets.SPENDWISE_KEY_PASSWORD }}
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -61,8 +68,14 @@ jobs:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
+      # Release is signed ONLY when the signing secrets are present; without
+      # them Gradle emits app-release-unsigned.apk. Upload whichever exists so
+      # a fork/PR build never fails on missing secrets.
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: warn
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-release-unsigned.apk

@@ -12,3 +12,9 @@ docs/
 android/app/build/
 android/build/
 android/.gradle/
+# Signing material must never be committed — a leaked key lets anyone sign an
+# APK that installs as a legitimate UPDATE over the real app.
+*.jks
+!android/app/spendwise.jks  # dev-only debug key (not a secret)
+*.keystore
+keystore.properties

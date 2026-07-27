@@ -9,8 +9,44 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Optional
+
+# Bumped whenever matching behaviour changes, so parse-miss records can be
+# attributed to the parser that produced them and re-evaluated after a fix.
+PARSER_VERSION = "2025.11.1"
+
+# Indian-script digits seen in regional-language bank SMS. Unicode NFKC folds
+# most, but these are mapped explicitly so amounts survive normalisation.
+_DIGIT_MAP = {
+    ord("०"): "0", ord("१"): "1", ord("२"): "2", ord("३"): "3", ord("४"): "4",
+    ord("५"): "5", ord("६"): "6", ord("७"): "7", ord("८"): "8", ord("९"): "9",
+    ord("௦"): "0", ord("௧"): "1", ord("௨"): "2", ord("௩"): "3", ord("௪"): "4",
+    ord("௫"): "5", ord("௬"): "6", ord("௭"): "7", ord("௮"): "8", ord("௯"): "9",
+    ord("౦"): "0", ord("౧"): "1", ord("౨"): "2", ord("౩"): "3", ord("౪"): "4",
+    ord("౫"): "5", ord("౬"): "6", ord("౭"): "7", ord("౮"): "8", ord("౯"): "9",
+}
+# Zero-width and directional marks that banks/telcos inject and that silently
+# break otherwise-correct regexes.
+_INVISIBLE_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]")
+
+
+def normalize_text(text: str) -> str:
+    """Canonicalise a message before any pattern is applied.
+
+    NFKC folds full-width/compatibility forms (e.g. ￥, ｒｓ) to their ASCII
+    equivalents; Indian-script digits are mapped to ASCII; invisible marks are
+    stripped; runs of whitespace (including NBSP) collapse. Without this a
+    perfectly ordinary message can fail to parse for invisible reasons.
+    """
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKC", text)
+    text = text.translate(_DIGIT_MAP)
+    text = _INVISIBLE_RE.sub("", text)
+    text = text.replace("\u00a0", " ")
+    return re.sub(r"[ \t]+", " ", text).strip()
 
 _CURRENCY = r"(?:rs\.?|inr|₹)"
 _NUM = r"([0-9][0-9,]*(?:\.[0-9]{1,2})?)"
@@ -196,7 +232,8 @@ def _parse_merchant(text: str, type_: str) -> Optional[str]:
 
 
 def parse_sms(text: str) -> ParsedSMS:
-    text = (text or "").strip()
+    # Normalise first so Unicode/format noise cannot defeat the patterns.
+    text = normalize_text(text or "")
     result = ParsedSMS()
     if not text:
         return result
