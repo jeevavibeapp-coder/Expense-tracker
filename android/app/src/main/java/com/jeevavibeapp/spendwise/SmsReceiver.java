@@ -36,8 +36,9 @@ public class SmsReceiver extends BroadcastReceiver {
     private static final String INBOX_FILE = "sms_inbox.jsonl";
     private static final String PREFS = "spendwise";
     private static final String TOKEN_KEY = "sms_token";
-    // Serializes appends to the queue file across the per-message worker threads.
-    private static final Object QUEUE_LOCK = new Object();
+    // Serializes appends to the queue file across the per-message worker threads
+    // and the launch-time inbox scanner.
+    static final Object QUEUE_LOCK = new Object();
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -109,8 +110,9 @@ public class SmsReceiver extends BroadcastReceiver {
         }, "spendwise-sms").start();
     }
 
-    /** Cheap pre-filter so we don't forward OTPs / personal messages. */
-    private static boolean looksFinancial(String body) {
+    /** Cheap pre-filter so we don't forward OTPs / personal messages.
+     *  Shared with the launch-time inbox scanner. */
+    static boolean looksFinancial(String body) {
         String b = body.toLowerCase();
         // NOTE: no bare "rs" — it substring-matches ordinary words ("offers",
         // "hours"), which would forward personal messages to the queue.

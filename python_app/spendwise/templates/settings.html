@@ -57,6 +57,40 @@
     <button class="btn" type="submit">Save changes</button>
   </form>
 
+  {# ── Auto-capture diagnostics: is SMS capture actually working? ── #}
+  <div class="card stack">
+    <div style="display:flex; align-items:center; gap:10px">
+      <span style="font-weight:700; flex:1">SMS auto-capture</span>
+      {% if sms.permission == 'denied' %}
+        <span class="pill pill-warn">Permission off</span>
+      {% elif sms.captured %}
+        <span class="pill pill-ok">Working</span>
+      {% else %}
+        <span class="pill">No captures yet</span>
+      {% endif %}
+    </div>
+    <div class="stat-strip" style="padding:12px 0">
+      <div class="stat"><div class="k">Captured</div><div class="v num">{{ sms.captured }}</div></div>
+      <div class="stat"><div class="k">In queue</div><div class="v num">{{ sms.queued }}</div></div>
+      <div class="stat"><div class="k">Last</div>
+        <div class="v num" style="font-size:14px">{{ sms.last[:10] if sms.last else '–' }}</div></div>
+    </div>
+    {% if sms.permission == 'denied' %}
+    <div class="mut" style="font-size:12.5px">SpendWise can't read bank messages. Tap Allow to turn capture back on.</div>
+    <button class="btn btn-sm" type="button"
+            onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow SMS access</button>
+    {% elif not sms.captured %}
+    <div class="mut" style="font-size:12.5px">
+      Nothing captured yet. SpendWise scans your inbox for bank &amp; UPI messages each
+      time it opens. If this stays at 0, your phone may be blocking background
+      messages — on Xiaomi/Redmi/POCO, Oppo, Vivo or Realme, enable
+      <b>Autostart</b> for SpendWise in Settings → Apps, then reopen the app.
+    </div>
+    {% else %}
+    <div class="mut" style="font-size:12.5px">Bank &amp; UPI messages are captured automatically and parsed on this device — they never leave your phone.</div>
+    {% endif %}
+  </div>
+
   <div class="card stack">
     <div style="font-weight:700">Your data</div>
     <div class="mut" style="font-size:12.5px; margin-top:-6px">Everything stays on this device. Download a copy any time.</div>

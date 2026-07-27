@@ -48,7 +48,13 @@
 
     <!-- Core -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- RECEIVE_SMS: live capture the moment a bank message arrives.
+         READ_SMS: launch-time catch-up scan of the inbox, because a manifest
+         receiver does not fire on MIUI/ColorOS/EMUI without "Autostart", and
+         never fires while the app process is dead. Messages are parsed
+         entirely on-device and never leave the phone. -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
 
     <!-- Vibrate on haptic feedback (optional; declared so the OS grants it silently) -->
     <uses-permission android:name="android.permission.VIBRATE" />

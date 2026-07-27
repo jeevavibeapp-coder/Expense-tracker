@@ -175,6 +175,16 @@ public class MainActivity extends BridgeActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == SMS_PERMISSION_REQUEST) {
             reportPermissionState(true);
+            // Permission may have just been granted — pull in existing bank
+            // messages right away instead of making the user relaunch.
+            if (hasReadSmsPermission()) {
+                final String filesDir = getFilesDir().getAbsolutePath();
+                final String token = getDeviceToken();
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() { catchUpFromInbox(filesDir, token); }
+                }, "spendwise-sms-catchup").start();
+            }
         }
     }
 
@@ -183,12 +193,20 @@ public class MainActivity extends BridgeActivity {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    /** READ_SMS powers the launch-time catch-up scan; it can be granted or
+     *  denied independently of RECEIVE_SMS. */
+    private boolean hasReadSmsPermission() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
     private void requestSmsPermissions() {
-        if (!hasSmsPermission()) {
+        if (!hasSmsPermission() || !hasReadSmsPermission()) {
             getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                     .putBoolean("sms_asked", true).apply();
-            ActivityCompat.requestPermissions(this,
-                    new String[]{ Manifest.permission.RECEIVE_SMS }, SMS_PERMISSION_REQUEST);
+            ActivityCompat.requestPermissions(this, new String[]{
+                    Manifest.permission.RECEIVE_SMS,
+                    Manifest.permission.READ_SMS }, SMS_PERMISSION_REQUEST);
         }
     }
 
@@ -292,9 +310,30 @@ public class MainActivity extends BridgeActivity {
                     }
                 }
             });
+            catchUpFromInbox(filesDir, token);
         } else {
             Log.e(TAG, "Embedded server did not become ready within timeout");
             showStartupError();
+        }
+    }
+
+    /** Queue any finance SMS the live receiver missed, then drain the queue.
+     *  This is what makes auto-capture actually work on devices where the
+     *  broadcast receiver is throttled (MIUI "Autostart") or the app process
+     *  was dead when the message arrived. Dedup makes re-scanning harmless. */
+    private void catchUpFromInbox(final String filesDir, final String token) {
+        if (!hasReadSmsPermission()) {
+            return;
+        }
+        try {
+            int queued = SmsInboxScanner.scan(getApplicationContext());
+            if (queued > 0) {
+                // start_server is idempotent and kicks a fresh drain each call.
+                Python.getInstance().getModule("spendwise.android_entry")
+                        .callAttr("start_server", filesDir, token);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Inbox catch-up failed", t);
         }
     }
 

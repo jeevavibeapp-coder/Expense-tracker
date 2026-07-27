@@ -890,6 +890,26 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn.commit()
         return redirect(url_for("fraud_page"))
 
+    def sms_status(uid: str) -> dict:
+        """Diagnostics for the auto-capture pipeline, so the user can SEE
+        whether SMS capture is working instead of guessing."""
+        row = db.one(g.conn, "SELECT COUNT(*) c, MAX(created_at) last FROM transactions "
+                     "WHERE user_id=? AND source='sms' AND is_deleted=0", (uid,))
+        st = db.one(g.conn, "SELECT value FROM app_state WHERE key='sms_permission'")
+        perm = st["value"] if st else None
+        # The offline queue lives beside the database in the app's files dir.
+        queued = 0
+        try:
+            qpath = os.path.join(os.path.dirname(os.path.abspath(app.config["DB_PATH"])),
+                                 "sms_inbox.jsonl")
+            if os.path.exists(qpath):
+                with open(qpath, "r", encoding="utf-8") as f:
+                    queued = sum(1 for line in f if line.strip())
+        except OSError:
+            queued = 0
+        return {"captured": row["c"], "last": row["last"], "permission": perm,
+                "queued": queued}
+
     # ── Routes: profile & settings ───────────────────────────────────────
     @app.post("/profile")
     def profile_update():
@@ -931,7 +951,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             g.conn.commit()
             flash = "Settings saved."
         return render_template("settings.html", s=settings_for(uid, fresh=True),
-                               user=current_user(), active="settings", flash=flash)
+                               user=current_user(), active="settings", flash=flash,
+                               sms=sms_status(uid))
 
     # ── Routes: data export ──────────────────────────────────────────────
     @app.get("/export.csv")

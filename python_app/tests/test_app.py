@@ -580,3 +580,34 @@ def test_behaviour_insight_most_visited(auth_client):
         _add(auth_client, amount="120.00", merchant="MetroCafe")
     dash = auth_client.get("/dashboard")
     assert b"4 times this month" in dash.data and b"MetroCafe" in dash.data
+
+
+def test_sms_diagnostics_panel(tmp_path):
+    c = _su_client(tmp_path)
+    # Fresh install: panel is honest that nothing has been captured, and
+    # surfaces the OEM autostart hint that actually explains most failures.
+    page = c.get("/settings")
+    assert b"SMS auto-capture" in page.data
+    assert b"No captures yet" in page.data
+    assert b"Autostart" in page.data
+    # After a capture it reports Working with a count.
+    c.post("/sms/ingest", data={
+        "body": "Rs.450.00 debited from a/c **1234 on 05-Jan-24 to ZOMATO Ref 883120114455 UPI"})
+    page = c.get("/settings")
+    assert b"Working" in page.data
+    # Denied permission is called out with a fix action.
+    c.post("/device/state", data={"sms_permission": "denied"})
+    page = c.get("/settings")
+    assert b"Permission off" in page.data and b"Allow SMS access" in page.data
+
+
+def test_queued_sms_counted_in_diagnostics(tmp_path):
+    # The queue file lives beside the DB; the panel must surface a backlog
+    # (i.e. messages captured by the receiver but not yet ingested).
+    db_path = tmp_path / "q.db"
+    app = create_app(db_path=str(db_path), single_user=True, secret_key="t")
+    (tmp_path / "sms_inbox.jsonl").write_text(
+        '{"sender":"X","body":"Rs.1 debited to A"}\n'
+        '{"sender":"Y","body":"Rs.2 debited to B"}\n', encoding="utf-8")
+    page = app.test_client().get("/settings")
+    assert b"In queue" in page.data
