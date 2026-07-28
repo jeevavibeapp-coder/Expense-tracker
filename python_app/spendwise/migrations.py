@@ -110,12 +110,78 @@ def _m4_integrity_indexes(conn: sqlite3.Connection) -> None:
                  "ON merchants(user_id, canonical_name)")
 
 
+def _m5_sender_trust(conn: sqlite3.Connection) -> None:
+    """v5 — SMS sender registry and the phishing quarantine.
+
+    ``sms_senders`` is the learned trust store: every sender ever seen is
+    recorded with counts, so the user's own confirmations (not just a static
+    allowlist) decide what is trusted.
+
+    ``sms_quarantine`` is what makes "never silently discard" true. A message
+    that looks like phishing is held here in full, with the indicators that
+    triggered it, and can be approved into the ledger or rejected by the user.
+    Without it, blocking a message would mean destroying a possibly-real
+    transaction with no trace.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sms_senders (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            sender TEXT NOT NULL,
+            display TEXT,
+            kind TEXT NOT NULL DEFAULT 'other',
+            entity TEXT,
+            bank TEXT,
+            trust TEXT NOT NULL DEFAULT 'unknown',
+            message_count INTEGER NOT NULL DEFAULT 0,
+            captured_count INTEGER NOT NULL DEFAULT 0,
+            confirmed_count INTEGER NOT NULL DEFAULT 0,
+            quarantined_count INTEGER NOT NULL DEFAULT 0,
+            last_risk INTEGER NOT NULL DEFAULT 0,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            UNIQUE(user_id, sender)
+        )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_sms_senders_user "
+                 "ON sms_senders(user_id, trust, last_seen_at)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sms_quarantine (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            sender TEXT,
+            body TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            risk INTEGER NOT NULL DEFAULT 0,
+            indicators TEXT NOT NULL DEFAULT '[]',
+            reason TEXT,
+            amount REAL,
+            type TEXT,
+            raw_merchant TEXT,
+            occurred_at TEXT,
+            reference_number TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            seen_count INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            resolved_at TEXT,
+            UNIQUE(user_id, body_hash)
+        )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_sms_quarantine_user "
+                 "ON sms_quarantine(user_id, status, created_at)")
+    # Transactions captured from an unverified sender carry the assessment so
+    # the review screen can explain WHY it is asking, and so a later model
+    # change can re-score historical rows.
+    _add_column_if_missing(conn, "transactions", "sender_trust", "TEXT")
+    _add_column_if_missing(conn, "transactions", "sender_risk",
+                           "INTEGER NOT NULL DEFAULT 0")
+
+
 # Ordered list. Index + 1 == the schema version the entry produces.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m1_baseline,
     _m2_indexes,
     _m3_parse_misses,
     _m4_integrity_indexes,
+    _m5_sender_trust,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -251,6 +317,11 @@ def _detect_legacy_version(conn: sqlite3.Connection) -> int:
         version = 3
     if "ix_tx_user_category" in idx:
         version = 4
+    # As with v1: the tables alone are not proof. v5 also adds two columns to
+    # transactions, so require those before claiming it completed.
+    if ({"sms_senders", "sms_quarantine"} <= tables
+            and {"sender_trust", "sender_risk"} <= tx_cols):
+        version = 5
     return version
 
 

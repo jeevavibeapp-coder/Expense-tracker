@@ -47,6 +47,21 @@
   </div>
   {% endif %}
 
+  {% if nav_held and active != 'quarantine' %}
+  {# Held messages are an exceptional state, so they get a banner rather than a
+     permanent tab — a fifth tab would crowd the bar for something most users
+     never see. Nothing is ever deleted, so this is the only route back to it. #}
+  <a class="perm-banner" role="alert" href="/sms/quarantine"
+     style="text-decoration:none; color:inherit">
+    <span class="pb-ic">{{ m.icon('shield') }}</span>
+    <div class="pb-txt">
+      <b>{{ nav_held }} message{{ '' if nav_held == 1 else 's' }} held</b>
+      <span>We couldn't verify the sender. Check them before they're counted.</span>
+    </div>
+    <span class="pb-btn">Review</span>
+  </a>
+  {% endif %}
+
   <main>{% block content %}{% endblock %}</main>
 
   {# ── Bottom navigation ── #}

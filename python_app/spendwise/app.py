@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import hmac
+import json
 import os
 from typing import Optional
 
@@ -21,7 +22,7 @@ from flask import (
     Flask, Response, abort, g, redirect, render_template, request, session, url_for,
 )
 
-from . import analytics, auth, db, engine, fraud
+from . import analytics, auth, db, engine, fraud, senders
 from .parsing import PARSER_VERSION, parse_sms
 
 
@@ -237,7 +238,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
 
     @app.context_processor
     def _inject_globals():
-        theme, nav_fraud, nav_review = "system", 0, 0
+        theme, nav_fraud, nav_review, nav_held = "system", 0, 0, 0
         cat_prompts, prompt_categories = [], []
         st = db.one(g.conn, "SELECT value FROM app_state WHERE key='sms_permission'")
         sms_denied = bool(st and st["value"] == "denied")
@@ -249,15 +250,17 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 "SELECT (SELECT COUNT(*) FROM fraud_alerts WHERE user_id=:u AND "
                 "status='open') f, (SELECT COUNT(*) FROM transactions WHERE "
                 "user_id=:u AND is_deleted=0 AND status IN "
-                "('pending_confirmation','needs_review')) r", {"u": uid})
-            nav_fraud, nav_review = counts["f"], counts["r"]
+                "('pending_confirmation','needs_review')) r, "
+                "(SELECT COUNT(*) FROM sms_quarantine WHERE user_id=:u AND "
+                "status='pending') q", {"u": uid})
+            nav_fraud, nav_review, nav_held = counts["f"], counts["r"], counts["q"]
             # Auto-captured SMS transactions still awaiting a category → popup.
             # Never on the bulk-review screen: the popup is a modal overlay and
             # would cover the very page built to clear these in bulk.
             if request.endpoint == "review_page":
                 return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
                         "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review,
-                        "cat_prompts": [], "prompt_categories": [],
+                        "nav_held": nav_held, "cat_prompts": [], "prompt_categories": [],
                         "nav_categories": categories_for(uid), "sms_denied": sms_denied}
             cat_prompts = db.all_rows(
                 g.conn, "SELECT * FROM transactions WHERE user_id=? AND category_id IS NULL "
@@ -272,6 +275,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         nav_categories = categories_for(uid) if uid else []
         return {"app_name": "SpendWise", "single_user": app.config["SINGLE_USER"],
                 "theme": theme, "nav_fraud": nav_fraud, "nav_review": nav_review,
+                "nav_held": nav_held,
                 "cat_prompts": cat_prompts, "prompt_categories": prompt_categories,
                 "nav_categories": nav_categories, "sms_denied": sms_denied}
 
@@ -285,7 +289,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                            merchant=None, raw_merchant=None, notes=None,
                            reference_number=None, occurred_at: Optional[dt.datetime] = None,
                            source="manual", resolve=True, dedup_key=None,
-                           sms_body=None, sms_sender=None) -> dict:
+                           sms_body=None, sms_sender=None, assessment=None) -> dict:
         s = settings_for(uid)
         # Same clock domain as stored SMS times: local wall-clock stamped UTC.
         occ = occurred_at or dt.datetime.now().replace(microsecond=0,
@@ -335,6 +339,23 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 status = TX_REVIEW
                 decision = engine.DECISION_MANUAL
 
+        # Sender trust modulates merchant confidence. A perfectly-matched
+        # merchant from an unverified sender is still an unverified claim, so
+        # the row is demoted to needs_review rather than auto-confirmed. This
+        # is the "confidence downgrade" half of the phishing defence: the
+        # message is kept, but it is never quietly treated as fact.
+        sender_trust = sender_risk = None
+        if assessment is not None:
+            sender_trust = assessment.trust
+            sender_risk = assessment.risk
+            if assessment.confidence_delta:
+                if confidence is not None:
+                    confidence = max(0, confidence + assessment.confidence_delta)
+                if status == TX_CONFIRMED and source == "sms":
+                    status = TX_REVIEW
+                if decision == engine.DECISION_AUTO:
+                    decision = engine.DECISION_CONFIRM
+
         # Inherit the resolved merchant's learned category when the caller did
         # not specify one (e.g. an auto-captured SMS) — so we only have to ask
         # the user about genuinely unknown merchants.
@@ -346,11 +367,12 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         db.execute(g.conn,
                    "INSERT INTO transactions(id,user_id,amount,type,category_id,raw_merchant,"
                    "merchant_id,merchant_name,notes,reference_number,occurred_at,source,"
-                   "confidence,status,dedup_key,sms_body,sms_sender,is_deleted,created_at) "
-                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
+                   "confidence,status,dedup_key,sms_body,sms_sender,sender_trust,"
+                   "sender_risk,is_deleted,created_at) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
                    (tx_id, uid, amount, type_, category_id, raw, merchant_id, merchant_name,
                     notes, reference_number, occ.isoformat(), source, confidence, status,
-                    dedup_key, sms_body, sms_sender,
+                    dedup_key, sms_body, sms_sender, sender_trust, sender_risk or 0,
                     dt.datetime.now(dt.timezone.utc).isoformat()))
 
         alert_ids = fraud.evaluate_transaction(
@@ -910,14 +932,33 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             return {"captured": False, "reason": "rate_limited"}, 429
         uid = auth.ensure_local_user(g.conn)
         body = request.form.get("body") or request.form.get("sms") or ""
+        raw_sender = request.form.get("sender")
         parsed = parse_sms(body)
+
+        # Sender verification runs on EVERY message, parsable or not, so the
+        # registry reflects real traffic rather than only the captures.
+        assessment = senders.assess(
+            raw_sender, body, _sender_row(uid, raw_sender))
+        _touch_sender(uid, raw_sender, assessment)
+
         if not parsed.matched or not parsed.amount or parsed.amount <= 0:
             # Record what we could not read. Banks change formats without
             # notice, and the failure is otherwise SILENT — transactions just
             # stop appearing. Stored on-device only; nothing is transmitted.
-            _record_parse_miss(uid, body, request.form.get("sender"),
+            _record_parse_miss(uid, body, raw_sender,
                                "no_amount" if not parsed.amount else "not_transactional")
             return {"captured": False, "reason": "not_financial"}, 200
+
+        if assessment.action == senders.ACTION_QUARANTINE:
+            # Held, never dropped: the user can approve it into the ledger from
+            # /sms/quarantine. Silently discarding would mean a real
+            # transaction disappearing with no trace, which is a worse failure
+            # than a suspicious row the user can reject.
+            qid = _quarantine(uid, raw_sender, body, parsed, assessment)
+            return {"captured": False, "reason": "quarantined", "id": qid,
+                    "risk": assessment.risk,
+                    "indicators": assessment.indicators,
+                    "explanation": senders.explain(assessment)}, 200
         # Idempotency: the same message must not be captured twice (the receiver
         # may both POST live and re-queue on a flaky connection). Prefer the bank
         # reference; fall back to a content hash for messages that have none.
@@ -935,7 +976,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 raw_merchant=parsed.raw_merchant, reference_number=parsed.reference_number,
                 occurred_at=parsed.occurred_at, source="sms", resolve=True,
                 dedup_key=dedup_key, sms_body=body.strip()[:400],
-                sms_sender=(request.form.get("sender") or "").strip()[:32] or None)
+                sms_sender=(raw_sender or "").strip()[:32] or None,
+                assessment=assessment)
         except sqlite3.IntegrityError:
             # Lost the check-then-insert race (live POST + queue drain landing
             # together) — the unique dedup index made the second insert fail.
@@ -1073,6 +1115,165 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                        (status, alert_id, uid))
             g.conn.commit()
         return redirect(url_for("fraud_page"))
+
+    # ── Sender trust registry & phishing quarantine ──────────────────────
+    def _sender_row(uid: str, raw_sender) -> Optional[dict]:
+        norm = senders.normalize_sender(raw_sender)
+        if not norm:
+            return None
+        row = db.one(g.conn, "SELECT * FROM sms_senders WHERE user_id=? AND sender=?",
+                     (uid, norm))
+        return dict(row) if row else None
+
+    def _touch_sender(uid: str, raw_sender, assessment) -> None:
+        """Record that this sender was seen. Runs for every message, including
+        ones the parser could not read, so the registry shows real traffic.
+
+        The stored `trust` is only ever written by the heuristics when the user
+        has not made a decision — a user's trust/block must never be silently
+        overwritten by a later heuristic verdict.
+        """
+        norm = assessment.sender.normalized
+        if not norm:
+            return
+        now = dt.datetime.now().isoformat()
+        quarantined = 1 if assessment.action == senders.ACTION_QUARANTINE else 0
+        db.execute(
+            g.conn,
+            "INSERT INTO sms_senders(id,user_id,sender,display,kind,entity,bank,trust,"
+            "message_count,captured_count,confirmed_count,quarantined_count,last_risk,"
+            "first_seen_at,last_seen_at) VALUES (?,?,?,?,?,?,?,?,1,0,0,?,?,?,?) "
+            "ON CONFLICT(user_id, sender) DO UPDATE SET "
+            "message_count = message_count + 1, "
+            "quarantined_count = quarantined_count + excluded.quarantined_count, "
+            "last_risk = excluded.last_risk, "
+            "last_seen_at = excluded.last_seen_at, "
+            "kind = excluded.kind, entity = excluded.entity, bank = excluded.bank, "
+            # Heuristic verdicts only fill in a sender the user has not judged.
+            "trust = CASE WHEN sms_senders.trust IN ('trusted','blocked') "
+            "             THEN sms_senders.trust ELSE excluded.trust END",
+            (db.new_id(), uid, norm, (assessment.sender.raw or "")[:32],
+             assessment.sender.kind, assessment.sender.entity, assessment.sender.bank,
+             assessment.trust, quarantined, assessment.risk, now, now))
+        g.conn.commit()
+
+    def _quarantine(uid: str, raw_sender, body: str, parsed, assessment) -> str:
+        """Hold a suspicious message in full rather than discarding it."""
+        body = (body or "").strip()
+        digest = hashlib.sha1(body.encode("utf-8")).hexdigest()
+        now = dt.datetime.now().isoformat()
+        qid = db.new_id()
+        db.execute(
+            g.conn,
+            "INSERT INTO sms_quarantine(id,user_id,sender,body,body_hash,risk,indicators,"
+            "reason,amount,type,raw_merchant,occurred_at,reference_number,status,"
+            "seen_count,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',1,?) "
+            "ON CONFLICT(user_id, body_hash) DO UPDATE SET "
+            "seen_count = seen_count + 1, risk = excluded.risk, "
+            "indicators = excluded.indicators, reason = excluded.reason",
+            (qid, uid, (raw_sender or "")[:32] or None, body[:800], digest,
+             assessment.risk, json.dumps(assessment.indicators),
+             senders.explain(assessment), parsed.amount, parsed.type,
+             parsed.raw_merchant,
+             parsed.occurred_at.isoformat() if parsed.occurred_at else None,
+             parsed.reference_number, now))
+        g.conn.commit()
+        row = db.one(g.conn, "SELECT id FROM sms_quarantine WHERE user_id=? AND body_hash=?",
+                     (uid, digest))
+        return row["id"] if row else qid
+
+    @app.get("/sms/quarantine")
+    def quarantine_page():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        rows = db.all_rows(
+            g.conn,
+            "SELECT * FROM sms_quarantine WHERE user_id=? AND status='pending' "
+            "ORDER BY created_at DESC LIMIT 200", (uid,))
+        items = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["indicator_list"] = json.loads(d.get("indicators") or "[]")
+            except ValueError:
+                d["indicator_list"] = []
+            items.append(d)
+        sender_rows = db.all_rows(
+            g.conn,
+            "SELECT * FROM sms_senders WHERE user_id=? "
+            "ORDER BY (trust='blocked') DESC, message_count DESC LIMIT 200", (uid,))
+        return render_template("quarantine.html", items=items,
+                               senders=[dict(r) for r in sender_rows],
+                               user=current_user(),
+                               currency=settings_for(uid)["currency"],
+                               active="quarantine")
+
+    @app.post("/sms/quarantine/<qid>")
+    def quarantine_resolve(qid):
+        """Approve a held message into the ledger, or reject it.
+
+        Approving also trusts the sender — the user has now vouched for it
+        with full sight of the indicators, which is better evidence than any
+        heuristic this app can run.
+        """
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        action = request.form.get("action", "")
+        row = db.one(g.conn, "SELECT * FROM sms_quarantine WHERE id=? AND user_id=?",
+                     (qid, uid))
+        if not row:
+            return redirect(url_for("quarantine_page"))
+        now = dt.datetime.now().isoformat()
+        norm = senders.normalize_sender(row["sender"])
+
+        if action == "approve" and row["amount"]:
+            occ = None
+            if row["occurred_at"]:
+                try:
+                    occ = dt.datetime.fromisoformat(row["occurred_at"])
+                except ValueError:
+                    occ = None
+            dedup_key = row["reference_number"] or row["body_hash"]
+            try:
+                create_transaction(
+                    uid, amount=float(row["amount"]), type_=row["type"] or "expense",
+                    raw_merchant=row["raw_merchant"],
+                    reference_number=row["reference_number"], occurred_at=occ,
+                    source="sms", resolve=True, dedup_key=dedup_key,
+                    sms_body=(row["body"] or "")[:400],
+                    sms_sender=(row["sender"] or "")[:32] or None)
+            except sqlite3.IntegrityError:
+                g.conn.rollback()   # already captured by another path
+            if norm:
+                db.execute(g.conn, "UPDATE sms_senders SET trust='trusted', "
+                           "confirmed_count = confirmed_count + 1, "
+                           "captured_count = captured_count + 1 "
+                           "WHERE user_id=? AND sender=?", (uid, norm))
+            db.execute(g.conn, "UPDATE sms_quarantine SET status='approved', "
+                       "resolved_at=? WHERE id=?", (now, qid))
+        elif action in ("reject", "reject_block"):
+            db.execute(g.conn, "UPDATE sms_quarantine SET status='rejected', "
+                       "resolved_at=? WHERE id=?", (now, qid))
+            if action == "reject_block" and norm:
+                db.execute(g.conn, "UPDATE sms_senders SET trust='blocked' "
+                           "WHERE user_id=? AND sender=?", (uid, norm))
+        g.conn.commit()
+        return redirect(url_for("quarantine_page"))
+
+    @app.post("/sms/senders/<sid>")
+    def sender_trust_update(sid):
+        """Manual override of a sender's trust. The user always wins."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        trust = request.form.get("trust", "")
+        if trust in (senders.TRUST_TRUSTED, senders.TRUST_BLOCKED, senders.TRUST_UNKNOWN):
+            db.execute(g.conn, "UPDATE sms_senders SET trust=? WHERE id=? AND user_id=?",
+                       (trust, sid, uid))
+            g.conn.commit()
+        return redirect(url_for("quarantine_page"))
 
     def _record_parse_miss(uid: str, body: str, sender, reason: str) -> None:
         """Local-only log of unreadable bank messages (see /sms/misses).
