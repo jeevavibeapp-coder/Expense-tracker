@@ -50,6 +50,24 @@
     <form method="post" action="/review/bulk">
       <input type="hidden" name="key" value="{{ gp['k'] }}">
       <input type="hidden" name="type" value="{{ gp['type'] }}">
+      {% if gp['suggested_id'] %}
+      {# Learned from this user's own confirmed history. Shown as a distinct,
+         explained chip rather than pre-selected: a silent auto-categorisation
+         the user cannot see is one they cannot correct. #}
+      <div class="cat-chips" style="margin-bottom:6px">
+        <button class="cat-chip" type="submit" name="category_id"
+                value="{{ gp['suggested_id'] }}"
+                style="background:var(--income)1f; border-color:var(--income);
+                       color:var(--income); font-weight:700">
+          {{ gp['suggested_name'] }} · {{ gp['suggested_confidence'] }}%
+        </button>
+      </div>
+      {% if gp['suggested_because'] %}
+      <div class="faint" style="font-size:11px; margin:-2px 0 8px 2px">
+        Suggested from “{{ gp['suggested_because']|join('”, “') }}” in your past spending.
+      </div>
+      {% endif %}
+      {% endif %}
       <div class="cat-chips">
         {% for c in categories if c['type'] == gp['type'] %}
         <button class="cat-chip" type="submit" name="category_id" value="{{ c['id'] }}">{{ c['name'] }}</button>

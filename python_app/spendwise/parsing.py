@@ -151,6 +151,10 @@ class ParsedSMS:
     reference_number: Optional[str] = None
     occurred_at: Optional[dt.datetime] = None
     matched: bool = False
+    # Filled in by the bank registry when the sender is recognised.
+    bank: Optional[str] = None
+    account_tail: Optional[str] = None
+    parsed_by: str = "generic"
 
 
 def _to_float(raw: str) -> Optional[float]:
@@ -231,7 +235,15 @@ def _parse_merchant(text: str, type_: str) -> Optional[str]:
     return None
 
 
-def parse_sms(text: str) -> ParsedSMS:
+def parse_sms(text: str, sender: Optional[str] = None) -> ParsedSMS:
+    """Parse a finance SMS.
+
+    ``sender`` is optional and only ever *improves* the result: it selects a
+    bank-specific profile whose patterns are tried for fields the generic
+    parser could not fill. It can never change whether a message counts as a
+    transaction — that gate stays entirely generic below, so a wrong bank
+    pattern cannot inject a false transaction into the ledger.
+    """
     # Normalise first so Unicode/format noise cannot defeat the patterns.
     text = normalize_text(text or "")
     result = ParsedSMS()
@@ -254,4 +266,19 @@ def parse_sms(text: str) -> ParsedSMS:
                           and _TXN_VERB_RE.search(text)
                           and not _NON_TXN_RE.search(text)
                           and _ACCOUNT_EVIDENCE_RE.search(text))
+
+    # Bank-specific refinement. Runs AFTER the match gate so it can only ever
+    # enrich a message already accepted as a transaction.
+    if result.matched and sender:
+        from . import banks, senders
+        profile = banks.profile_for(senders.identify(sender).entity)
+        extra = banks.refine(profile, text, result, _clean_merchant)
+        if extra:
+            if extra.get("raw_merchant"):
+                result.raw_merchant = extra["raw_merchant"]
+                result.parsed_by = profile.entity
+            if extra.get("reference_number"):
+                result.reference_number = extra["reference_number"]
+            result.account_tail = extra.get("account_tail")
+            result.bank = extra.get("bank")
     return result

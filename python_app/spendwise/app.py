@@ -22,7 +22,8 @@ from flask import (
     Flask, Response, abort, g, redirect, render_template, request, session, url_for,
 )
 
-from . import analytics, auth, db, engine, fraud, search, senders
+from . import (analytics, auth, calibration, categorizer, db, engine,
+               fraud, search, senders)
 from .parsing import PARSER_VERSION, parse_sms
 
 
@@ -279,6 +280,30 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                 "cat_prompts": cat_prompts, "prompt_categories": prompt_categories,
                 "nav_categories": nav_categories, "sms_denied": sms_denied}
 
+    def effective_thresholds(uid: str) -> dict:
+        """The engine thresholds to use for this user, right now.
+
+        Adapts to the measured correction rate unless the user has set their
+        own values (then their choice stands). Cached per request: it runs a
+        single aggregate over `learning`, but every transaction in a bulk
+        import would otherwise repeat it.
+        """
+        cached = getattr(g, "_thresholds", None)
+        if cached and cached[0] == uid:
+            return cached[1]
+        s_ = settings_for(uid)
+        state = calibration.thresholds(
+            g.conn, uid, s_["auto_save_threshold"], s_["confirm_threshold"],
+            user_set=_thresholds_are_user_set(uid))
+        g._thresholds = (uid, state)
+        return state
+
+    def _thresholds_are_user_set(uid: str) -> bool:
+        """True once the user has moved either slider off its default."""
+        s_ = settings_for(uid)
+        return not (int(s_["auto_save_threshold"]) == 80
+                    and int(s_["confirm_threshold"]) == 50)
+
     def require_login():
         if not session.get("user_id") or current_user() is None:
             return None
@@ -318,7 +343,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         elif resolve and raw:
             res = engine.resolve(g.conn, user_id=uid, raw_name=raw, amount=amount,
                                  category_id=category_id, occurred_at=occ,
-                                 auto=s["auto_save_threshold"], confirm=s["confirm_threshold"])
+                                 auto=effective_thresholds(uid)["auto"],
+                                 confirm=effective_thresholds(uid)["confirm"])
             decision = res["decision"]
             if res["best"]:
                 best = res["best"]
@@ -520,8 +546,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                     and len(suggestions) < 12):
                 res = engine.resolve(g.conn, user_id=uid, raw_name=r["raw_merchant"],
                                      amount=r["amount"],
-                                     auto=s["auto_save_threshold"],
-                                     confirm=s["confirm_threshold"])
+                                     auto=effective_thresholds(uid)["auto"],
+                                     confirm=effective_thresholds(uid)["confirm"])
                 names, seen = [], set()
                 for cand in res["candidates"][:3]:
                     if cand["merchant_name"].lower() not in seen:
@@ -561,7 +587,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         s = settings_for(uid)
         res = engine.resolve(g.conn, user_id=uid, raw_name=name,
                              amount=parse_amount(request.form.get("amount", "")),
-                             auto=s["auto_save_threshold"], confirm=s["confirm_threshold"])
+                             auto=effective_thresholds(uid)["auto"],
+                                 confirm=effective_thresholds(uid)["confirm"])
         return render_template("_resolve.html", best=res["best"], decision=res["decision"],
                                breakdown=res["best"]["breakdown"] if res["best"] else None)
 
@@ -661,9 +688,24 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             "GROUP BY k, type ORDER BY n DESC, total DESC",
             (uid, TX_PENDING, TX_REVIEW))
         groups = [dict(r) for r in rows]
+        # Pre-fill each group with a category suggestion learned from the
+        # user's own confirmed history. This is the difference between "pick a
+        # category for 40 merchants" and "confirm 40 pre-filled guesses".
+        # Suggestions are never applied automatically — the user still taps.
+        cat_names = {c["id"]: c["name"] for c in categories_for(uid)}
+        for gp in groups:
+            hint = categorizer.suggest(
+                g.conn, uid, "%s %s" % (gp.get("k") or "", gp.get("sample") or ""))
+            if hint and hint["category_id"] in cat_names:
+                gp["suggested_id"] = hint["category_id"]
+                gp["suggested_name"] = cat_names[hint["category_id"]]
+                gp["suggested_confidence"] = hint["confidence"]
+                gp["suggested_because"] = hint["because"]
         pending_total = sum(gp["n"] for gp in groups)
+        suggested_count = sum(1 for gp in groups if gp.get("suggested_id"))
         s = settings_for(uid)
         return render_template("review.html", groups=groups, pending_total=pending_total,
+                               suggested_count=suggested_count,
                                categories=categories_for(uid), currency=s["currency"],
                                user=current_user(), active="transactions",
                                back_href="/transactions")
@@ -903,7 +945,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if parsed.raw_merchant:
             res = engine.resolve(g.conn, user_id=uid, raw_name=parsed.raw_merchant,
                                  amount=parsed.amount, occurred_at=parsed.occurred_at,
-                                 auto=s["auto_save_threshold"], confirm=s["confirm_threshold"])
+                                 auto=effective_thresholds(uid)["auto"],
+                                 confirm=effective_thresholds(uid)["confirm"])
             preview = {"best": res["best"], "decision": res["decision"],
                        "breakdown": res["best"]["breakdown"] if res["best"] else None}
         return render_template("_import_preview.html", parsed=parsed, preview=preview)
@@ -942,7 +985,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         uid = auth.ensure_local_user(g.conn)
         body = request.form.get("body") or request.form.get("sms") or ""
         raw_sender = request.form.get("sender")
-        parsed = parse_sms(body)
+        parsed = parse_sms(body, raw_sender)
 
         # Sender verification runs on EVERY message, parsable or not, so the
         # registry reflects real traffic rather than only the captures.
