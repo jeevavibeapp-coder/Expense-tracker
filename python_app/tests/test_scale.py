@@ -481,4 +481,13 @@ def test_first_launch_survives_concurrent_requests(tmp_path):
     assert len(set(results)) == 1, f"created more than one local user: {set(results)}"
     check = db.connect(path)
     assert check.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+    # A thread that adopts the winner's id must also see the winner's default
+    # categories and settings. That holds because _provision commits them in
+    # the SAME transaction as the user row, so a loser cannot observe a user
+    # that has no categories — which would render an empty, broken first screen.
+    uid = results[0]
+    assert check.execute("SELECT COUNT(*) FROM categories WHERE user_id=?",
+                         (uid,)).fetchone()[0] > 0
+    assert check.execute("SELECT COUNT(*) FROM settings WHERE user_id=?",
+                         (uid,)).fetchone()[0] == 1
     check.close()
