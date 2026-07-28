@@ -438,3 +438,47 @@ def test_categorizer_model_is_trained_once_per_connection(large_db):
     conn.close()
     assert warm < max(cold / 5, 1.0), (
         f"warm suggest {warm:.3f}ms vs cold {cold:.3f}ms — model is retraining")
+
+
+def test_first_launch_survives_concurrent_requests(tmp_path):
+    """Regression: a 500 on the very first screen the user ever sees.
+
+    ensure_local_user() runs in before_request, the production server is
+    waitress with 4 threads, and on first launch the native layer fires
+    several requests at once (the /healthz readiness poll plus
+    POST /device/state). The check-then-insert raced: two threads both found
+    no user, both inserted, and the loser died with
+    "UNIQUE constraint failed: users.email".
+
+    Reproduced against a genuinely empty database with real threads.
+    """
+    from spendwise import auth
+    path = str(tmp_path / "firstrun.db")
+    conn, _ = db.open_database(path, backup=False)
+    conn.close()
+
+    results: list = []
+    errors: list[str] = []
+    barrier = threading.Barrier(8)
+
+    def worker() -> None:
+        c = db.connect(path)
+        try:
+            barrier.wait(timeout=20)      # maximise the overlap
+            results.append(auth.ensure_local_user(c))
+        except Exception as exc:          # noqa: BLE001 - we want the message
+            errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            c.close()
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, f"concurrent first launch failed: {errors}"
+    assert len(set(results)) == 1, f"created more than one local user: {set(results)}"
+    check = db.connect(path)
+    assert check.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+    check.close()
