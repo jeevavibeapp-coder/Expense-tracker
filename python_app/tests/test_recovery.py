@@ -300,3 +300,57 @@ def test_the_documented_recovery_helper_actually_exists():
     if "safe_upgrade" in doc:
         assert hasattr(maintenance, "safe_upgrade"), \
             "the docstring names a recovery helper that does not exist"
+
+
+def test_lock_contention_does_not_trigger_spurious_safe_mode(tmp_path):
+    """Found by the red-team pass, not known beforehand.
+
+    Under 16-way concurrent startup one instance entered safe mode and showed
+    "SpendWise couldn't finish updating" — because a migration lost a lock
+    race, and the second-failure path treated any MigrationError as
+    deterministic. Contention is transient: the next launch succeeds, so
+    re-raising (and letting the caller retry) is correct, while degrading is a
+    frightening and wrong message.
+    """
+    import threading
+    path = str(tmp_path / "contend.db")
+    codes: list[int] = []
+    errors: list[str] = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(12)
+
+    def boot() -> None:
+        try:
+            barrier.wait(timeout=30)
+            app = create_app(db_path=path, single_user=True, secret_key="s",
+                             device_token="TOK")
+            c = app.test_client()
+            c.get("/?k=TOK")
+            with lock:
+                codes.append(c.get("/dashboard").status_code)
+        except Exception as exc:                      # noqa: BLE001
+            with lock:
+                errors.append(f"{type(exc).__name__}: {exc}")
+
+    threads = [threading.Thread(target=boot) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+
+    assert not errors, errors
+    assert 503 not in codes, "lock contention produced a spurious safe-mode page"
+    assert set(codes) == {200}, sorted(set(codes))
+    conn = sqlite3.connect(path)
+    assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    conn.close()
+
+
+def test_contention_is_distinguished_from_damage():
+    """The single discriminator both recovery paths depend on."""
+    assert db._is_contention(sqlite3.OperationalError("database is locked"))
+    assert db._is_contention(sqlite3.OperationalError("database table is busy"))
+    assert not db._is_contention(sqlite3.DatabaseError("database disk image is malformed"))
+    assert not db._is_contention(RuntimeError("simulated migration failure"))
+    assert not db._is_contention(None)

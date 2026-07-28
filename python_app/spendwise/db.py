@@ -70,6 +70,20 @@ def init_db(conn: sqlite3.Connection) -> int:
     return migrations.upgrade(conn)
 
 
+def _is_contention(exc: BaseException | None) -> bool:
+    """Whether a failure is a lock/busy condition rather than real damage.
+
+    SQLite reports both through the same exception type, so the message is the
+    only discriminator. Getting this wrong is expensive in both directions:
+    treating contention as corruption moved a live ledger aside (measured as
+    total data loss), and treating it as a deterministic migration failure
+    puts the app into safe mode for something that would work on the next
+    launch.
+    """
+    text = str(exc or "").lower()
+    return "locked" in text or "busy" in text
+
+
 def open_database(path: str, *, backup: bool = True) -> tuple[sqlite3.Connection, dict]:
     """Open, verify, migrate and (if needed) recover the database.
 
@@ -143,6 +157,13 @@ def open_database(path: str, *, backup: bool = True) -> tuple[sqlite3.Connection
             status["version"] = init_db(conn)
             status["recovered"] = True
         except migrations.MigrationError as second:
+            # Contention is NOT a deterministic failure. If the cause is a
+            # locked/busy database — another connection migrating or the SMS
+            # receiver holding a write — degrading to safe mode would show
+            # "couldn't finish updating" for something that succeeds on the
+            # next launch. Re-raise so the caller simply retries.
+            if _is_contention(second.cause):
+                raise
             # Deterministic failure. Do NOT raise: raising is what bricked the
             # app. Roll back once more so the file on disk is the version the
             # PREVIOUS build could read, and report a safe state the caller
