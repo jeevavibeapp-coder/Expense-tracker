@@ -221,20 +221,40 @@ def test_device_token_enforced(tmp_path):
     assert ok.status_code == 200 and ok.get_json()["captured"] is True            # good token
 
 
-def test_ingest_gated_pages_open(tmp_path):
-    # Sensitive ingest endpoints require the device token; GET pages load on
-    # loopback without a per-navigation gate (that gate broke WebView
-    # navigation because the session cookie wasn't reliably carried).
+def test_no_endpoint_is_reachable_without_a_grant(tmp_path):
+    """B1 regression. This test previously asserted the OPPOSITE — that pages
+    "load on loopback" — which is exactly the vulnerability: on Android every
+    co-installed app is also on loopback, so that made the whole ledger
+    readable and writable by any app holding the normal-level INTERNET
+    permission.
+    """
     app = create_app(db_path=str(tmp_path / "g.db"), single_user=True,
                      secret_key="t", device_token="sekret")
     c = app.test_client()
-    assert c.get("/dashboard").status_code == 200            # pages load
-    assert c.get("/export.csv").status_code == 200
+
+    # No grant yet: nothing that touches user data is reachable.
+    for path in ("/dashboard", "/export.csv", "/transactions", "/sms/misses.csv",
+                 "/review", "/settings", "/sms/quarantine", "/categories"):
+        assert c.get(path).status_code == 403, path
+    assert c.post("/transactions", data={"amount": "1", "type": "expense",
+                                         "merchant": "X"}).status_code == 403
+    assert c.post("/sms/purge", data={"scope": "all"}).status_code == 403
+
+    # Public endpoints stay public — gating /static is what black-screened the
+    # app the last time an all-route gate was tried.
     assert c.get("/healthz").status_code == 200
-    # …but SMS injection still needs the token.
+    assert c.get("/static/app.js").status_code in (200, 304)
+
+    # Device endpoints still need the header token.
     sms = "Rs.50 spent at TEA on 01-01-2025 ref AAA111222333 UPI"
     assert c.post("/sms/ingest", data={"body": sms}).status_code == 403
     assert c.post("/device/state", data={"sms_permission": "denied"}).status_code == 403
+
+    # After the grant the app works normally.
+    c.get("/?k=sekret")
+    assert c.get("/dashboard").status_code == 200
+    assert c.get("/export.csv").status_code == 200
+
 
 
 def test_secret_key_persisted(tmp_path):

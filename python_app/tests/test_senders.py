@@ -41,7 +41,11 @@ PHISH_KYC = ("Dear customer your A/c XX2211 will be blocked today. INR 1.00 "
 def _client(tmp_path, name="q.db"):
     app = create_app(db_path=str(tmp_path / name), single_user=True,
                      secret_key="s", device_token=TOKEN)
-    return app, app.test_client()
+    c = app.test_client()
+    # Authenticate exactly as the WebView does: a one-time ?k=<device token>
+    # grant on the first navigation, which mints the signed session cookie.
+    c.get(f"/?k={TOKEN}", environ_overrides={"REMOTE_ADDR": "127.0.0.1"})
+    return app, c
 
 
 def _ingest(c, sender, body):

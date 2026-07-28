@@ -64,7 +64,7 @@
         ('Category', b.category_pattern, 15), ('Corrections', b.correction_history, 15),
         ('Time', b.time_pattern, 10)] %}
       <div class="bd-row"><span class="l">{{ label }}</span>
-        <span class="bd-track"><span class="bd-fill" style="width: {{ (val / max * 100)|round(0,'floor') }}%"></span></span>
+        <span class="bd-track"><span class="bd-fill" style="width: {{ (val / max * 100)|round(0,'floor') if max else 0 }}%"></span></span>
         <span class="v num">{{ '%.0f'|format(val) }}/{{ max }}</span></div>
     {% endfor %}
   </div>{% endif %}

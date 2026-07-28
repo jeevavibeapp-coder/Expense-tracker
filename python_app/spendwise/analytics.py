@@ -22,6 +22,25 @@ def _now() -> dt.datetime:
     return dt.datetime.now().replace(microsecond=0, tzinfo=dt.timezone.utc)
 
 
+def _finite(value) -> float:
+    """Coerce a stored amount to a finite float for arithmetic.
+
+    Defence in depth for B2. The write path now refuses non-finite amounts,
+    but ledgers written by earlier builds can already contain them and the
+    file is user-writable. Anything unusable reads as 0.0 so a poisoned row
+    is ignored by the maths instead of taking the screen down.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if f != f or f in (float("inf"), float("-inf")):
+        return 0.0
+    if abs(f) > 1e12:
+        return 0.0
+    return f
+
+
 def _tomorrow_iso() -> str:
     """Exclusive upper bound for 'so far' queries: start of tomorrow. Keeps
     future-dated transactions out of today/week/month tiles and budgets."""
@@ -30,7 +49,7 @@ def _tomorrow_iso() -> str:
 
 
 def _sum_expense_since(conn, user_id: str, since_iso: str, until_iso: str) -> float:
-    return float(db.one(
+    return _finite(db.one(
         conn,
         "SELECT COALESCE(SUM(amount),0) s FROM transactions WHERE user_id=? AND type='expense' "
         "AND is_deleted=0 AND occurred_at>=? AND occurred_at<?",
@@ -50,7 +69,7 @@ def _top_merchants(conn, user_id: str, limit: int = 10) -> list[dict]:
         "SELECT merchant_name n, SUM(amount) v FROM transactions WHERE user_id=? AND type='expense' "
         "AND is_deleted=0 AND merchant_name IS NOT NULL AND merchant_name != '' "
         "GROUP BY merchant_name ORDER BY v DESC LIMIT ?", (user_id, limit))
-    return [{"name": r["n"], "value": round(float(r["v"]), 2)} for r in rows]
+    return [{"name": r["n"], "value": round(_finite(r["v"]), 2)} for r in rows]
 
 
 def _category_breakdown(conn, user_id: str) -> list[dict]:
@@ -59,7 +78,7 @@ def _category_breakdown(conn, user_id: str) -> list[dict]:
         "SELECT c.name n, SUM(t.amount) v FROM transactions t JOIN categories c "
         "ON c.id = t.category_id WHERE t.user_id=? AND t.type='expense' AND t.is_deleted=0 "
         "GROUP BY c.name ORDER BY v DESC", (user_id,))
-    return [{"name": r["n"], "value": round(float(r["v"]), 2)} for r in rows]
+    return [{"name": r["n"], "value": round(_finite(r["v"]), 2)} for r in rows]
 
 
 def _cap_breakdown(cats: list[dict], n: int = 5) -> list[dict]:
@@ -79,7 +98,7 @@ def month_category_spend(conn, user_id: str, month_start_iso: str) -> dict[str, 
         "AND type='expense' AND is_deleted=0 AND category_id IS NOT NULL "
         "AND occurred_at>=? AND occurred_at<? GROUP BY category_id",
         (user_id, month_start_iso, _tomorrow_iso()))
-    return {r["cid"]: round(float(r["v"]), 2) for r in rows}
+    return {r["cid"]: round(_finite(r["v"]), 2) for r in rows}
 
 
 def budget_status(conn, user_id: str, month_start_iso: str) -> list[dict]:
@@ -111,7 +130,7 @@ def daily_series(conn, user_id: str, days: int = 14) -> list[dict]:
         "SELECT substr(occurred_at,1,10) d, SUM(amount) v FROM transactions "
         "WHERE user_id=? AND type='expense' AND is_deleted=0 AND occurred_at>=? "
         "GROUP BY d", (user_id, start.isoformat()))
-    got = {r["d"]: round(float(r["v"]), 2) for r in rows}
+    got = {r["d"]: round(_finite(r["v"]), 2) for r in rows}
     return [{"d": (start + dt.timedelta(days=i)).strftime("%Y-%m-%d"),
              "v": got.get((start + dt.timedelta(days=i)).strftime("%Y-%m-%d"), 0.0)}
             for i in range(days)]
@@ -153,7 +172,7 @@ def detect_recurring(conn, user_id: str) -> list[dict]:
         "ORDER BY merchant_name, occurred_at", (user_id, since))
     by_merchant: dict[str, list] = {}
     for r in rows:
-        by_merchant.setdefault(r["n"], []).append((r["occurred_at"][:10], float(r["amount"])))
+        by_merchant.setdefault(r["n"], []).append((r["occurred_at"][:10], _finite(r["amount"])))
 
     out = []
     today = _now().date()
@@ -229,10 +248,10 @@ def build_report(conn, user_id: str, month: str) -> dict:
                "JOIN categories c ON c.id = t.category_id WHERE t.user_id=? "
                "AND t.type='expense' AND t.is_deleted=0 AND t.occurred_at>=? "
                "AND t.occurred_at<? GROUP BY c.id ORDER BY v DESC")
-    prev_rows = {r["n"]: (float(r["v"]), r["col"])
+    prev_rows = {r["n"]: (_finite(r["v"]), r["col"])
                  for r in db.all_rows(conn, cat_sql, (user_id, pa, a))}
-    categories = [{"name": r["n"], "color": r["col"], "value": round(float(r["v"]), 2),
-                   "delta": round(float(r["v"]) - prev_rows.get(r["n"], (0.0,))[0], 2)}
+    categories = [{"name": r["n"], "color": r["col"], "value": round(_finite(r["v"]), 2),
+                   "delta": round(_finite(r["v"]) - prev_rows.get(r["n"], (0.0,))[0], 2)}
                   for r in db.all_rows(conn, cat_sql, (user_id, a, b))]
     # Categories with spend last month but none this month must still show
     # their drop, or per-category deltas stop explaining the headline delta.
@@ -242,7 +261,7 @@ def build_report(conn, user_id: str, month: str) -> dict:
             categories.append({"name": name, "color": col, "value": 0.0,
                                "delta": round(-pv, 2)})
 
-    merchants = [{"name": r["n"], "value": round(float(r["v"]), 2)} for r in db.all_rows(
+    merchants = [{"name": r["n"], "value": round(_finite(r["v"]), 2)} for r in db.all_rows(
         conn,
         "SELECT merchant_name n, SUM(amount) v FROM transactions WHERE user_id=? "
         "AND type='expense' AND is_deleted=0 AND merchant_name IS NOT NULL "
@@ -254,7 +273,7 @@ def build_report(conn, user_id: str, month: str) -> dict:
         "SELECT substr(occurred_at,1,10) d, SUM(amount) v FROM transactions "
         "WHERE user_id=? AND type='expense' AND is_deleted=0 AND occurred_at>=? "
         "AND occurred_at<? GROUP BY d ORDER BY d", (user_id, a, b))
-    spent = {r["d"]: round(float(r["v"]), 2) for r in day_rows}
+    spent = {r["d"]: round(_finite(r["v"]), 2) for r in day_rows}
     elapsed = now.day if is_current else (end - start).days
     daily = [{"d": i + 1, "v": spent.get(f"{month}-{i + 1:02d}", 0.0)}
              for i in range(elapsed)]
@@ -291,7 +310,7 @@ def _trend(conn, user_id: str, months: int = 6) -> list[dict]:
     for r in rows:
         b = buckets.setdefault(r["p"], {"income": 0.0, "expense": 0.0})
         if r["type"] in b:
-            b[r["type"]] += float(r["v"])
+            b[r["type"]] += _finite(r["v"])
     if not buckets:
         return []
     # Zero-fill gaps so adjacent bars are always consecutive calendar months.
@@ -324,9 +343,9 @@ def behaviour_insights(conn, user_id: str, month_start: dt.datetime,
                "JOIN categories c ON c.id = t.category_id WHERE t.user_id=? "
                "AND t.type='expense' AND t.is_deleted=0 AND t.occurred_at>=? "
                "AND t.occurred_at<? GROUP BY c.id")
-    cur = {r["n"]: float(r["v"]) for r in db.all_rows(
+    cur = {r["n"]: _finite(r["v"]) for r in db.all_rows(
         conn, cat_sql, (user_id, month_start.isoformat(), _tomorrow_iso()))}
-    prev = {r["n"]: float(r["v"]) for r in db.all_rows(
+    prev = {r["n"]: _finite(r["v"]) for r in db.all_rows(
         conn, cat_sql, (user_id, prev_start.isoformat(), prev_cut.isoformat()))}
     moves = []
     for name, v in cur.items():
@@ -480,9 +499,9 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
             "AND occurred_at>=:lo AND occurred_at<:until",
             {"u": user_id, "d": day_start.isoformat(), "w": week_start.isoformat(),
              "m": month_start.isoformat(), "lo": lo, "until": until})
-        daily, weekly, monthly = (round(float(tiles["d"]), 2),
-                                  round(float(tiles["w"]), 2),
-                                  round(float(tiles["m"]), 2))
+        daily, weekly, monthly = (round(_finite(tiles["d"]), 2),
+                                  round(_finite(tiles["w"]), 2),
+                                  round(_finite(tiles["m"]), 2))
     # One pass for all-time totals + transaction count.
     totals = {r["type"]: (float(r["s"]), r["c"]) for r in db.all_rows(
         conn, "SELECT type, COALESCE(SUM(amount),0) s, COUNT(*) c FROM transactions "
@@ -570,7 +589,7 @@ def detect_transfers(conn, user_id: str, window_days: int = 400) -> list[dict]:
         if parsed is None:
             continue
         # Integer paise key: floats are not safe dict keys for money.
-        key = int(round(float(c["amount"]) * 100))
+        key = int(round(_finite(c["amount"]) * 100))
         credits_by_amount.setdefault(key, []).append((parsed, c))
 
     used: set = set()
@@ -582,7 +601,7 @@ def detect_transfers(conn, user_id: str, window_days: int = 400) -> list[dict]:
         dt_d = _parse_iso(d["occurred_at"])
         if dt_d is None:
             continue
-        bucket = credits_by_amount.get(int(round(float(d["amount"]) * 100)))
+        bucket = credits_by_amount.get(int(round(_finite(d["amount"]) * 100)))
         if not bucket:
             continue
         for dt_c, c in bucket:
@@ -591,7 +610,7 @@ def detect_transfers(conn, user_id: str, window_days: int = 400) -> list[dict]:
             if abs((dt_c - dt_d).total_seconds()) <= window:
                 used.add(c["id"])
                 pairs.append({"debit_id": d["id"], "credit_id": c["id"],
-                              "amount": round(float(d["amount"]), 2),
+                              "amount": round(_finite(d["amount"]), 2),
                               "at": d["occurred_at"]})
                 break
     return pairs
@@ -627,7 +646,7 @@ def detect_refunds(conn, user_id: str, window_days: int = 400) -> list[dict]:
         if not debits:
             continue
         for c_at, credit in (p for p in items if p[1]["type"] == "income"):
-            amount = float(credit["amount"])
+            amount = _finite(credit["amount"])
             # `rows` is ordered by occurred_at, so `debits` is ascending and
             # reversed() walks newest-first. The FIRST debit that qualifies is
             # therefore already the most recent one — no best-so-far scan of
@@ -638,7 +657,7 @@ def detect_refunds(conn, user_id: str, window_days: int = 400) -> list[dict]:
                     continue
                 if c_at - d_at > window:
                     break           # everything further back is older still
-                if float(d["amount"]) + _AMOUNT_EPS < amount:
+                if _finite(d["amount"]) + _AMOUNT_EPS < amount:
                     continue        # a refund cannot exceed what was paid
                 best = d
                 break

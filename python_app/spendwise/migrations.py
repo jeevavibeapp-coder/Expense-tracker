@@ -11,8 +11,11 @@ Guarantees
   leaves the database exactly as it was before that step.
 * **Idempotent** — already-applied migrations are skipped by version number,
   never re-run.
-* **Recoverable** — the caller takes a file-level backup before upgrading (see
-  ``maintenance.safe_upgrade``), so even a SQLite-level crash is recoverable.
+* **Recoverable** — ``db.open_database`` takes a verified file-level backup
+  before upgrading and, if a migration fails, restores it and retries once.
+  A second failure degrades to safe mode (see ``app._safe_mode_app``) rather
+  than raising, because raising killed the server thread and the native
+  Retry button re-ran the same migration forever.
 * **Forward-only** — downgrades are not supported (an older build must not open
   a newer database); ``rollback_to`` exists only to undo a *failed* upgrade
   from the pre-upgrade backup.
@@ -598,6 +601,45 @@ def _m8_daily_rollups(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM rollup_dirty")
 
 
+def _m9_sanitise_amounts(conn: sqlite3.Connection) -> None:
+    """v9 — quarantine non-finite / absurd amounts already in the ledger.
+
+    Builds before this one accepted any string ``float()`` would parse, so a
+    400-digit SMS amount became ``inf`` and was stored. A single such row made
+    ``detect_transfers`` raise OverflowError on ``int(amount * 100)``, which
+    permanently 500'd the dashboard — the app's launch screen — for anyone who
+    received one message. Devices in the field can already be in that state,
+    so the write-side fix is not enough on its own.
+
+    The rows are soft-deleted rather than repaired or dropped: the amount is
+    unrecoverable (the real value is not derivable from ``inf``), but the SMS
+    body is still on the row, so the user can read it and re-enter the
+    transaction. Silently deleting a record of the user's money would be the
+    wrong trade even when the record is broken.
+
+    SQLite has no isnan()/isinf(), so the predicate is written with the two
+    properties that identify them in SQL: NaN is the only value not equal to
+    itself, and both infinities fall outside the finite bound.
+    """
+    conn.execute(
+        "UPDATE transactions SET is_deleted = 1 "
+        "WHERE is_deleted = 0 AND ("
+        "     amount IS NULL"
+        "  OR amount != amount"          # NaN
+        "  OR amount > 1e12"             # +inf and absurd magnitudes
+        "  OR amount < -1e12"            # -inf
+        "  OR amount <= 0)")
+    # The rollups derived from those rows are now wrong; force a rebuild.
+    conn.execute("DELETE FROM daily_rollups")
+    conn.execute(
+        "INSERT INTO daily_rollups(user_id, day, type, total, tx_count) "
+        "SELECT user_id, substr(occurred_at, 1, 10), type, "
+        "       COALESCE(SUM(amount), 0), COUNT(*) "
+        "FROM transactions WHERE is_deleted = 0 "
+        "GROUP BY user_id, substr(occurred_at, 1, 10), type")
+    conn.execute("DELETE FROM rollup_dirty")
+
+
 # Ordered list. Index + 1 == the schema version the entry produces.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m1_baseline,
@@ -608,6 +650,7 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m6_foreign_keys,
     _m7_fts_search,
     _m8_daily_rollups,
+    _m9_sanitise_amounts,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -758,6 +801,8 @@ def _detect_legacy_version(conn: sqlite3.Connection) -> int:
         version = 7
     if version == 7 and {"daily_rollups", "rollup_dirty"} <= tables:
         version = 8
+    # v9 leaves no schema trace (it only rewrites rows), so it cannot be
+    # detected — deliberately return 8 and let it re-run. It is idempotent.
     return version
 
 

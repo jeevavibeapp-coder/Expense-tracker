@@ -230,6 +230,7 @@ def test_review_page_shows_a_suggestion_the_user_still_has_to_tap(tmp_path):
     app = create_app(db_path=str(tmp_path / "nb3.db"), single_user=True,
                      secret_key="s", device_token=TOKEN)
     c = app.test_client()
+    c.get(f"/?k={TOKEN}")            # authenticate as the WebView does
     conn = db.connect(app.config["DB_PATH"])
     uid = None
     c.get("/dashboard")
@@ -383,6 +384,7 @@ def test_thresholds_actually_reach_the_engine(tmp_path):
     app = create_app(db_path=str(tmp_path / "cal10.db"), single_user=True,
                      secret_key="s", device_token=TOKEN)
     c = app.test_client()
+    c.get(f"/?k={TOKEN}")            # authenticate as the WebView does
     c.get("/dashboard")
     conn = db.connect(app.config["DB_PATH"])
     uid = conn.execute("SELECT id FROM users").fetchone()[0]

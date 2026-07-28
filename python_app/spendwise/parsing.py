@@ -157,10 +157,42 @@ class ParsedSMS:
     parsed_by: str = "generic"
 
 
+# Upper bound on a single transaction, in rupees. Generous to the point of
+# absurdity (1 lakh crore) — the goal is not to second-guess the user, it is
+# to guarantee the value is finite and survives int(amount * 100) without
+# overflowing, which is what every downstream money calculation assumes.
+MAX_AMOUNT = 1e12
+
+
+def safe_amount(value) -> Optional[float]:
+    """Return ``value`` as a usable rupee amount, or None if it is not one.
+
+    Rejects NaN, +/-Infinity and anything outside (0, MAX_AMOUNT].
+
+    This exists because ``float()`` accepts far more than money: a 400-digit
+    string becomes ``inf``, "nan" becomes NaN, and both compare as > 0 so they
+    passed the transaction gate. A stored ``inf`` then propagated into
+    ``detect_transfers``, where ``int(round(amount * 100))`` raised
+    OverflowError and permanently 500'd the dashboard — a denial of service
+    triggerable by anyone who can send the device an SMS.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    # NaN != NaN, and both infinities are excluded by the range check that
+    # follows; this comparison is written to be explicit about NaN.
+    if f != f:
+        return None
+    if not (0 < f <= MAX_AMOUNT):
+        return None
+    return f
+
+
 def _to_float(raw: str) -> Optional[float]:
     try:
-        return float(raw.replace(",", ""))
-    except ValueError:
+        return safe_amount(raw.replace(",", ""))
+    except (AttributeError, ValueError):
         return None
 
 

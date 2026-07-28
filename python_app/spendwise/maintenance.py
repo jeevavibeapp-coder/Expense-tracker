@@ -39,7 +39,14 @@ def integrity_report(conn: sqlite3.Connection) -> dict:
             report["errors"].append(f"integrity_check: {first}")
     except sqlite3.DatabaseError as exc:
         report["ok"] = False
-        report["structural"] = "unreadable"
+        # "database is locked"/"busy" is CONTENTION, not damage. Reporting it
+        # as unreadable made open_database treat a transient lock — the SMS
+        # receiver holding a write while the app launches — as corruption, and
+        # move the user's entire ledger aside as .corrupt. Classify it so the
+        # caller can wait instead of destroying data.
+        text = str(exc).lower()
+        locked = "locked" in text or "busy" in text
+        report["structural"] = "locked" if locked else "unreadable"
         report["errors"].append(f"integrity_check raised: {exc}")
         return report
 

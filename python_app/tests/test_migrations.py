@@ -478,7 +478,9 @@ def test_legacy_detection_requires_the_constraints_not_just_the_tables(tmp_path)
     raw.commit()
     detected = migrations._detect_legacy_version(raw)
     raw.close()
-    assert detected == migrations.SCHEMA_VERSION
+    # v9 rewrites rows and leaves no schema trace, so it is deliberately not
+    # detectable — detection stops at 8 and v9 re-runs (it is idempotent).
+    assert detected == 8
 
 
 def test_foreign_keys_are_enforced_on_every_app_connection(tmp_path):

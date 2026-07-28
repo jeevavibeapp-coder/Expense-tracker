@@ -78,7 +78,9 @@ def open_database(path: str, *, backup: bool = True) -> tuple[sqlite3.Connection
     so the UI can tell the user the truth instead of failing silently.
     """
     status: dict = {"recovered": False, "reset": False, "backup": None,
-                    "version": None, "integrity": "ok", "repaired": {}}
+                    "version": None, "integrity": "ok", "repaired": {},
+                    "safe_mode": False, "migration_error": None,
+                    "migration_rolled_back": False}
 
     def _fresh() -> sqlite3.Connection:
         return connect(path)
@@ -87,12 +89,24 @@ def open_database(path: str, *, backup: bool = True) -> tuple[sqlite3.Connection
         conn = _fresh()
         report = maintenance.integrity_report(conn)
         status["integrity"] = report["structural"]
-        if not report["ok"] and report["structural"] != "ok":
+        # NEVER recover on "locked": that is another connection holding a
+        # write, not damage. Recovering would move the live ledger aside and
+        # start empty — measured as total data loss before this guard.
+        if (not report["ok"] and report["structural"] not in ("ok", "locked")):
             conn.close()
             rec = maintenance.recover(path)
             status["recovered"] = rec["restored"]
             status["reset"] = rec["reset"]
             conn = _fresh()
+    except sqlite3.OperationalError as exc:
+        # Contention, not damage. Surface it; the caller retries on next launch.
+        if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+            raise
+        rec = maintenance.recover(path)
+        status["recovered"] = rec["restored"]
+        status["reset"] = rec["reset"]
+        status["integrity"] = "unreadable"
+        conn = _fresh()
     except sqlite3.DatabaseError:
         # Cannot even open it — corrupt header or truncated file.
         rec = maintenance.recover(path)
@@ -106,7 +120,41 @@ def open_database(path: str, *, backup: bool = True) -> tuple[sqlite3.Connection
     if backup and pending:
         status["backup"] = maintenance.create_backup(conn, path)
 
-    status["version"] = init_db(conn)
+    # A failed migration used to propagate straight out of here, killing the
+    # embedded server thread. The native layer then timed out waiting for
+    # /healthz and offered "Retry", which re-ran the identical migration —
+    # a deterministic permanent brick, with a verified backup sitting unused
+    # on disk. The recovery machinery existed but was only ever wired to
+    # CORRUPTION, never to migration failure.
+    try:
+        status["version"] = init_db(conn)
+    except migrations.MigrationError as first:
+        status["migration_error"] = str(first)
+        status["migration_failed_version"] = first.version
+        conn.close()
+        # Restore the pre-migration snapshot, then try exactly once more: the
+        # common causes (a full disk, a locked file, an OOM kill) are
+        # transient, and a second attempt on a known-good file is cheap.
+        restored = bool(status["backup"]) and maintenance.restore_backup(
+            path, status["backup"])
+        status["migration_rolled_back"] = restored
+        conn = _fresh()
+        try:
+            status["version"] = init_db(conn)
+            status["recovered"] = True
+        except migrations.MigrationError as second:
+            # Deterministic failure. Do NOT raise: raising is what bricked the
+            # app. Roll back once more so the file on disk is the version the
+            # PREVIOUS build could read, and report a safe state the caller
+            # can degrade into.
+            status["migration_error"] = str(second)
+            conn.close()
+            if status["backup"]:
+                maintenance.restore_backup(path, status["backup"])
+            conn = _fresh()
+            status["version"] = migrations.current_version(conn)
+            status["safe_mode"] = True
+            return conn, status
 
     orphans = maintenance.integrity_report(conn).get("orphans") or {}
     if orphans:

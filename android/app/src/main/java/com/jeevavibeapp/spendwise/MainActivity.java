@@ -71,10 +71,9 @@ public class MainActivity extends BridgeActivity {
         }
 
         requestSmsPermissions();
+        // bootstrap() also registers the WorkManager fallback sweep, on its
+        // worker thread — see the comment there.
         bootstrap();
-        // Fallback sweep for devices where the broadcast receiver never
-        // fires (MIUI/ColorOS Autostart) or the process was dead.
-        SmsCatchUpWorker.schedule(getApplicationContext());
     }
 
     /** Harden WebView settings for compatibility across Android 7–15+. */
@@ -111,6 +110,10 @@ public class MainActivity extends BridgeActivity {
     }
 
     private volatile boolean bootstrapping = false;
+    /** Populated by bootstrap() off the UI thread. onResume reads this rather
+     *  than calling into AndroidKeyStore, which was a binder round trip on the
+     *  main thread on EVERY return to the app. */
+    private volatile String cachedDeviceToken = null;
 
     /** Start the Python interpreter + embedded server fully off the UI thread
      *  (Python.start unpacks the runtime on first launch — too slow for main).
@@ -121,19 +124,32 @@ public class MainActivity extends BridgeActivity {
         }
         bootstrapping = true;
         final android.content.Context appContext = getApplicationContext();
-        final String filesDir = getFilesDir().getAbsolutePath();
-        // Drain any pre-Keystore plaintext token before anything reads one.
-        SecretVault.migrate(appContext);
-        final String token = getDeviceToken();
-        final String secret = getSessionSecret();
+        // NOTHING expensive may run before this thread starts. Everything
+        // below used to execute on the UI thread inside onCreate: two
+        // AndroidKeyStore round trips (with first-run key generation, which
+        // costs hundreds of milliseconds on StrongBox), three synchronous
+        // SharedPreferences commit() disk writes, getFilesDir(), and
+        // WorkManager's Room database init. That is a cold-start ANR waiting
+        // to happen on a low-end device.
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
+                    String filesDir = getFilesDir().getAbsolutePath();
+                    // Drain any pre-Keystore plaintext token before anything
+                    // reads one.
+                    SecretVault.migrate(appContext);
+                    String token = getDeviceToken();
+                    String secret = getSessionSecret();
+                    // Cached so onResume never has to touch the keystore.
+                    cachedDeviceToken = token;
                     if (!Python.isStarted()) {
                         Python.start(new AndroidPlatform(appContext));
                     }
                     startServerAndLoad(filesDir, token, secret);
+                    // WorkManager.getInstance() opens a Room database, so it
+                    // belongs here rather than in onCreate.
+                    SmsCatchUpWorker.schedule(appContext);
                 } finally {
                     bootstrapping = false;
                 }
@@ -195,12 +211,14 @@ public class MainActivity extends BridgeActivity {
             // Permission may have just been granted — pull in existing bank
             // messages right away instead of making the user relaunch.
             if (hasReadSmsPermission()) {
-                final String filesDir = getFilesDir().getAbsolutePath();
-                final String token = getDeviceToken();
-                final String secret = getSessionSecret();
                 new Thread(new Runnable() {
                     @Override
-                    public void run() { catchUpFromInbox(filesDir, token, secret); }
+                    public void run() {
+                        // Keystore reads and getFilesDir() belong here, not on
+                        // the UI thread this callback arrives on.
+                        catchUpFromInbox(getFilesDir().getAbsolutePath(),
+                                         getDeviceToken(), getSessionSecret());
+                    }
                 }, "spendwise-sms-catchup").start();
             }
         }
@@ -220,8 +238,17 @@ public class MainActivity extends BridgeActivity {
 
     private void requestSmsPermissions() {
         if (!hasSmsPermission() || !hasReadSmsPermission()) {
-            getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                    .putBoolean("sms_asked", true).apply();
+            // getSharedPreferences blocks on the first call while the file is
+            // read, and this runs from onCreate — so the write goes to a
+            // worker. requestPermissions itself must stay on the UI thread.
+            final android.content.Context appContext = getApplicationContext();
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                            .edit().putBoolean("sms_asked", true).apply();
+                }
+            }, "spendwise-prefs").start();
             ActivityCompat.requestPermissions(this, new String[]{
                     Manifest.permission.RECEIVE_SMS,
                     Manifest.permission.READ_SMS }, SMS_PERMISSION_REQUEST);
@@ -252,17 +279,25 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void reportPermissionState(final boolean reloadOnChange) {
+        // checkSelfPermission is a cheap in-process lookup; everything that
+        // touches disk or the keystore happens on the worker below. This runs
+        // from onResume, i.e. on EVERY return to the app, so it is the hottest
+        // main-thread path in the activity.
         final boolean granted = hasSmsPermission();
-        final String token = getDeviceToken();
-        // Only reload the WebView when the state actually flips to granted —
-        // reloading on every onResume would wipe scroll/form state each time
-        // the user returns to the app.
-        SharedPreferences p = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        final boolean changed = p.getInt("last_perm", -1) != (granted ? 1 : 0);
-        p.edit().putInt("last_perm", granted ? 1 : 0).apply();
         new Thread(new Runnable() {
             @Override
             public void run() {
+                String token = cachedDeviceToken;
+                if (token == null) {
+                    token = getDeviceToken();      // off the UI thread
+                    cachedDeviceToken = token;
+                }
+                // Only reload the WebView when the state actually flips to
+                // granted — reloading on every onResume would wipe scroll and
+                // form state each time the user returns to the app.
+                SharedPreferences p = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                final boolean changed = p.getInt("last_perm", -1) != (granted ? 1 : 0);
+                p.edit().putInt("last_perm", granted ? 1 : 0).apply();
                 boolean delivered = postState(granted, token);
                 if (delivered && granted && changed && reloadOnChange) {
                     runOnUiThread(new Runnable() {
@@ -305,7 +340,7 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void startServerAndLoad(String filesDir, String token, String secret) {
+    private void startServerAndLoad(String filesDir, final String token, String secret) {
         try {
             Python.getInstance()
                     .getModule("spendwise.android_entry")
@@ -323,7 +358,13 @@ public class MainActivity extends BridgeActivity {
                 public void run() {
                     try {
                         final android.webkit.WebView wv = getBridge().getWebView();
-                        wv.loadUrl(SERVER_URL);
+                        // Authenticate this WebView to the embedded server. The
+                        // server mints a signed session cookie from this
+                        // one-time grant and immediately redirects, so the token
+                        // does not persist in the page URL. Without it every
+                        // page returns 403 — which is the point: a co-installed
+                        // app reaching 127.0.0.1 cannot supply this token.
+                        wv.loadUrl(SERVER_URL + "/?k=" + Uri.encode(token));
                         // Drop the bundled loading shell from history once the
                         // real app is up, so Back can never return to it.
                         // Only clears while the shell is still the OLDEST entry,

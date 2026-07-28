@@ -289,7 +289,7 @@
       {{ m.avatar(mch.name) }}
       <div class="tx-main">
         <div class="tx-name">{{ mch.name }}</div>
-        <div class="cat-bar" style="margin-top:7px"><i style="width:{{ (mch.value/mmax*100)|round|int }}%; background:{{ mch.name|avatar_color }}"></i></div>
+        <div class="cat-bar" style="margin-top:7px"><i style="width:{{ (mch.value/mmax*100)|round|int if mmax else 0 }}%; background:{{ mch.name|avatar_color }}"></i></div>
       </div>
       <div class="tx-amt num">{{ cur }} {{ m.money_k(mch.value) }}</div>
     </a>

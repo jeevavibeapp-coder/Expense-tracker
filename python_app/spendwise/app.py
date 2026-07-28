@@ -24,13 +24,52 @@ from flask import (
 
 from . import (analytics, auth, calibration, categorizer, db, engine,
                fraud, search, senders)
-from .parsing import PARSER_VERSION, parse_sms
+from .parsing import MAX_AMOUNT, PARSER_VERSION, parse_sms, safe_amount
 
 
 def parsing_version() -> str:
     return PARSER_VERSION
 
 TX_CONFIRMED, TX_PENDING, TX_REVIEW = "confirmed", "pending_confirmation", "needs_review"
+
+
+def _safe_mode_app(app: Flask, status: dict) -> Flask:
+    """Minimal server used when the database could not be upgraded.
+
+    Deliberately tiny: it touches no application table, so it cannot fail for
+    the same reason the migration did. Its whole job is to keep the process
+    alive and answerable so the user gets an explanation instead of a launch
+    loop, and to tell them exactly where their data is.
+    """
+    backup = status.get("backup") or "the app's backup folder"
+    detail = status.get("migration_error") or "unknown error"
+
+    @app.get("/healthz")
+    def healthz():                       # noqa: D401 - native readiness probe
+        return {"status": "safe_mode", "ok": False,
+                "error": detail, "backup": backup}, 200
+
+    @app.get("/", defaults={"_path": ""})
+    @app.get("/<path:_path>")
+    def safe_mode_page(_path):
+        return Response(
+            "<!doctype html><meta name=viewport content='width=device-width,"
+            "initial-scale=1'><style>body{margin:0;min-height:100vh;display:flex;"
+            "align-items:center;justify-content:center;font-family:-apple-system,"
+            "Roboto,sans-serif;background:#12121a;color:#fff;text-align:center}"
+            "div{padding:28px;max-width:32rem}h1{font-size:20px;margin:0 0 10px}"
+            "p{opacity:.85;font-size:14px;line-height:1.55;margin:0 0 12px}"
+            "code{font-size:12px;opacity:.7;word-break:break-all}</style><div>"
+            "<h1>SpendWise couldn't finish updating</h1>"
+            "<p><b>Your transactions are safe.</b> The update was undone and "
+            "your data has been restored to how it was before.</p>"
+            "<p>Reinstalling or clearing app data would delete it, so please "
+            "don't. A backup copy is kept at:</p>"
+            f"<code>{backup}</code></div>",
+            mimetype="text/html", status=503)
+
+    app.config["SAFE_MODE"] = True
+    return app
 
 
 def create_app(db_path: Optional[str] = None, single_user: bool = False,
@@ -47,6 +86,17 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     # about it rather than failing silently.
     init_conn, db_status = db.open_database(app.config["DB_PATH"])
     app.config["DB_STATUS"] = db_status
+
+    # A migration that fails twice in a row leaves the ledger rolled back to
+    # the schema the previous build wrote. The normal routes query columns
+    # that schema does not have, so serving them would crash on every request.
+    # Serve a minimal, honest app instead — critically it answers /healthz, so
+    # the native layer sees a live server and shows this page rather than
+    # "Couldn't start SpendWise" with a Retry button that re-runs the same
+    # failing migration forever.
+    if db_status.get("safe_mode"):
+        init_conn.close()
+        return _safe_mode_app(app, db_status)
 
     # Session-signing key. On-device this is supplied by the Android Keystore
     # (SecretVault -> android_entry.start_server -> here), so it never touches
@@ -97,17 +147,105 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
         return resp
 
-    # ── Request lifecycle ────────────────────────────────────────────────
-    @app.before_request
-    def _open_db():
-        # NOTE: the Origin-based CSRF check was removed — Android WebViews send
-        # `Origin: null` on form POSTs in some versions, which the check
-        # rejected, so add/edit returned "Forbidden" on-device. This is a
-        # single-user, loopback-only, offline app with no cross-origin attack
-        # surface, so the check was pure downside.
-        g.conn = db.connect(app.config["DB_PATH"])
-        if app.config["SINGLE_USER"] and "user_id" not in session:
+    # ── Authentication model ─────────────────────────────────────────────
+    # Every endpoint is in exactly one class. There is no implicit
+    # authentication: an endpoint not listed as PUBLIC or DEVICE requires a
+    # granted session, and the gate below fails closed for anything it does
+    # not recognise.
+    #
+    # Why this exists: the embedded server listens on 127.0.0.1, and on
+    # Android *any* app holding the normal-level INTERNET permission can open
+    # a socket to it. Previously `before_request` minted a session for every
+    # caller, so 36 of 38 endpoints were reachable with no cookie and no
+    # token — a co-installed app could GET /export.csv (the entire ledger),
+    # read raw bank SMS from /sms/misses.csv, POST forged transactions, purge
+    # data, and approve quarantined phishing messages.
+    #
+    # Two earlier attempts at a gate were reverted for real reasons, and this
+    # design avoids both: an all-route loopback/device gate also blocked
+    # /static, which black-screened the app; and an Origin check rejected the
+    # `Origin: null` that Android WebViews send on form POSTs, which broke
+    # add/edit. So: static assets are explicitly PUBLIC, and nothing depends
+    # on the Origin header.
+    PUBLIC_ENDPOINTS = frozenset({
+        "static",        # app.js / app.css — no user data, and gating it
+                         # black-screened the app the last time it was tried
+        "healthz",       # native readiness poll, before the grant happens
+    })
+    DEVICE_ENDPOINTS = frozenset({
+        "sms_ingest",    # native -> server, authenticated by header token
+        "device_state",
+    })
+    # Endpoints reachable without a session in multi-user web mode only.
+    LOGIN_ENDPOINTS = frozenset({"login", "signup"})
+
+    def _valid_device_token(value: str) -> bool:
+        token = app.config["DEVICE_TOKEN"]
+        return bool(token) and hmac.compare_digest(value or "", token)
+
+    def _grant_session() -> None:
+        """Mark this session as belonging to the app itself."""
+        session["dev_grant"] = True
+        session.permanent = False
+        if app.config["SINGLE_USER"]:
             session["user_id"] = auth.ensure_local_user(g.conn)
+
+    @app.before_request
+    def _authenticate():
+        g.conn = db.connect(app.config["DB_PATH"])
+        endpoint = request.endpoint
+
+        # Unknown endpoint -> let Flask 404 it; there is nothing to protect.
+        if endpoint is None:
+            return None
+        if endpoint in PUBLIC_ENDPOINTS:
+            return None
+        if endpoint in DEVICE_ENDPOINTS:
+            return None            # the route itself calls device_authorized()
+
+        # Everything below is session-authenticated.
+        if not app.config["SINGLE_USER"]:
+            return None            # multi-user web mode uses the login flow
+
+        # Loopback is necessary but NOT sufficient — on Android every
+        # co-installed app is also on loopback. It is kept as defence in depth.
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            abort(403)
+
+        token = app.config["DEVICE_TOKEN"]
+        if not token:
+            # No token configured: desktop/dev/test. There is no secret to
+            # authenticate with, so loopback is the whole boundary. This mode
+            # never runs on a device — android_entry always supplies a token
+            # (asserted by a test).
+            app.config["AUTH_MODE"] = "loopback-only"
+            if "user_id" not in session:
+                session["user_id"] = auth.ensure_local_user(g.conn)
+            return None
+
+        app.config["AUTH_MODE"] = "device-token"
+        # A caller presenting the token is the app itself; grant on the spot.
+        if _valid_device_token(request.headers.get("X-SpendWise-Token", "")):
+            _grant_session()
+            return None
+        # Or a one-time grant carried on the WebView's initial navigation.
+        key = request.args.get("k")
+        if key is not None:
+            if not _valid_device_token(key):
+                abort(403)
+            _grant_session()
+            # Redirect so the token does not linger in the page URL, and so
+            # a reload cannot replay it from history.
+            return redirect(url_for("dashboard"))
+
+        # Otherwise the signed session cookie is the only credential. It is
+        # signed with the Keystore-held secret, so a co-installed app can
+        # neither read nor forge it.
+        if not session.get("dev_grant"):
+            abort(403)
+        if "user_id" not in session:
+            session["user_id"] = auth.ensure_local_user(g.conn)
+        return None
 
     @app.teardown_request
     def _close_db(exc):
@@ -197,10 +335,15 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         return db.all_rows(g.conn, sql + " ORDER BY name", (uid,))
 
     def parse_amount(raw: str) -> Optional[float]:
-        try:
-            return round(float(raw), 2)
-        except (TypeError, ValueError):
+        """Parse a user-entered amount. None for anything that is not money.
+
+        Goes through safe_amount so a hand-typed "inf", "nan" or 400-digit
+        string is rejected here exactly as it is on the SMS path.
+        """
+        value = safe_amount(raw)
+        if value is None:
             return None
+        return round(value, 2)
 
     def parse_date(raw: str) -> Optional[dt.datetime]:
         if not raw:
@@ -315,6 +458,13 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
                            reference_number=None, occurred_at: Optional[dt.datetime] = None,
                            source="manual", resolve=True, dedup_key=None,
                            sms_body=None, sms_sender=None, assessment=None) -> dict:
+        # Storage gate. Every caller already validates, but this is the last
+        # point before a value becomes permanent, and a non-finite amount in
+        # the ledger is not a bad row — it poisons every aggregate that reads
+        # it and crashes detect_transfers outright. Refuse rather than store.
+        amount = safe_amount(amount)
+        if amount is None:
+            raise ValueError("amount must be a finite value in (0, %g]" % MAX_AMOUNT)
         s = settings_for(uid)
         # Same clock domain as stored SMS times: local wall-clock stamped UTC.
         occ = occurred_at or dt.datetime.now().replace(microsecond=0,
