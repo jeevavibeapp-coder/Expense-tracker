@@ -22,7 +22,7 @@ from flask import (
     Flask, Response, abort, g, redirect, render_template, request, session, url_for,
 )
 
-from . import analytics, auth, db, engine, fraud, senders
+from . import analytics, auth, db, engine, fraud, search, senders
 from .parsing import PARSER_VERSION, parse_sms
 
 
@@ -469,12 +469,21 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         sql = ("SELECT * FROM transactions WHERE user_id=? AND is_deleted=0")
         params = [uid]
         if q:
-            like = f"%{q.lower()}%"
-            sql += (" AND (lower(COALESCE(merchant_name,'')) LIKE ? OR "
-                    "lower(COALESCE(raw_merchant,'')) LIKE ? OR "
-                    "lower(COALESCE(notes,'')) LIKE ? OR "
-                    "lower(COALESCE(reference_number,'')) LIKE ?)")
-            params += [like, like, like, like]
+            # Try the FTS5 index first. It returns None when the index is
+            # absent (older SQLite) or matched nothing, in which case we fall
+            # back to the substring scan so the optimisation can never make a
+            # transaction unfindable that used to be findable.
+            hits = search.search_ids(g.conn, uid, q, limit=200)
+            if hits is not None:
+                sql += " AND id IN (%s)" % ",".join("?" * len(hits))
+                params += hits
+            else:
+                like = f"%{q.lower()}%"
+                sql += (" AND (lower(COALESCE(merchant_name,'')) LIKE ? OR "
+                        "lower(COALESCE(raw_merchant,'')) LIKE ? OR "
+                        "lower(COALESCE(notes,'')) LIKE ? OR "
+                        "lower(COALESCE(reference_number,'')) LIKE ?)")
+                params += [like, like, like, like]
         if f == "expense":
             sql += " AND type='expense'"
         elif f == "income":

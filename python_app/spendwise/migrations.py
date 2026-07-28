@@ -430,6 +430,85 @@ def _m6_foreign_keys(conn: sqlite3.Connection) -> None:
         raise RuntimeError(f"foreign_key_check failed after rebuild: {bad[:5]}")
 
 
+FTS_COLUMNS = ("merchant_name", "raw_merchant", "notes", "reference_number")
+
+# Kept out of _m7 so search.rebuild_index() can reuse the exact same DDL — two
+# copies of this would drift and the index would silently stop matching the
+# triggers.
+FTS_CREATE = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS tx_fts USING fts5("
+    "merchant_name, raw_merchant, notes, reference_number, "
+    "content='transactions', content_rowid='rowid', tokenize='unicode61')")
+
+# External-content FTS5 does not track its base table by itself; these keep
+# the two in lockstep. Written against `rowid` because transactions.id is TEXT
+# (so the table still has an implicit integer rowid).
+FTS_TRIGGERS = (
+    """CREATE TRIGGER IF NOT EXISTS tx_fts_ai AFTER INSERT ON transactions BEGIN
+        INSERT INTO tx_fts(rowid, merchant_name, raw_merchant, notes, reference_number)
+        VALUES (new.rowid, new.merchant_name, new.raw_merchant, new.notes,
+                new.reference_number);
+    END""",
+    """CREATE TRIGGER IF NOT EXISTS tx_fts_ad AFTER DELETE ON transactions BEGIN
+        INSERT INTO tx_fts(tx_fts, rowid, merchant_name, raw_merchant, notes,
+                           reference_number)
+        VALUES ('delete', old.rowid, old.merchant_name, old.raw_merchant, old.notes,
+                old.reference_number);
+    END""",
+    # UPDATE must delete the OLD values before inserting the new ones, or the
+    # index accumulates stale terms and a renamed merchant stays findable
+    # under its old name forever.
+    """CREATE TRIGGER IF NOT EXISTS tx_fts_au AFTER UPDATE ON transactions BEGIN
+        INSERT INTO tx_fts(tx_fts, rowid, merchant_name, raw_merchant, notes,
+                           reference_number)
+        VALUES ('delete', old.rowid, old.merchant_name, old.raw_merchant, old.notes,
+                old.reference_number);
+        INSERT INTO tx_fts(rowid, merchant_name, raw_merchant, notes, reference_number)
+        VALUES (new.rowid, new.merchant_name, new.raw_merchant, new.notes,
+                new.reference_number);
+    END""",
+)
+
+
+def fts5_available(conn: sqlite3.Connection) -> bool:
+    """Whether this SQLite build has the FTS5 module compiled in.
+
+    Not a given: FTS5 is an optional extension, and the app runs on whatever
+    SQLite the Chaquopy runtime provides on the device. Everything downstream
+    treats FTS5 as an optimisation that may be absent, never a requirement.
+    """
+    try:
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x)")
+        conn.execute("DROP TABLE IF EXISTS _fts5_probe")
+        return True
+    except sqlite3.DatabaseError:
+        return False
+
+
+def _m7_fts_search(conn: sqlite3.Connection) -> None:
+    """v7 — full-text index over the searchable transaction fields.
+
+    Search was ``LIKE '%term%'`` across four columns, which no index can
+    serve: every query read every row the user has ever recorded.
+
+    If FTS5 is missing from the device's SQLite this migration is a no-op and
+    the version still advances. Failing here would wedge the database on an
+    upgrade for the sake of a search optimisation, which is a catastrophic
+    trade; search simply keeps using the scan (see search.py).
+    """
+    if not fts5_available(conn):
+        conn.execute("INSERT OR REPLACE INTO app_state(key, value) "
+                     "VALUES ('fts5', 'unavailable')")
+        return
+    conn.execute(FTS_CREATE)
+    for trigger in FTS_TRIGGERS:
+        conn.execute(trigger)
+    # Backfill from the existing ledger. 'rebuild' is FTS5's own command for
+    # this and is far faster than re-inserting row by row.
+    conn.execute("INSERT INTO tx_fts(tx_fts) VALUES('rebuild')")
+    conn.execute("INSERT OR REPLACE INTO app_state(key, value) VALUES ('fts5', 'ready')")
+
+
 # Ordered list. Index + 1 == the schema version the entry produces.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m1_baseline,
@@ -438,6 +517,7 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m4_integrity_indexes,
     _m5_sender_trust,
     _m6_foreign_keys,
+    _m7_fts_search,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -584,7 +664,20 @@ def _detect_legacy_version(conn: sqlite3.Connection) -> int:
     if version == 5 and conn.execute(
             "PRAGMA foreign_key_list(transactions)").fetchall():
         version = 6
+    if version == 6 and ("tx_fts" in tables or _fts_marked_unavailable(conn)):
+        version = 7
     return version
+
+
+def _fts_marked_unavailable(conn: sqlite3.Connection) -> bool:
+    """v7 legitimately creates no table when FTS5 is missing, so the marker
+    row is the only evidence it ran."""
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_state WHERE key='fts5'").fetchone()
+    except sqlite3.DatabaseError:
+        return False
+    return bool(row and row[0] == "unavailable")
 
 
 def upgrade(conn: sqlite3.Connection) -> int:

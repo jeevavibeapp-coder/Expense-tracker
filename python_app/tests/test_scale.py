@@ -20,7 +20,7 @@ import time
 
 import pytest
 
-from spendwise import analytics, db, engine
+from spendwise import analytics, db, engine, migrations
 from spendwise.app import create_app
 
 MERCHANTS = ["Swiggy", "Zomato", "Amazon", "Uber", "Netflix", "BigBasket",
@@ -325,9 +325,65 @@ def test_foreign_key_rebuild_is_bounded_on_a_real_sized_ledger(tmp_path):
     conn, status = db.open_database(path, backup=False)
     ms = (time.perf_counter() - start) * 1000
 
-    assert status["version"] == 6
+    assert status["version"] == migrations.SCHEMA_VERSION
     # Every row survived the copy, and the constraints hold.
     assert conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 12_000
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     conn.close()
     assert ms < 8000, f"the v6 rebuild took {ms:.0f}ms for 12k rows"
+
+
+def test_indexed_search_beats_the_scan_on_a_rare_term(large_db):
+    """The LIKE scan's cost is set by TABLE size, not result size, so its
+    worst case is a term that matches little or nothing — exactly the
+    reference-number lookup a user does when reconciling a statement.
+
+    Measured at 12k rows: LIKE 12.1ms, FTS5 0.04ms. The assertion is
+    relative (index must beat the scan) rather than an absolute millisecond
+    figure, so it survives a slow CI runner while still failing if the index
+    stops being used.
+    """
+    from spendwise import search
+    path, uid = large_db
+    conn = db.connect(path)
+    if not search.available(conn):
+        conn.close()
+        pytest.skip("FTS5 not available in this SQLite build")
+
+    term = "REF000000011111"
+    like = f"%{term.lower()}%"
+
+    def scan():
+        return conn.execute(
+            "SELECT id FROM transactions WHERE user_id=? AND is_deleted=0 AND ("
+            "lower(COALESCE(merchant_name,'')) LIKE ? OR "
+            "lower(COALESCE(raw_merchant,'')) LIKE ? OR "
+            "lower(COALESCE(notes,'')) LIKE ? OR "
+            "lower(COALESCE(reference_number,'')) LIKE ?) LIMIT 200",
+            (uid, like, like, like, like)).fetchall()
+
+    scan(); search.search_ids(conn, uid, term)          # warm
+    t = time.perf_counter()
+    for _ in range(10):
+        scan_rows = scan()
+    scan_ms = (time.perf_counter() - t) / 10 * 1000
+    t = time.perf_counter()
+    for _ in range(10):
+        fts_rows = search.search_ids(conn, uid, term)
+    fts_ms = (time.perf_counter() - t) / 10 * 1000
+    conn.close()
+
+    # Same answer — an index that is fast but wrong is worthless.
+    assert len(fts_rows or []) == len(scan_rows)
+    assert fts_ms < scan_ms, (
+        f"FTS5 {fts_ms:.2f}ms did not beat the scan {scan_ms:.2f}ms — "
+        "the index is probably not being used")
+
+
+def test_fts_index_stays_consistent_at_scale(large_db):
+    from spendwise import search
+    path, _ = large_db
+    conn = db.connect(path)
+    ok = search.integrity_ok(conn)
+    conn.close()
+    assert ok
