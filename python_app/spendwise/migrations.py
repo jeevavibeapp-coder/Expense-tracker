@@ -175,6 +175,261 @@ def _m5_sender_trust(conn: sqlite3.Connection) -> None:
                            "INTEGER NOT NULL DEFAULT 0")
 
 
+def _rebuild(conn: sqlite3.Connection, table: str, create_sql: str,
+             columns: list[str], select_sql: str | None = None) -> None:
+    """Replace ``table`` with a new definition, preserving its rows.
+
+    SQLite cannot add a constraint to an existing table, so the only way to
+    introduce real foreign keys is the documented twelve-step rebuild:
+    create the replacement, copy, drop, rename. The caller is responsible for
+    running this with foreign-key ENFORCEMENT disabled (``upgrade`` does) and
+    for rebuilding parents before children.
+
+    ``columns`` is the explicit column list — never ``SELECT *``. A future
+    migration that adds a column would otherwise silently shift every value
+    one position to the left.
+    """
+    cols = ", ".join(columns)
+    tmp = f"_rebuild_{table}"
+    conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+    conn.execute(create_sql.replace(f"__TABLE__", tmp))
+    conn.execute(f"INSERT INTO {tmp}({cols}) "
+                 f"{select_sql or f'SELECT {cols} FROM {table}'}")
+    conn.execute(f"DROP TABLE {table}")
+    conn.execute(f"ALTER TABLE {tmp} RENAME TO {table}")
+
+
+def _m6_foreign_keys(conn: sqlite3.Connection) -> None:
+    """v6 — declare real FOREIGN KEY constraints.
+
+    Connections have always opened with ``PRAGMA foreign_keys=ON``, but no
+    table declared a constraint, so the pragma enforced nothing. Referential
+    integrity was maintained only by application code and repaired after the
+    fact by ``maintenance.repair_orphans`` — i.e. the database could not stop
+    a bug from writing a transaction pointing at a category that never
+    existed, it could only notice afterwards.
+
+    Delete behaviour is chosen per relationship, not uniformly:
+
+    * ``ON DELETE CASCADE`` from ``users`` — a row belonging to a deleted user
+      is unreachable by construction.
+    * ``ON DELETE SET NULL`` for ``transactions.category_id`` and
+      ``.merchant_id`` — deleting a category must never destroy the record of
+      the user's money. This is the same conservative choice repair_orphans
+      already made.
+    * ``ON DELETE CASCADE`` for ``learning.merchant_id`` and
+      ``fraud_alerts.transaction_id`` — both rows are meaningless without
+      their parent.
+
+    Orphans are repaired BEFORE the constraints go on, otherwise the copy
+    would produce a table that immediately fails foreign_key_check.
+    """
+    # 1. Repair existing violations. Same policy as maintenance.repair_orphans:
+    #    never delete a transaction, only detach its dangling references.
+    conn.execute("UPDATE transactions SET category_id=NULL WHERE category_id IS NOT NULL "
+                 "AND category_id NOT IN (SELECT id FROM categories)")
+    conn.execute("UPDATE transactions SET merchant_id=NULL WHERE merchant_id IS NOT NULL "
+                 "AND merchant_id NOT IN (SELECT id FROM merchants)")
+    conn.execute("UPDATE merchants SET category_id=NULL WHERE category_id IS NOT NULL "
+                 "AND category_id NOT IN (SELECT id FROM categories)")
+    conn.execute("UPDATE learning SET category_id=NULL WHERE category_id IS NOT NULL "
+                 "AND category_id NOT IN (SELECT id FROM categories)")
+    conn.execute("DELETE FROM learning WHERE merchant_id NOT IN (SELECT id FROM merchants)")
+    conn.execute("UPDATE fraud_alerts SET transaction_id=NULL WHERE transaction_id IS NOT NULL "
+                 "AND transaction_id NOT IN (SELECT id FROM transactions)")
+    # Rows whose owning user is gone cannot be attached to anything. These are
+    # only reachable on a database that lost its users table content.
+    for tbl in ("transactions", "categories", "merchants", "learning",
+                "fraud_alerts", "settings", "parse_misses"):
+        conn.execute(f"DELETE FROM {tbl} WHERE user_id NOT IN (SELECT id FROM users)")
+
+    # 2. Rebuild parents first, then children.
+    _rebuild(conn, "categories", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'expense',
+            icon TEXT NOT NULL DEFAULT 'Tag',
+            color TEXT NOT NULL DEFAULT '#6366f1',
+            budget_amount REAL,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(user_id, name)
+        )""", ["id", "user_id", "name", "type", "icon", "color",
+               "budget_amount", "is_archived"])
+
+    _rebuild(conn, "merchants", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            canonical_name TEXT NOT NULL,
+            category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+            UNIQUE(user_id, canonical_name)
+        )""", ["id", "user_id", "canonical_name", "category_id"])
+
+    _rebuild(conn, "transactions", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            amount REAL NOT NULL,
+            type TEXT NOT NULL DEFAULT 'expense',
+            category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+            raw_merchant TEXT,
+            merchant_id TEXT REFERENCES merchants(id) ON DELETE SET NULL,
+            merchant_name TEXT,
+            notes TEXT,
+            reference_number TEXT,
+            occurred_at TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            confidence INTEGER,
+            status TEXT NOT NULL DEFAULT 'confirmed',
+            category_prompted INTEGER NOT NULL DEFAULT 0,
+            dedup_key TEXT,
+            sms_body TEXT,
+            sms_sender TEXT,
+            sender_trust TEXT,
+            sender_risk INTEGER NOT NULL DEFAULT 0,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )""", ["id", "user_id", "amount", "type", "category_id", "raw_merchant",
+               "merchant_id", "merchant_name", "notes", "reference_number",
+               "occurred_at", "source", "confidence", "status",
+               "category_prompted", "dedup_key", "sms_body", "sms_sender",
+               "sender_trust", "sender_risk", "is_deleted", "created_at"])
+
+    _rebuild(conn, "learning", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            raw_name TEXT NOT NULL,
+            merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+            merchant_name TEXT NOT NULL,
+            category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+            confidence INTEGER NOT NULL DEFAULT 0,
+            confirmation_count INTEGER NOT NULL DEFAULT 0,
+            correction_count INTEGER NOT NULL DEFAULT 0,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            avg_amount REAL NOT NULL DEFAULT 0,
+            amount_min REAL NOT NULL DEFAULT 0,
+            amount_max REAL NOT NULL DEFAULT 0,
+            hour_histogram TEXT NOT NULL DEFAULT '[]',
+            last_seen_at TEXT,
+            UNIQUE(user_id, raw_name, merchant_id)
+        )""", ["id", "user_id", "raw_name", "merchant_id", "merchant_name",
+               "category_id", "confidence", "confirmation_count",
+               "correction_count", "sample_count", "avg_amount", "amount_min",
+               "amount_max", "hour_histogram", "last_seen_at"])
+
+    _rebuild(conn, "fraud_alerts", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            transaction_id TEXT REFERENCES transactions(id) ON DELETE CASCADE,
+            alert_type TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'low',
+            message TEXT NOT NULL,
+            details TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL
+        )""", ["id", "user_id", "transaction_id", "alert_type", "severity",
+               "message", "details", "status", "created_at"])
+
+    _rebuild(conn, "settings", """
+        CREATE TABLE __TABLE__ (
+            user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            currency TEXT NOT NULL DEFAULT 'INR',
+            theme TEXT NOT NULL DEFAULT 'system',
+            auto_save_threshold INTEGER NOT NULL DEFAULT 80,
+            confirm_threshold INTEGER NOT NULL DEFAULT 50,
+            high_value_amount REAL
+        )""", ["user_id", "currency", "theme", "auto_save_threshold",
+               "confirm_threshold", "high_value_amount"])
+
+    conn.execute("DELETE FROM parse_misses WHERE user_id NOT IN (SELECT id FROM users)")
+    _rebuild(conn, "parse_misses", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            sender TEXT,
+            body TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            reason TEXT,
+            parser_version TEXT,
+            seen_count INTEGER NOT NULL DEFAULT 1,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            UNIQUE(user_id, body_hash)
+        )""", ["id", "user_id", "sender", "body", "body_hash", "reason",
+               "parser_version", "seen_count", "first_seen_at", "last_seen_at"])
+
+    for tbl in ("sms_senders", "sms_quarantine"):
+        conn.execute(f"DELETE FROM {tbl} WHERE user_id NOT IN (SELECT id FROM users)")
+    _rebuild(conn, "sms_senders", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            sender TEXT NOT NULL,
+            display TEXT,
+            kind TEXT NOT NULL DEFAULT 'other',
+            entity TEXT,
+            bank TEXT,
+            trust TEXT NOT NULL DEFAULT 'unknown',
+            message_count INTEGER NOT NULL DEFAULT 0,
+            captured_count INTEGER NOT NULL DEFAULT 0,
+            confirmed_count INTEGER NOT NULL DEFAULT 0,
+            quarantined_count INTEGER NOT NULL DEFAULT 0,
+            last_risk INTEGER NOT NULL DEFAULT 0,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            UNIQUE(user_id, sender)
+        )""", ["id", "user_id", "sender", "display", "kind", "entity", "bank",
+               "trust", "message_count", "captured_count", "confirmed_count",
+               "quarantined_count", "last_risk", "first_seen_at", "last_seen_at"])
+    _rebuild(conn, "sms_quarantine", """
+        CREATE TABLE __TABLE__ (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            sender TEXT,
+            body TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            risk INTEGER NOT NULL DEFAULT 0,
+            indicators TEXT NOT NULL DEFAULT '[]',
+            reason TEXT,
+            amount REAL,
+            type TEXT,
+            raw_merchant TEXT,
+            occurred_at TEXT,
+            reference_number TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            seen_count INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            resolved_at TEXT,
+            UNIQUE(user_id, body_hash)
+        )""", ["id", "user_id", "sender", "body", "body_hash", "risk",
+               "indicators", "reason", "amount", "type", "raw_merchant",
+               "occurred_at", "reference_number", "status", "seen_count",
+               "created_at", "resolved_at"])
+
+    # 3. DROP TABLE also drops that table's indexes, so every index defined by
+    #    an earlier migration has to be recreated here.
+    _m2_indexes(conn)
+    _m4_integrity_indexes(conn)
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_user_occurred "
+                 "ON transactions(user_id, occurred_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_parse_misses_user "
+                 "ON parse_misses(user_id, last_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_sms_senders_user "
+                 "ON sms_senders(user_id, trust, last_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_sms_quarantine_user "
+                 "ON sms_quarantine(user_id, status, created_at)")
+
+    # 4. Prove it. A rebuild that silently produced violations would be worse
+    #    than no constraints at all, because the app would now trust them.
+    bad = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if bad:
+        raise RuntimeError(f"foreign_key_check failed after rebuild: {bad[:5]}")
+
+
 # Ordered list. Index + 1 == the schema version the entry produces.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m1_baseline,
@@ -182,6 +437,7 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m3_parse_misses,
     _m4_integrity_indexes,
     _m5_sender_trust,
+    _m6_foreign_keys,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -322,6 +578,12 @@ def _detect_legacy_version(conn: sqlite3.Connection) -> int:
     if ({"sms_senders", "sms_quarantine"} <= tables
             and {"sender_trust", "sender_risk"} <= tx_cols):
         version = 5
+    # v6 is only complete when the constraints actually exist — the table
+    # names and columns are identical before and after, so the foreign-key
+    # list is the only honest evidence.
+    if version == 5 and conn.execute(
+            "PRAGMA foreign_key_list(transactions)").fetchall():
+        version = 6
     return version
 
 
@@ -339,19 +601,38 @@ def upgrade(conn: sqlite3.Connection) -> int:
             conn.execute(f"PRAGMA user_version = {version}")
             conn.commit()
 
-    while version < SCHEMA_VERSION:
-        step = MIGRATIONS[version]
-        target = version + 1
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            step(conn)
-            # PRAGMA user_version cannot be parameterised.
-            conn.execute(f"PRAGMA user_version = {target}")
-            conn.commit()
-        except Exception as exc:                       # noqa: BLE001
-            conn.rollback()
-            raise MigrationError(target, exc) from exc
-        version = target
+    if version >= SCHEMA_VERSION:
+        return version
+
+    # Foreign-key ENFORCEMENT must be off while a migration rebuilds a table:
+    # the documented procedure drops the old table (temporarily dangling every
+    # reference to it) before renaming the replacement into place. This pragma
+    # is a no-op inside a transaction, so it has to be set out here, around
+    # the whole loop — not inside a migration body.
+    #
+    # legacy_alter_table=ON stops ALTER TABLE ... RENAME from rewriting other
+    # tables' REFERENCES clauses to point at the temporary name.
+    fk_was_on = bool(conn.execute("PRAGMA foreign_keys").fetchone()[0])
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    try:
+        while version < SCHEMA_VERSION:
+            step = MIGRATIONS[version]
+            target = version + 1
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                step(conn)
+                # PRAGMA user_version cannot be parameterised.
+                conn.execute(f"PRAGMA user_version = {target}")
+                conn.commit()
+            except Exception as exc:                       # noqa: BLE001
+                conn.rollback()
+                raise MigrationError(target, exc) from exc
+            version = target
+    finally:
+        conn.execute("PRAGMA legacy_alter_table=OFF")
+        if fk_was_on:
+            conn.execute("PRAGMA foreign_keys=ON")
     return version
 
 

@@ -280,3 +280,54 @@ def test_backup_and_verify_at_scale(large_db):
     assert backup and maintenance.verify_backup(backup)
     assert os.path.getsize(backup) > 100_000
     assert ms < 10_000, f"backup of a 12k-row DB took {ms:.0f}ms"
+
+
+# ── Migration cost at scale ───────────────────────────────────────────────
+def test_foreign_key_rebuild_is_bounded_on_a_real_sized_ledger(tmp_path):
+    """v6 rebuilds every table to add constraints. That is a copy of the whole
+    ledger, and it runs on the UI's critical path at first launch after an
+    upgrade — so its cost has to stay in the "user sees a spinner" range, not
+    the "user thinks the app hung" range.
+
+    Measured ~380ms for 12k rows. The threshold catches an accidental O(n^2)
+    (e.g. a per-row subquery in the orphan repair), not CI jitter.
+    """
+    from tests.test_migrations import LEGACY_V1
+    path = str(tmp_path / "legacy-big.db")
+    raw = sqlite3.connect(path)
+    raw.executescript(LEGACY_V1)
+    raw.execute("INSERT INTO users VALUES ('u1','a@b.c','U','x','2024-01-01')")
+    cats = []
+    for i in range(len(CATEGORIES)):
+        raw.execute("INSERT INTO categories(id,user_id,name) VALUES (?,?,?)",
+                    (f"c{i}", "u1", CATEGORIES[i]))
+        cats.append(f"c{i}")
+    for i, name in enumerate(MERCHANTS):
+        raw.execute("INSERT INTO merchants(id,user_id,canonical_name) VALUES (?,?,?)",
+                    (f"m{i}", "u1", name))
+    rnd = random.Random(11)
+    now = dt.datetime.now()
+    raw.executemany(
+        "INSERT INTO transactions(id,user_id,amount,type,category_id,raw_merchant,"
+        "merchant_id,merchant_name,occurred_at,source,confidence,status,is_deleted,"
+        "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
+        [(f"t{i}", "u1", round(rnd.uniform(20, 5000), 2), "expense",
+          rnd.choice(cats), MERCHANTS[i % len(MERCHANTS)], f"m{i % len(MERCHANTS)}",
+          MERCHANTS[i % len(MERCHANTS)],
+          (now - dt.timedelta(days=rnd.randint(0, 1000))).isoformat(),
+          "sms", 90, "confirmed", now.isoformat())
+         for i in range(12_000)])
+    raw.commit()
+    raw.close()
+
+    conn, (status, ms) = None, (None, None)
+    start = time.perf_counter()
+    conn, status = db.open_database(path, backup=False)
+    ms = (time.perf_counter() - start) * 1000
+
+    assert status["version"] == 6
+    # Every row survived the copy, and the constraints hold.
+    assert conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 12_000
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    conn.close()
+    assert ms < 8000, f"the v6 rebuild took {ms:.0f}ms for 12k rows"
