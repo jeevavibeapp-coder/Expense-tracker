@@ -387,3 +387,54 @@ def test_fts_index_stays_consistent_at_scale(large_db):
     ok = search.integrity_ok(conn)
     conn.close()
     assert ok
+
+
+# ── Request-scoped caches ─────────────────────────────────────────────────
+def test_connection_accepts_attributes(tmp_path):
+    """Regression for a silent no-op cache.
+
+    The merchant engine and the categoriser both cache per-request work on
+    the connection object. Plain sqlite3.Connection has no __dict__, so
+    `conn.x = v` raised AttributeError — and BOTH call sites caught it and
+    carried on. The caches therefore never cached: measured, the categoriser
+    retrained its model on every single suggestion (7.64ms each) and the
+    engine re-read the learning table on every resolve, which is the exact
+    N+1 the pool was introduced to remove.
+
+    Asserting the attribute survives is the only check that cannot pass by
+    accident on a small dataset.
+    """
+    conn = db.connect(str(tmp_path / "attr.db"))
+    conn._sw_probe = {"a": 1}
+    assert conn._sw_probe == {"a": 1}
+    conn.close()
+
+
+def test_learning_pool_is_actually_cached(large_db):
+    from spendwise import engine as eng
+    path, uid = large_db
+    conn = db.connect(path)
+    assert getattr(conn, "_sw_learning_pool", None) is None
+    eng.resolve(conn, user_id=uid, raw_name="UNSEEN A")
+    cached = getattr(conn, "_sw_learning_pool", None)
+    assert cached is not None and cached[0] == uid, "learning pool did not cache"
+    eng.invalidate_learning_cache(conn)
+    assert getattr(conn, "_sw_learning_pool", None) is None
+    conn.close()
+
+
+def test_categorizer_model_is_trained_once_per_connection(large_db):
+    from spendwise import categorizer
+    path, uid = large_db
+    conn = db.connect(path)
+    categorizer.suggest(conn, uid, "DOMINOS PIZZA HSR")
+    assert getattr(conn, "_sw_nb_model", None) is not None, "model did not cache"
+
+    # A cached suggestion must be orders of magnitude cheaper than training.
+    # Measured: 0.006ms cached vs 7.64ms retraining every call.
+    _, warm = _timed(categorizer.suggest, conn, uid, "DOMINOS PIZZA HSR")
+    categorizer.invalidate(conn)
+    _, cold = _timed(categorizer.suggest, conn, uid, "DOMINOS PIZZA HSR")
+    conn.close()
+    assert warm < max(cold / 5, 1.0), (
+        f"warm suggest {warm:.3f}ms vs cold {cold:.3f}ms — model is retraining")

@@ -24,11 +24,33 @@ def new_id() -> str:
     return uuid.uuid4().hex
 
 
+class Connection(sqlite3.Connection):
+    """sqlite3.Connection that accepts attributes.
+
+    Two modules cache per-request work on the connection object (the merchant
+    engine's learning pool, the categoriser's trained model) because a
+    connection lives exactly one request — the ideal scope for a cache that
+    must not go stale across a write.
+
+    Plain sqlite3.Connection has no __dict__, so `conn.x = v` raises
+    AttributeError. Both call sites caught that exception and carried on,
+    which meant the caches silently never cached: measured, the categoriser
+    retrained its model on EVERY suggestion (7.6ms each, so ~40 groups on the
+    review page would have cost ~300ms), and the merchant engine re-read the
+    learning table on every resolve — the exact N+1 the pool was added to
+    prevent. Subclassing gives the instances a __dict__ and makes both caches
+    real.
+
+    No __slots__ here on purpose: declaring it would suppress the __dict__
+    this class exists to provide.
+    """
+
+
 def connect(path: str) -> sqlite3.Connection:
     directory = os.path.dirname(os.path.abspath(path))
     if directory:
         os.makedirs(directory, exist_ok=True)
-    conn = sqlite3.connect(path, check_same_thread=False)
+    conn = sqlite3.connect(path, check_same_thread=False, factory=Connection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
