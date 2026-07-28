@@ -509,6 +509,95 @@ def _m7_fts_search(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT OR REPLACE INTO app_state(key, value) VALUES ('fts5', 'ready')")
 
 
+ROLLUP_TRIGGERS = (
+    # Any write that could change a day's totals marks that day dirty. UPDATE
+    # marks BOTH days, because occurred_at itself can move a transaction from
+    # one day to another and both totals then need recomputing. is_deleted is
+    # a column, not a row removal, so a soft delete is an UPDATE and is
+    # covered by the same trigger.
+    #
+    # `INSERT ... WHERE NOT EXISTS`, deliberately NOT `INSERT OR IGNORE`: an
+    # ON CONFLICT clause inside a trigger body is overridden by the conflict
+    # policy of the statement that FIRED the trigger. Deleting a merchant runs
+    # an ON DELETE SET NULL on transactions, whose implicit UPDATE fires this
+    # trigger twice for the same day, and OR IGNORE did not apply — the delete
+    # aborted with a UNIQUE violation. This form has no conflict to resolve.
+    """CREATE TRIGGER IF NOT EXISTS rollup_dirty_ai AFTER INSERT ON transactions BEGIN
+        INSERT INTO rollup_dirty(user_id, day)
+        SELECT new.user_id, substr(new.occurred_at, 1, 10)
+        WHERE NOT EXISTS (SELECT 1 FROM rollup_dirty
+                          WHERE user_id = new.user_id
+                            AND day = substr(new.occurred_at, 1, 10));
+    END""",
+    """CREATE TRIGGER IF NOT EXISTS rollup_dirty_ad AFTER DELETE ON transactions BEGIN
+        INSERT INTO rollup_dirty(user_id, day)
+        SELECT old.user_id, substr(old.occurred_at, 1, 10)
+        WHERE NOT EXISTS (SELECT 1 FROM rollup_dirty
+                          WHERE user_id = old.user_id
+                            AND day = substr(old.occurred_at, 1, 10));
+    END""",
+    """CREATE TRIGGER IF NOT EXISTS rollup_dirty_au AFTER UPDATE ON transactions BEGIN
+        INSERT INTO rollup_dirty(user_id, day)
+        SELECT old.user_id, substr(old.occurred_at, 1, 10)
+        WHERE NOT EXISTS (SELECT 1 FROM rollup_dirty
+                          WHERE user_id = old.user_id
+                            AND day = substr(old.occurred_at, 1, 10));
+        INSERT INTO rollup_dirty(user_id, day)
+        SELECT new.user_id, substr(new.occurred_at, 1, 10)
+        WHERE NOT EXISTS (SELECT 1 FROM rollup_dirty
+                          WHERE user_id = new.user_id
+                            AND day = substr(new.occurred_at, 1, 10));
+    END""",
+)
+
+
+def _m8_daily_rollups(conn: sqlite3.Connection) -> None:
+    """v8 — pre-aggregated daily totals with incremental maintenance.
+
+    The dashboard's "today / this week / this month" tiles and the spending
+    trend all aggregate over raw transactions, so their cost grows with total
+    history even though they only ever display a handful of numbers.
+
+    Grain is ``(user_id, day, type)``. Deliberately NOT per-category: that
+    would multiply the row count by the number of categories and approach the
+    size of the table it summarises, while the per-category donut is already
+    served in ~1ms by ix_tx_analytics.
+
+    Maintenance is incremental, not scheduled. Triggers record which days
+    changed; ``analytics.refresh_rollups`` recomputes exactly those. A normal
+    session dirties one day, so the refresh is effectively free — and there is
+    no background job to fail silently and serve stale numbers.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS daily_rollups (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            day TEXT NOT NULL,
+            type TEXT NOT NULL,
+            total REAL NOT NULL DEFAULT 0,
+            tx_count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, day, type)
+        )""")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rollup_dirty (
+            user_id TEXT NOT NULL,
+            day TEXT NOT NULL,
+            PRIMARY KEY (user_id, day)
+        )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_daily_rollups_user "
+                 "ON daily_rollups(user_id, day)")
+    for trigger in ROLLUP_TRIGGERS:
+        conn.execute(trigger)
+    # Seed from the existing ledger in one pass.
+    conn.execute("DELETE FROM daily_rollups")
+    conn.execute(
+        "INSERT INTO daily_rollups(user_id, day, type, total, tx_count) "
+        "SELECT user_id, substr(occurred_at, 1, 10), type, "
+        "       COALESCE(SUM(amount), 0), COUNT(*) "
+        "FROM transactions WHERE is_deleted = 0 "
+        "GROUP BY user_id, substr(occurred_at, 1, 10), type")
+    conn.execute("DELETE FROM rollup_dirty")
+
+
 # Ordered list. Index + 1 == the schema version the entry produces.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m1_baseline,
@@ -518,6 +607,7 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m5_sender_trust,
     _m6_foreign_keys,
     _m7_fts_search,
+    _m8_daily_rollups,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -666,6 +756,8 @@ def _detect_legacy_version(conn: sqlite3.Connection) -> int:
         version = 6
     if version == 6 and ("tx_fts" in tables or _fts_marked_unavailable(conn)):
         version = 7
+    if version == 7 and {"daily_rollups", "rollup_dirty"} <= tables:
+        version = 8
     return version
 
 

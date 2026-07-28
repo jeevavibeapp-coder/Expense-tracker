@@ -109,6 +109,8 @@ dependencies {
     implementation "androidx.core:core:$androidxCoreVersion"
     // WebKit extras: safe-browsing, modern WebView feature detection
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    // WorkManager: the only scheduler OEM battery managers must honour.
+    implementation "androidx.work:work-runtime:$androidxWorkVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

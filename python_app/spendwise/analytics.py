@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import sqlite3
 
 from . import db
 
@@ -399,6 +400,59 @@ def _insights(monthly, weekly, top_merchants, category_breakdown, pending, fraud
     return out
 
 
+# ── Daily rollups ─────────────────────────────────────────────────────────
+def refresh_rollups(conn, user_id: str) -> int:
+    """Recompute the daily totals for days that changed. Returns days rebuilt.
+
+    Incremental by design. Triggers (migration v8) record dirty days as
+    transactions are written; this recomputes exactly those and clears the
+    marks. A normal session touches one day, so the common case is a single
+    cheap query against rollup_dirty that finds nothing.
+
+    Deliberately NOT a scheduled background job: a job that fails leaves the
+    user looking at stale totals with no way to tell. Refreshing on read means
+    the numbers are always derived from the current ledger.
+    """
+    try:
+        days = [r[0] for r in conn.execute(
+            "SELECT day FROM rollup_dirty WHERE user_id=?", (user_id,)).fetchall()]
+    except sqlite3.DatabaseError:
+        return 0                       # pre-v8 database; callers fall back
+    if not days:
+        return 0
+    marks = ",".join("?" * len(days))
+    conn.execute(f"DELETE FROM daily_rollups WHERE user_id=? AND day IN ({marks})",
+                 (user_id, *days))
+    conn.execute(
+        f"INSERT INTO daily_rollups(user_id, day, type, total, tx_count) "
+        f"SELECT user_id, substr(occurred_at,1,10), type, "
+        f"       COALESCE(SUM(amount),0), COUNT(*) "
+        f"FROM transactions WHERE user_id=? AND is_deleted=0 "
+        f"  AND substr(occurred_at,1,10) IN ({marks}) "
+        f"GROUP BY user_id, substr(occurred_at,1,10), type",
+        (user_id, *days))
+    conn.execute(f"DELETE FROM rollup_dirty WHERE user_id=? AND day IN ({marks})",
+                 (user_id, *days))
+    conn.commit()
+    return len(days)
+
+
+def rollup_totals(conn, user_id: str, since_day: str, until_day: str,
+                  type_: str = "expense") -> float:
+    """Sum one type over a closed-open day range, straight from the rollups."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(total),0) FROM daily_rollups "
+        "WHERE user_id=? AND type=? AND day>=? AND day<?",
+        (user_id, type_, since_day, until_day)).fetchone()
+    return round(float(row[0]), 2)
+
+
+def rollups_available(conn) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_rollups'"
+    ).fetchone() is not None
+
+
 def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     now = _now()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -406,19 +460,29 @@ def build_dashboard(conn, user_id: str, currency: str = "INR") -> dict:
     month_start = day_start.replace(day=1)
 
     until = _tomorrow_iso()
-    # One conditional-aggregate pass for all three "so far" tiles.
-    lo = min(week_start, month_start).isoformat()
-    tiles = db.one(
-        conn,
-        "SELECT COALESCE(SUM(CASE WHEN occurred_at>=:d THEN amount END),0) d, "
-        "COALESCE(SUM(CASE WHEN occurred_at>=:w THEN amount END),0) w, "
-        "COALESCE(SUM(CASE WHEN occurred_at>=:m THEN amount END),0) m "
-        "FROM transactions WHERE user_id=:u AND type='expense' AND is_deleted=0 "
-        "AND occurred_at>=:lo AND occurred_at<:until",
-        {"u": user_id, "d": day_start.isoformat(), "w": week_start.isoformat(),
-         "m": month_start.isoformat(), "lo": lo, "until": until})
-    daily, weekly, monthly = (round(float(tiles["d"]), 2), round(float(tiles["w"]), 2),
-                              round(float(tiles["m"]), 2))
+    if rollups_available(conn):
+        # Served from pre-aggregated daily totals: at most ~31 summary rows
+        # instead of every expense in the current month.
+        refresh_rollups(conn, user_id)
+        until_day = until[:10]
+        daily = rollup_totals(conn, user_id, day_start.isoformat()[:10], until_day)
+        weekly = rollup_totals(conn, user_id, week_start.isoformat()[:10], until_day)
+        monthly = rollup_totals(conn, user_id, month_start.isoformat()[:10], until_day)
+    else:
+        # Pre-v8 database. One conditional-aggregate pass for all three tiles.
+        lo = min(week_start, month_start).isoformat()
+        tiles = db.one(
+            conn,
+            "SELECT COALESCE(SUM(CASE WHEN occurred_at>=:d THEN amount END),0) d, "
+            "COALESCE(SUM(CASE WHEN occurred_at>=:w THEN amount END),0) w, "
+            "COALESCE(SUM(CASE WHEN occurred_at>=:m THEN amount END),0) m "
+            "FROM transactions WHERE user_id=:u AND type='expense' AND is_deleted=0 "
+            "AND occurred_at>=:lo AND occurred_at<:until",
+            {"u": user_id, "d": day_start.isoformat(), "w": week_start.isoformat(),
+             "m": month_start.isoformat(), "lo": lo, "until": until})
+        daily, weekly, monthly = (round(float(tiles["d"]), 2),
+                                  round(float(tiles["w"]), 2),
+                                  round(float(tiles["m"]), 2))
     # One pass for all-time totals + transaction count.
     totals = {r["type"]: (float(r["s"]), r["c"]) for r in db.all_rows(
         conn, "SELECT type, COALESCE(SUM(amount),0) s, COUNT(*) c FROM transactions "
@@ -547,34 +611,41 @@ def detect_refunds(conn, user_id: str, window_days: int = 400) -> list[dict]:
         "WHERE user_id=? AND is_deleted=0 AND merchant_name IS NOT NULL "
         "AND merchant_name != '' AND occurred_at>=? ORDER BY occurred_at",
         (user_id, since))
+    # Parse each timestamp exactly ONCE. The previous version parsed inside the
+    # inner loop and again in the best-so-far comparison, so _parse_iso ran
+    # ~59,000 times for 12,000 rows and dominated the whole dashboard.
     by_merchant: dict[str, list] = {}
     for r in rows:
-        by_merchant.setdefault(r["merchant_name"], []).append(r)
+        at = _parse_iso(r["occurred_at"])
+        if at is not None:
+            by_merchant.setdefault(r["merchant_name"], []).append((at, r))
 
     out: list[dict] = []
+    window = dt.timedelta(days=REFUND_WINDOW_DAYS)
     for name, items in by_merchant.items():
-        debits = [i for i in items if i["type"] == "expense"]
+        debits = [p for p in items if p[1]["type"] == "expense"]
         if not debits:
             continue
-        for credit in (i for i in items if i["type"] == "income"):
-            c_at = _parse_iso(credit["occurred_at"])
-            if c_at is None:
-                continue
+        for c_at, credit in (p for p in items if p[1]["type"] == "income"):
+            amount = float(credit["amount"])
+            # `rows` is ordered by occurred_at, so `debits` is ascending and
+            # reversed() walks newest-first. The FIRST debit that qualifies is
+            # therefore already the most recent one — no best-so-far scan of
+            # the whole list is needed.
             best = None
-            for d in debits:
-                d_at = _parse_iso(d["occurred_at"])
-                if d_at is None or d_at > c_at:
+            for d_at, d in reversed(debits):
+                if d_at > c_at:
                     continue
-                if (c_at - d_at).days > REFUND_WINDOW_DAYS:
-                    continue
-                if float(d["amount"]) + _AMOUNT_EPS < float(credit["amount"]):
+                if c_at - d_at > window:
+                    break           # everything further back is older still
+                if float(d["amount"]) + _AMOUNT_EPS < amount:
                     continue        # a refund cannot exceed what was paid
-                if best is None or _parse_iso(d["occurred_at"]) > _parse_iso(best["occurred_at"]):
-                    best = d
+                best = d
+                break
             if best is not None:
                 out.append({"credit_id": credit["id"], "debit_id": best["id"],
                             "merchant": name,
-                            "amount": round(float(credit["amount"]), 2),
+                            "amount": round(amount, 2),
                             "at": credit["occurred_at"]})
     return out
 

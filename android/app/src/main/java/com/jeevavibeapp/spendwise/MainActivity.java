@@ -72,6 +72,9 @@ public class MainActivity extends BridgeActivity {
 
         requestSmsPermissions();
         bootstrap();
+        // Fallback sweep for devices where the broadcast receiver never
+        // fires (MIUI/ColorOS Autostart) or the process was dead.
+        SmsCatchUpWorker.schedule(getApplicationContext());
     }
 
     /** Harden WebView settings for compatibility across Android 7–15+. */
