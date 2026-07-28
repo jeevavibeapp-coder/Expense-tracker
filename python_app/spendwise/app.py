@@ -46,18 +46,34 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
     init_conn, db_status = db.open_database(app.config["DB_PATH"])
     app.config["DB_STATUS"] = db_status
 
-    # A stable secret so sessions survive process restarts on-device. Explicit
-    # arg / env win; otherwise persist a generated key in app_state.
+    # Session-signing key. On-device this is supplied by the Android Keystore
+    # (SecretVault -> android_entry.start_server -> here), so it never touches
+    # the database. Off-device (desktop/dev/tests) there is no keystore, so we
+    # fall back to a generated key persisted in app_state — same as before.
     secret = secret_key or os.environ.get("SPENDWISE_SECRET")
-    if not secret:
+    if secret:
+        app.config["SECRET_SOURCE"] = "external"
+        # Upgrade path: builds before the Keystore work wrote this key as
+        # plaintext into the ledger file. Now that an external key is
+        # authoritative the stored copy is pure liability, so erase it. Doing
+        # this on every boot (not just once) means a downgrade-then-upgrade
+        # cycle cannot leave a stale plaintext key behind.
+        purged = db.execute(
+            init_conn, "DELETE FROM app_state WHERE key='secret_key'")
+        init_conn.commit()
+        app.config["SECRET_PURGED_LEGACY"] = bool(getattr(purged, "rowcount", 0))
+    else:
         row = db.one(init_conn, "SELECT value FROM app_state WHERE key='secret_key'")
         if row and row["value"]:
             secret = row["value"]
+            app.config["SECRET_SOURCE"] = "database"
         else:
             secret = os.urandom(32).hex()
             db.execute(init_conn, "INSERT OR REPLACE INTO app_state(key, value) "
                        "VALUES ('secret_key', ?)", (secret,))
             init_conn.commit()
+            app.config["SECRET_SOURCE"] = "database-new"
+        app.config["SECRET_PURGED_LEGACY"] = False
     app.secret_key = secret
     init_conn.close()
 

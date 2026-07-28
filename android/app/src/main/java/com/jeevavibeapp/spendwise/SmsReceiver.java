@@ -3,7 +3,6 @@ package com.jeevavibeapp.spendwise;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.telephony.SmsMessage;
 import android.util.Log;
@@ -34,8 +33,6 @@ public class SmsReceiver extends BroadcastReceiver {
     private static final String TAG = "SpendWiseSms";
     private static final String INGEST_URL = "http://127.0.0.1:8765/sms/ingest";
     private static final String INBOX_FILE = "sms_inbox.jsonl";
-    private static final String PREFS = "spendwise";
-    private static final String TOKEN_KEY = "sms_token";
     // Serializes appends to the queue file across the per-message worker threads
     // and the launch-time inbox scanner.
     static final Object QUEUE_LOCK = new Object();
@@ -87,8 +84,16 @@ public class SmsReceiver extends BroadcastReceiver {
         // Network must not run on the main thread; keep the process alive while
         // we deliver the message.
         final Context appContext = context.getApplicationContext();
-        final String token = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(TOKEN_KEY, null);
+        // Keystore-backed. If it is somehow unreadable the token comes back
+        // null-safe and postToServer just gets a 401, which routes the message
+        // to the durable queue instead of dropping it.
+        String tok;
+        try {
+            tok = SecretVault.getOrCreate(appContext, SecretVault.DEVICE_TOKEN);
+        } catch (Throwable t) {
+            tok = null;
+        }
+        final String token = tok;
         final PendingResult pending = goAsync();
         new Thread(new Runnable() {
             @Override

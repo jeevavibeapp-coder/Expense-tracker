@@ -32,7 +32,6 @@ import com.chaquo.python.android.AndroidPlatform;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.UUID;
 
 public class MainActivity extends BridgeActivity {
 
@@ -42,7 +41,6 @@ public class MainActivity extends BridgeActivity {
     private static final long POLL_INTERVAL_MS = 250L;
     private static final int SMS_PERMISSION_REQUEST = 4011;
     private static final String PREFS = "spendwise";
-    private static final String TOKEN_KEY = "sms_token";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -121,7 +119,10 @@ public class MainActivity extends BridgeActivity {
         bootstrapping = true;
         final android.content.Context appContext = getApplicationContext();
         final String filesDir = getFilesDir().getAbsolutePath();
+        // Drain any pre-Keystore plaintext token before anything reads one.
+        SecretVault.migrate(appContext);
         final String token = getDeviceToken();
+        final String secret = getSessionSecret();
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -129,7 +130,7 @@ public class MainActivity extends BridgeActivity {
                     if (!Python.isStarted()) {
                         Python.start(new AndroidPlatform(appContext));
                     }
-                    startServerAndLoad(filesDir, token);
+                    startServerAndLoad(filesDir, token, secret);
                 } finally {
                     bootstrapping = false;
                 }
@@ -137,15 +138,18 @@ public class MainActivity extends BridgeActivity {
         }, "spendwise-bootstrap").start();
     }
 
-    /** Stable per-install secret — only this app can POST to loopback ingest endpoints. */
+    /** Stable per-install secret — only this app can POST to loopback ingest
+     *  endpoints. Held as AES-GCM ciphertext under an AndroidKeyStore key; see
+     *  {@link SecretVault}. */
     private String getDeviceToken() {
-        SharedPreferences p = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        String t = p.getString(TOKEN_KEY, null);
-        if (t == null || t.isEmpty()) {
-            t = UUID.randomUUID().toString().replace("-", "");
-            p.edit().putString(TOKEN_KEY, t).apply();
-        }
-        return t;
+        return SecretVault.getOrCreate(getApplicationContext(), SecretVault.DEVICE_TOKEN);
+    }
+
+    /** Signs the Flask session cookie. Previously generated in Python and
+     *  persisted as plaintext in the app_state table; now supplied by the
+     *  keystore-backed vault so it never touches the database at all. */
+    private String getSessionSecret() {
+        return SecretVault.getOrCreate(getApplicationContext(), SecretVault.SESSION_SECRET);
     }
 
     @Override
@@ -190,9 +194,10 @@ public class MainActivity extends BridgeActivity {
             if (hasReadSmsPermission()) {
                 final String filesDir = getFilesDir().getAbsolutePath();
                 final String token = getDeviceToken();
+                final String secret = getSessionSecret();
                 new Thread(new Runnable() {
                     @Override
-                    public void run() { catchUpFromInbox(filesDir, token); }
+                    public void run() { catchUpFromInbox(filesDir, token, secret); }
                 }, "spendwise-sms-catchup").start();
             }
         }
@@ -297,11 +302,11 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void startServerAndLoad(String filesDir, String token) {
+    private void startServerAndLoad(String filesDir, String token, String secret) {
         try {
             Python.getInstance()
                     .getModule("spendwise.android_entry")
-                    .callAttr("start_server", filesDir, token);
+                    .callAttr("start_server", filesDir, token, secret);
         } catch (Throwable t) {
             Log.e(TAG, "Failed to start embedded Python server", t);
             showStartupError();
@@ -348,7 +353,7 @@ public class MainActivity extends BridgeActivity {
                     }
                 }
             });
-            catchUpFromInbox(filesDir, token);
+            catchUpFromInbox(filesDir, token, secret);
         } else {
             Log.e(TAG, "Embedded server did not become ready within timeout");
             showStartupError();
@@ -359,7 +364,8 @@ public class MainActivity extends BridgeActivity {
      *  This is what makes auto-capture actually work on devices where the
      *  broadcast receiver is throttled (MIUI "Autostart") or the app process
      *  was dead when the message arrived. Dedup makes re-scanning harmless. */
-    private void catchUpFromInbox(final String filesDir, final String token) {
+    private void catchUpFromInbox(final String filesDir, final String token,
+                                  final String secret) {
         if (!hasReadSmsPermission()) {
             return;
         }
@@ -368,7 +374,7 @@ public class MainActivity extends BridgeActivity {
             if (queued > 0) {
                 // start_server is idempotent and kicks a fresh drain each call.
                 Python.getInstance().getModule("spendwise.android_entry")
-                        .callAttr("start_server", filesDir, token);
+                        .callAttr("start_server", filesDir, token, secret);
             }
         } catch (Throwable t) {
             Log.w(TAG, "Inbox catch-up failed", t);

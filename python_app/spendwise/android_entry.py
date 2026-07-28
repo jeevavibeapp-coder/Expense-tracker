@@ -16,6 +16,7 @@ import urllib.request
 _server_thread: "threading.Thread | None" = None
 _lock = threading.Lock()
 _device_token: "str | None" = None
+_session_secret: "str | None" = None
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -25,10 +26,15 @@ DEFAULT_PORT = 8765
 INBOX_NAME = "sms_inbox.jsonl"
 
 
-def _run(db_path: str, host: str, port: int, token: "str | None") -> None:
+def _run(db_path: str, host: str, port: int, token: "str | None",
+         secret: "str | None" = None) -> None:
     from spendwise.app import create_app
 
-    app = create_app(db_path=db_path, single_user=True, device_token=token)
+    # `secret` comes from the Android Keystore (SecretVault). Passing it here
+    # means the session key never has to be persisted in the database;
+    # create_app also erases any plaintext copy an older build left behind.
+    app = create_app(db_path=db_path, single_user=True, device_token=token,
+                     secret_key=secret)
     try:
         # waitress is pure Python (py3-none-any), so it runs under Chaquopy.
         # Werkzeug's dev server is explicitly not for production: it has no
@@ -111,8 +117,8 @@ def _drain_inbox(base: str, host: str, port: int, token: "str | None") -> None:
         pass
 
 
-def start_server(files_dir: str = None, token: str = None, host: str = DEFAULT_HOST,
-                 port: int = DEFAULT_PORT) -> str:
+def start_server(files_dir: str = None, token: str = None, secret: str = None,
+                 host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> str:
     """Start the embedded server (once) and drain any queued SMS.
 
     Safe to call multiple times — only the first call starts the server thread,
@@ -120,16 +126,19 @@ def start_server(files_dir: str = None, token: str = None, host: str = DEFAULT_H
     Called from Java via Chaquopy: ``getModule("spendwise.android_entry")
     .callAttr("start_server", filesDir, token)``.
     """
-    global _server_thread, _device_token
+    global _server_thread, _device_token, _session_secret
     base = files_dir or os.getcwd()
     db_path = os.path.join(base, "spendwise.db")
     with _lock:
         if token:
             _device_token = token
+        if secret:
+            _session_secret = secret
         tok = _device_token
+        sec = _session_secret
         if _server_thread is None or not _server_thread.is_alive():
             _server_thread = threading.Thread(
-                target=_run, args=(db_path, host, port, tok), daemon=True,
+                target=_run, args=(db_path, host, port, tok, sec), daemon=True,
                 name="spendwise-server")
             _server_thread.start()
     # Replay queued SMS once the server is ready (off the main thread). Runs on
