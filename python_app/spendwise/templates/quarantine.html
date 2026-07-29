@@ -27,10 +27,10 @@
         {% if q['amount'] %}
         <div style="display:flex; align-items:center; gap:10px; margin-top:10px; padding:10px 12px;
                     border-radius:12px; background:var(--surface-2)">
-          {{ m.avatar(q['raw_merchant'] or q['sender'] or '?') }}
+          {{ m.avatar(q['raw_merchant']|merchant or q['sender'] or '?') }}
           <div style="flex:1; min-width:0">
             <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
-              {{ q['raw_merchant'] or 'Unknown merchant' }}</div>
+              {{ q['raw_merchant']|merchant or 'Unknown merchant' }}</div>
             <div class="faint" style="font-size:11.5px">
               {{ (q['occurred_at'] or q['created_at'])[:10] }} · would be
               {{ 'income' if q['type'] == 'income' else 'an expense' }}</div>

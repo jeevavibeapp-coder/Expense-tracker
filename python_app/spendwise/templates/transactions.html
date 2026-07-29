@@ -19,7 +19,7 @@
   {% if undo_tx %}
   <div class="card" style="display:flex; gap:10px; align-items:center; padding:12px 14px">
     <span class="faint" style="display:flex">{{ m.icon('trash') }}</span>
-    <span style="flex:1; font-size:13px">Deleted “{{ undo_tx['merchant_name'] or undo_tx['raw_merchant'] or 'transaction' }}”.</span>
+    <span style="flex:1; font-size:13px">Deleted “{{ (undo_tx['merchant_name'] or undo_tx['raw_merchant'])|merchant or 'transaction' }}”.</span>
     <form method="post" action="/transactions/{{ undo_tx['id'] }}/restore">
       <button class="btn btn-sm" type="submit">Undo</button>
     </form>
@@ -58,7 +58,8 @@
      buttons between the user and their own transaction list — the list stopped
      being a list. The work itself is unchanged and lives on /review, which
      groups by merchant so one decision clears many rows. #}
-  <a class="queue-lite" href="/review">
+  <a class="queue-lite" href="/review"
+     aria-label="{{ nav_review or pending|length }} transactions to review. Open the review queue.">
     <span class="ql-ic">{{ m.icon('sparkles') }}</span>
     <span class="ql-txt">
       <b>{{ nav_review or pending|length }} to review</b>
@@ -84,13 +85,20 @@
     {% endif %}
     <details class="tx-item {{ 'tx-focus' if focus_tx == t['id'] }}" {{ 'open' if focus_tx == t['id'] }}>
       <summary class="tx">
-        {{ m.avatar(t['merchant_name'] or t['raw_merchant'] or '?') }}
+        {{ m.avatar((t['merchant_name'] or t['raw_merchant'])|merchant or '?') }}
         <div class="tx-main">
-          <div class="tx-name">{{ t['merchant_name'] or t['raw_merchant'] or 'Unknown' }}</div>
+          <div class="tx-name">{{ (t['merchant_name'] or t['raw_merchant'])|merchant or 'Unknown' }}</div>
+          {# Only ONE badge, and only when it is actionable.
+             Before, nearly every row carried something: "Review", "Confirm?"
+             or a "90%" confidence score. When almost everything is flagged,
+             the flag stops meaning anything — and a model-confidence
+             percentage is engine internals, not information a person can act
+             on. The category is what actually helps someone scan a ledger. #}
           <div class="tx-meta">
-            {% if t['status'] == 'pending_confirmation' %}<span class="pill pill-warn">Confirm?</span>
-            {% elif t['status'] == 'needs_review' %}<span class="pill pill-review">Review</span>
-            {% elif t['confidence'] is not none %}{{ m.confidence_badge(t['confidence']) }}{% endif %}
+            {% if t['status'] in ('pending_confirmation', 'needs_review') %}
+              <span class="pill pill-review">Needs a name</span>
+            {% elif t['category_name'] %}<span>{{ t['category_name'] }}</span>
+            {% endif %}
             {% if t['notes'] %}<span>{{ t['notes'] }}</span>{% endif %}
           </div>
         </div>

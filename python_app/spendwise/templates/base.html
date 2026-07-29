@@ -52,6 +52,7 @@
      permanent tab — a fifth tab would crowd the bar for something most users
      never see. Nothing is ever deleted, so this is the only route back to it. #}
   <a class="perm-banner" role="alert" href="/sms/quarantine"
+     aria-label="{{ nav_held }} message{{ '' if nav_held == 1 else 's' }} held for review. Open held messages."
      style="text-decoration:none; color:inherit">
     <span class="pb-ic">{{ m.icon('shield') }}</span>
     <div class="pb-txt">
@@ -65,7 +66,8 @@
   {% if cat_prompts %}
   {# One calm, dismissible line — not a blocking decision. Tapping it opens
      the categoriser; ignoring it costs the user nothing. #}
-  <a class="nudge" href="#categorize">
+  <a class="nudge" href="#categorize"
+     aria-label="{{ cat_prompts|length }} new transaction{{ '' if cat_prompts|length == 1 else 's' }} need a category. Open the categoriser.">
     <span class="nudge-ic">{{ m.icon('sparkles') }}</span>
     <span class="nudge-txt">
       <b>{{ cat_prompts|length }} new {{ 'transaction' if cat_prompts|length == 1 else 'transactions' }}</b>
@@ -78,16 +80,29 @@
   <main>{% block content %}{% endblock %}</main>
 
   {# ── Bottom navigation ── #}
-  <nav class="tabbar">
-    <a class="tab {{ 'active' if active == 'dashboard' }}" href="/dashboard">{{ m.icon('home') }}<span>Home</span></a>
-    <a class="tab {{ 'active' if active == 'transactions' }}" href="/transactions">
+  {# aria-current tells a screen reader WHICH tab you are on — without it
+     TalkBack reads five identical-sounding links. Badge counts are folded
+     into the label because a bare "10" announced after "Activity" is
+     meaningless out of context, and the badge itself is hidden from the
+     reader to avoid announcing the number twice. #}
+  <nav class="tabbar" role="navigation" aria-label="Main">
+    <a class="tab {{ 'active' if active == 'dashboard' }}" href="/dashboard"
+       {% if active == 'dashboard' %}aria-current="page"{% endif %}>
+      {{ m.icon('home') }}<span>Home</span></a>
+    <a class="tab {{ 'active' if active == 'transactions' }}" href="/transactions"
+       {% if active == 'transactions' %}aria-current="page"{% endif %}
+       aria-label="Activity{% if nav_review %}, {{ nav_review }} to review{% endif %}">
       {{ m.icon('activity') }}<span>Activity</span>
-      {% if nav_review %}<span class="nbadge">{{ nav_review }}</span>{% endif %}</a>
-    <span class="tab-spacer"></span>
-    <a class="tab {{ 'active' if active == 'categories' }}" href="/categories">{{ m.icon('grid') }}<span>Budgets</span></a>
-    <a class="tab {{ 'active' if active == 'fraud' }}" href="/fraud">
+      {% if nav_review %}<span class="nbadge" aria-hidden="true">{{ nav_review }}</span>{% endif %}</a>
+    <span class="tab-spacer" aria-hidden="true"></span>
+    <a class="tab {{ 'active' if active == 'categories' }}" href="/categories"
+       {% if active == 'categories' %}aria-current="page"{% endif %}>
+      {{ m.icon('grid') }}<span>Budgets</span></a>
+    <a class="tab {{ 'active' if active == 'fraud' }}" href="/fraud"
+       {% if active == 'fraud' %}aria-current="page"{% endif %}
+       aria-label="Alerts{% if nav_fraud %}, {{ nav_fraud }} needing attention{% endif %}">
       {{ m.icon('shield') }}<span>Alerts</span>
-      {% if nav_fraud %}<span class="nbadge">{{ nav_fraud }}</span>{% endif %}</a>
+      {% if nav_fraud %}<span class="nbadge" aria-hidden="true">{{ nav_fraud }}</span>{% endif %}</a>
   </nav>
   <a class="fab" href="#add" aria-label="Add transaction">{{ m.icon('plus') }}</a>
 
@@ -145,9 +160,9 @@
         <a class="sheet-x" href="#" aria-label="Close">&times;</a>
       </div>
       <div class="cat-tx">
-        {{ m.avatar(cp['merchant_name'] or cp['raw_merchant'] or '?') }}
+        {{ m.avatar((cp['merchant_name'] or cp['raw_merchant'])|merchant or '?') }}
         <div style="flex:1; min-width:0">
-          <div class="cat-merch">{{ cp['merchant_name'] or cp['raw_merchant'] or 'Unknown merchant' }}</div>
+          <div class="cat-merch">{{ (cp['merchant_name'] or cp['raw_merchant'])|merchant or 'Unknown merchant' }}</div>
           <div class="cat-raw">
             {{ cp['occurred_at'][:10] }}{% if cp['sms_sender'] %} · {{ cp['sms_sender'] }}{% endif %}
           </div>

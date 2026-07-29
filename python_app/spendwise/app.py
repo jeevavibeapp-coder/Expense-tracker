@@ -444,11 +444,56 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             return f"{v / 1000:.1f}".rstrip("0").rstrip(".") + "K"
         return _money(v)
 
+    # ── Merchant display name ────────────────────────────────────────────
+    _UPI_NOISE = re.compile(
+        r"^(?:vpa|upi|p2[am]|imps|neft|pos|ach|mmt|bil|inft|ecom|nach)[\s/:-]+",
+        re.IGNORECASE)
+    _TRAILING_REF = re.compile(r"[\s/-]+\d{6,}$")
+    _KNOWN_CASE = {"upi": "UPI", "atm": "ATM", "sbi": "SBI", "hdfc": "HDFC",
+                   "icici": "ICICI", "kfc": "KFC", "dmart": "DMart",
+                   "bigbasket": "BigBasket", "phonepe": "PhonePe",
+                   "paytm": "Paytm", "ola": "Ola", "irctc": "IRCTC",
+                   "bookmyshow": "BookMyShow", "jio": "Jio", "tata": "TATA"}
+
+    def _merchant_display(name):
+        """Make an unresolved raw payee readable.
+
+        A resolved merchant already carries a clean canonical name. Everything
+        else falls back to the raw SMS payee, which is how the ledger ended up
+        showing "VPA AMAZON" one row above "Amazon", and "swiggy" above
+        "Swiggy" — the same shop, three times, which makes the whole list look
+        broken even though the data is correct.
+
+        Presentation only: nothing is written back, so this cannot corrupt the
+        merchant engine's learning key (which must stay the raw text).
+        """
+        raw = (name or "").strip()
+        if not raw:
+            return ""
+        raw = raw.split("@", 1)[0]                 # swiggy@ybl -> swiggy
+        raw = _UPI_NOISE.sub("", raw)              # VPA AMAZON -> AMAZON
+        raw = raw.rsplit("/", 1)[-1]               # UPI/P2M/123/BLINKIT -> BLINKIT
+        raw = _TRAILING_REF.sub("", raw).strip(" .,-_")
+        if not raw:
+            return (name or "").strip()
+        words = []
+        for w in raw.split():
+            low = w.lower()
+            if low in _KNOWN_CASE:
+                words.append(_KNOWN_CASE[low])
+            elif w.isupper() and len(w) <= 4:
+                words.append(w)                    # keep genuine acronyms
+            else:
+                words.append(w[:1].upper() + w[1:].lower() if w.isupper() else
+                             w[:1].upper() + w[1:])
+        return " ".join(words)
+
     app.jinja_env.filters["initials"] = _initials
     app.jinja_env.filters["avatar_color"] = _avatar_color
     app.jinja_env.filters["symbol"] = _symbol
     app.jinja_env.filters["money"] = _money
     app.jinja_env.filters["money_compact"] = _money_compact
+    app.jinja_env.filters["merchant"] = _merchant_display
 
     @app.context_processor
     def _inject_globals():
@@ -712,7 +757,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             return redirect(url_for("login"))
         q = (request.args.get("q") or "").strip()
         f = (request.args.get("f") or "").strip()
-        sql = ("SELECT * FROM transactions WHERE user_id=? AND is_deleted=0")
+        # Join the category name so the row can show something the user can
+        # act on instead of the engine's confidence score.
+        sql = ("SELECT t.*, c.name AS category_name FROM transactions t "
+               "LEFT JOIN categories c ON c.id = t.category_id "
+               "WHERE t.user_id=? AND t.is_deleted=0")
         params = [uid]
         if q:
             # Try the FTS5 index first. It returns None when the index is
@@ -721,24 +770,24 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             # transaction unfindable that used to be findable.
             hits = search.search_ids(g.conn, uid, q, limit=200)
             if hits is not None:
-                sql += " AND id IN (%s)" % ",".join("?" * len(hits))
+                sql += " AND t.id IN (%s)" % ",".join("?" * len(hits))
                 params += hits
             else:
                 like = f"%{q.lower()}%"
-                sql += (" AND (lower(COALESCE(merchant_name,'')) LIKE ? OR "
-                        "lower(COALESCE(raw_merchant,'')) LIKE ? OR "
-                        "lower(COALESCE(notes,'')) LIKE ? OR "
-                        "lower(COALESCE(reference_number,'')) LIKE ?)")
+                sql += (" AND (lower(COALESCE(t.merchant_name,'')) LIKE ? OR "
+                        "lower(COALESCE(t.raw_merchant,'')) LIKE ? OR "
+                        "lower(COALESCE(t.notes,'')) LIKE ? OR "
+                        "lower(COALESCE(t.reference_number,'')) LIKE ?)")
                 params += [like, like, like, like]
         if f == "expense":
-            sql += " AND type='expense'"
+            sql += " AND t.type='expense'"
         elif f == "income":
-            sql += " AND type='income'"
+            sql += " AND t.type='income'"
         elif f == "sms":
-            sql += " AND source='sms'"
+            sql += " AND t.source='sms'"
         elif f == "review":
-            sql += " AND status IN ('pending_confirmation','needs_review')"
-        sql += " ORDER BY occurred_at DESC, created_at DESC LIMIT 200"
+            sql += " AND t.status IN ('pending_confirmation','needs_review')"
+        sql += " ORDER BY t.occurred_at DESC, t.created_at DESC LIMIT 200"
         rows = db.all_rows(g.conn, sql, tuple(params))
         # Deep link from a fraud alert: make sure the transaction is present
         # and rendered expanded + highlighted.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from spendwise import parsing
+from spendwise import db as _dbm
 from spendwise.app import create_app
 
 
@@ -40,8 +41,16 @@ def test_duplicate_signup_rejected(client):
 def test_add_transaction_confirmed(auth_client):
     r = _add(auth_client, amount="250.00", merchant="Starbucks")
     assert r.status_code == 200
-    # User-provided merchant is auto-confirmed at 100% confidence.
-    assert b"Starbucks" in r.data and b"100%" in r.data
+    assert b"Starbucks" in r.data
+    # A user-typed merchant is auto-confirmed at full confidence. Asserted
+    # against the stored value rather than a badge: the list no longer prints
+    # the engine's confidence score, because a percentage is engine internals
+    # that a person cannot act on. The behaviour is unchanged.
+    conn = _dbm.connect(auth_client.application.config["DB_PATH"])
+    row = conn.execute("SELECT confidence, status FROM transactions "
+                       "WHERE merchant_name='Starbucks'").fetchone()
+    conn.close()
+    assert row is not None and row[0] == 100 and row[1] == "confirmed"
 
 
 def test_learning_then_live_resolve(auth_client):

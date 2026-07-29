@@ -398,3 +398,51 @@ def test_thresholds_actually_reach_the_engine(tmp_path):
     conn.close()
     assert state["auto"] < 80
     assert c.get("/transactions").status_code == 200
+
+
+# ── Merchant display name (presentation) ──────────────────────────────────
+def _display(app):
+    return app.jinja_env.filters["merchant"]
+
+
+@pytest.mark.parametrize("raw,shown", [
+    ("VPA AMAZON", "Amazon"),
+    ("swiggy@ybl", "Swiggy"),
+    ("VPA swiggy", "Swiggy"),
+    ("SWIGGY", "Swiggy"),
+    ("UPI/P2M/419988776655/BLINKIT", "Blinkit"),
+    ("bigbasket@ybl", "BigBasket"),
+    ("kfc", "KFC"),
+    ("NETFLIX", "Netflix"),
+    ("ACME PAYROLL", "ACME Payroll"),
+])
+def test_raw_payees_render_as_one_clean_merchant(tmp_path, raw, shown):
+    """The ledger showed 'VPA AMAZON' one row above 'Amazon', and 'swiggy'
+    above 'Swiggy' — the same shop several times, which makes a correct list
+    look broken. Resolved merchants already carry a canonical name; this is
+    the fallback for rows the engine has not resolved yet."""
+    app = create_app(db_path=str(tmp_path / f"md{abs(hash(raw))}.db"),
+                     single_user=True, secret_key="s")
+    assert _display(app)(raw) == shown
+
+
+def test_display_normalisation_never_writes_back(tmp_path):
+    """It must stay presentation-only: raw_merchant is the merchant engine's
+    learning key, so rewriting it would corrupt what the engine matches on."""
+    app = create_app(db_path=str(tmp_path / "mdw.db"), single_user=True,
+                     secret_key="s", device_token=TOKEN)
+    c = app.test_client()
+    c.get(f"/?k={TOKEN}")
+    c.post("/sms/ingest",
+           data={"sender": "VM-ICICIB",
+                 "body": "INR 1299.00 debited from ICICI Bank A/c XX2211 "
+                         "towards VPA NOVELSHOP. IMPS Ref no 556677889001"},
+           headers={"X-SpendWise-Token": TOKEN},
+           environ_overrides={"REMOTE_ADDR": "127.0.0.1"})
+    conn = db.connect(app.config["DB_PATH"])
+    raw = conn.execute("SELECT raw_merchant FROM transactions").fetchone()[0]
+    conn.close()
+    assert raw and raw.upper().startswith("NOVELSHOP") or "NOVELSHOP" in (raw or "").upper(), \
+        f"stored raw payee was rewritten: {raw!r}"
+    # ...while the UI shows the tidy form.
+    assert b"Novelshop" in c.get("/transactions").data

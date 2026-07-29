@@ -30,7 +30,7 @@
   <div class="tx-list">
     {% for t in recent_sms %}
     <div class="tx">
-      {{ m.avatar(t['merchant_name'] or t['raw_merchant'] or '?') }}
+      {{ m.avatar((t['merchant_name'] or t['raw_merchant'])|merchant or '?') }}
       <div class="tx-main">
         <div class="tx-name">{{ t['merchant_name'] or t['raw_merchant'] or 'Unknown merchant' }}</div>
         <div class="tx-sub mut" style="font-size:12px">{{ t['occurred_at'][:10] }}{% if not t['category_id'] %} · <span style="color:var(--warn)">needs category</span>{% endif %}</div>
