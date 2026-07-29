@@ -4,7 +4,7 @@
 {% block heading %}Held Messages{% endblock %}
 {% block content %}
 <div class="screen stack">
-  <div class="mut" style="font-size:13px; padding:0 4px">
+  <div class="mut" style="font-size: 0.8125rem; padding:0 4px">
     Messages that looked like a transaction but came from a sender we can't verify,
     or contained signs of a scam. Nothing is ever deleted — you decide.
   </div>
@@ -29,20 +29,20 @@
                     border-radius:12px; background:var(--surface-2)">
           {{ m.avatar(q['raw_merchant']|merchant or q['sender'] or '?') }}
           <div style="flex:1; min-width:0">
-            <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
+            <div style="font-size: 0.8125rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
               {{ q['raw_merchant']|merchant or 'Unknown merchant' }}</div>
-            <div class="faint" style="font-size:11.5px">
+            <div class="faint" style="font-size: 0.7188rem">
               {{ (q['occurred_at'] or q['created_at'])[:10] }} · would be
               {{ 'income' if q['type'] == 'income' else 'an expense' }}</div>
           </div>
-          <div class="num" style="font-weight:800; font-size:13.5px">
+          <div class="num" style="font-weight:800; font-size: 0.8438rem">
             {{ currency|symbol }}{{ m.money(q['amount']) }}</div>
         </div>
         {% endif %}
 
         <details style="margin-top:10px">
-          <summary class="faint" style="font-size:12px; cursor:pointer">Show the message</summary>
-          <div class="faint" style="font-size:12px; margin-top:6px; white-space:pre-wrap;
+          <summary class="faint" style="font-size: 0.75rem; cursor:pointer">Show the message</summary>
+          <div class="faint" style="font-size: 0.75rem; margin-top:6px; white-space:pre-wrap;
                                     word-break:break-word; padding:10px; border-radius:10px;
                                     background:var(--surface-2)">{{ q['body'] }}</div>
         </details>
@@ -75,9 +75,9 @@
       {% for s in senders %}
       <div style="display:flex; align-items:center; gap:10px; padding:8px 2px">
         <div style="flex:1; min-width:0">
-          <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
+          <div style="font-size: 0.8125rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
             {{ s['bank'] or s['display'] or s['sender'] }}</div>
-          <div class="faint" style="font-size:11.5px">
+          <div class="faint" style="font-size: 0.7188rem">
             {{ s['sender'] }} · {{ s['kind'] }} · {{ s['message_count'] }} message{{ '' if s['message_count'] == 1 else 's' }}
             {%- if s['quarantined_count'] %} · {{ s['quarantined_count'] }} held{% endif %}</div>
         </div>

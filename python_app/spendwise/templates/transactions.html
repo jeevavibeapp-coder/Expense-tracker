@@ -11,7 +11,7 @@
   {% if request.args.get('error') == 'amount' %}
   <div class="card" style="display:flex;gap:10px;align-items:center;background:var(--expense-soft);border-color:var(--expense)">
     <span style="color:var(--expense);display:flex">{{ m.icon('x') }}</span>
-    <span style="font-size:13px">Enter a valid amount to add a transaction.</span>
+    <span style="font-size: 0.8125rem">Enter a valid amount to add a transaction.</span>
   </div>
   {% endif %}
 
@@ -19,7 +19,7 @@
   {% if undo_tx %}
   <div class="card" style="display:flex; gap:10px; align-items:center; padding:12px 14px">
     <span class="faint" style="display:flex">{{ m.icon('trash') }}</span>
-    <span style="flex:1; font-size:13px">Deleted “{{ (undo_tx['merchant_name'] or undo_tx['raw_merchant'])|merchant or 'transaction' }}”.</span>
+    <span style="flex:1; font-size: 0.8125rem">Deleted “{{ (undo_tx['merchant_name'] or undo_tx['raw_merchant'])|merchant or 'transaction' }}”.</span>
     <form method="post" action="/transactions/{{ undo_tx['id'] }}/restore">
       <button class="btn btn-sm" type="submit">Undo</button>
     </form>

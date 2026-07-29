@@ -11,7 +11,7 @@
     {% if result.fraud_alert_ids %}
       <div class="error" style="margin:10px 0 0">⚠ {{ result.fraud_alert_ids|length }} fraud alert(s) raised — see <a href="/fraud">Alerts</a>.</div>{% endif %}
     {% if result.decision in ('confirmation_required', 'manual_required') %}
-      <p class="mut" style="font-size:12.5px; margin:8px 0 0">Confirm the merchant in <a href="/transactions">Activity</a> to teach the engine.</p>{% endif %}
+      <p class="mut" style="font-size: 0.7812rem; margin:8px 0 0">Confirm the merchant in <a href="/transactions">Activity</a> to teach the engine.</p>{% endif %}
   </div>
   <div class="btn-row">
     <a class="btn-ghost btn-sm" href="/import" style="flex:1; text-align:center">Import another</a>

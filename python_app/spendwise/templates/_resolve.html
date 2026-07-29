@@ -2,19 +2,19 @@
 {% if best %}
 <div style="margin-top:10px; padding:12px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-sm)">
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
-    <span class="faint" style="font-size:12px">Engine suggests</span>
-    <strong style="font-size:14px">{{ best.merchant_name }}</strong>
+    <span class="faint" style="font-size: 0.75rem">Engine suggests</span>
+    <strong style="font-size: 0.875rem">{{ best.merchant_name }}</strong>
     {{ m.confidence_badge(best.confidence) }}{{ m.decision_label(decision) }}
   </div>
   {% if best.reasons %}
   <ul style="margin:8px 0 0; padding:0 0 0 4px; list-style:none">
     {% for r in best.reasons %}
-    <li style="font-size:12px; color:var(--text-2); padding:2px 0">• {{ r }}</li>
+    <li style="font-size: 0.75rem; color:var(--text-2); padding:2px 0">• {{ r }}</li>
     {% endfor %}
   </ul>
   {% endif %}
   {{ m.breakdown_bars(breakdown) }}
 </div>
 {% else %}
-<div class="faint" style="margin-top:8px; font-size:12px">✨ New payee — it'll be learned once you save it.</div>
+<div class="faint" style="margin-top:8px; font-size: 0.75rem">✨ New payee — it'll be learned once you save it.</div>
 {% endif %}

@@ -6,14 +6,14 @@
 <div class="screen stack">
   <div class="card" style="display:flex; gap:10px; align-items:flex-start; background:rgba(54,211,154,.08); border-color:rgba(54,211,154,.25)">
     <span style="color:var(--income); display:flex; margin-top:1px">{{ m.icon('check') }}</span>
-    <div><div style="font-weight:700; font-size:13.5px">Automatic capture is on</div>
-      <div class="mut" style="font-size:12.5px">Bank &amp; UPI messages are captured the moment they arrive — no pasting needed. If a category isn’t clear, SpendWise asks you with a quick popup. Use the box below only to add an older message by hand.</div></div>
+    <div><div style="font-weight:700; font-size: 0.8438rem">Automatic capture is on</div>
+      <div class="mut" style="font-size: 0.7812rem">Bank &amp; UPI messages are captured the moment they arrive — no pasting needed. If a category isn’t clear, SpendWise asks you with a quick popup. Use the box below only to add an older message by hand.</div></div>
   </div>
   <div class="card">
     <div style="display:flex; gap:10px; align-items:center; margin-bottom:6px">
       <span class="ii" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--grad);color:#fff">{{ m.icon('sms') }}</span>
       <div><div style="font-weight:700">Paste a bank / UPI SMS</div>
-        <div class="mut" style="font-size:12.5px">We extract the amount, merchant & date, then resolve the real merchant.</div></div>
+        <div class="mut" style="font-size: 0.7812rem">We extract the amount, merchant & date, then resolve the real merchant.</div></div>
     </div>
     <form id="parse-form" method="post" action="/import/parse">
       <div class="field" style="margin:8px 0 12px">
@@ -33,7 +33,7 @@
       {{ m.avatar((t['merchant_name'] or t['raw_merchant'])|merchant or '?') }}
       <div class="tx-main">
         <div class="tx-name">{{ t['merchant_name'] or t['raw_merchant'] or 'Unknown merchant' }}</div>
-        <div class="tx-sub mut" style="font-size:12px">{{ t['occurred_at'][:10] }}{% if not t['category_id'] %} · <span style="color:var(--warn)">needs category</span>{% endif %}</div>
+        <div class="tx-sub mut" style="font-size: 0.75rem">{{ t['occurred_at'][:10] }}{% if not t['category_id'] %} · <span style="color:var(--warn)">needs category</span>{% endif %}</div>
       </div>
       <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency|symbol }}{{ m.money(t['amount']) }}</div>
     </div>

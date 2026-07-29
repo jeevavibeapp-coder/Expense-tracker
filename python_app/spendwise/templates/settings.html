@@ -7,12 +7,12 @@
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
 
   <div class="card" style="display:flex; align-items:center; gap:14px">
-    <span class="avatar" style="width:48px;height:48px;font-size:18px">{{ user['full_name']|initials }}</span>
+    <span class="avatar" style="width:48px;height:48px;font-size: 1.125rem">{{ user['full_name']|initials }}</span>
     <form method="post" action="/profile" style="flex:1; display:flex; gap:8px; align-items:center">
       <div style="flex:1">
         <input name="full_name" value="{{ user['full_name'] }}" maxlength="40" required
-               style="font-weight:700; font-size:15px; padding:8px 10px">
-        {% if not single_user %}<div class="mut" style="font-size:12px; margin-top:4px">{{ user['email'] }}</div>{% endif %}
+               style="font-weight:700; font-size: 0.9375rem; padding:8px 10px">
+        {% if not single_user %}<div class="mut" style="font-size: 0.75rem; margin-top:4px">{{ user['email'] }}</div>{% endif %}
       </div>
       <button class="btn-ghost btn-sm" type="submit">Save</button>
     </form>
@@ -35,7 +35,7 @@
 
     <div class="card stack">
       <div style="font-weight:700">Smart engine</div>
-      <div class="mut" style="font-size:12.5px; margin-top:-6px">How confident the engine must be to auto-save vs ask you.</div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:-6px">How confident the engine must be to auto-save vs ask you.</div>
       <div class="field" style="margin:0">
         <label class="lbl">Auto-save at <b id="autoVal" class="num" style="color:var(--income)">{{ s['auto_save_threshold'] }}%</b> confidence</label>
         <input type="range" name="auto_save_threshold" min="0" max="100" value="{{ s['auto_save_threshold'] }}"
@@ -51,7 +51,7 @@
       <div class="field" style="margin:0"><label class="lbl">High-value alert amount (optional)</label>
         <input name="high_value_amount" type="number" step="0.01" min="0"
                value="{{ '%.2f'|format(s['high_value_amount']) if s['high_value_amount'] is not none else '' }}" placeholder="e.g. 25000">
-        <div class="mut" style="font-size:12px; margin-top:6px">Transactions at or above this raise an alert.</div></div>
+        <div class="mut" style="font-size: 0.75rem; margin-top:6px">Transactions at or above this raise an alert.</div></div>
     </div>
 
     <button class="btn" type="submit">Save changes</button>
@@ -73,27 +73,27 @@
       <div class="stat"><div class="k">Captured</div><div class="v num">{{ sms.captured }}</div></div>
       <div class="stat"><div class="k">In queue</div><div class="v num">{{ sms.queued }}</div></div>
       <div class="stat"><div class="k">Last</div>
-        <div class="v num" style="font-size:14px">{{ sms.last[:10] if sms.last else '–' }}</div></div>
+        <div class="v num" style="font-size: 0.875rem">{{ sms.last[:10] if sms.last else '–' }}</div></div>
     </div>
     {% if sms.permission == 'denied' %}
-    <div class="mut" style="font-size:12.5px">SpendWise can't read bank messages. Tap Allow to turn capture back on.</div>
+    <div class="mut" style="font-size: 0.7812rem">SpendWise can't read bank messages. Tap Allow to turn capture back on.</div>
     <button class="btn btn-sm" type="button"
             onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow SMS access</button>
     {% elif not sms.captured %}
-    <div class="mut" style="font-size:12.5px">
+    <div class="mut" style="font-size: 0.7812rem">
       Nothing captured yet. SpendWise scans your inbox for bank &amp; UPI messages each
       time it opens. If this stays at 0, your phone may be blocking background
       messages — on Xiaomi/Redmi/POCO, Oppo, Vivo or Realme, enable
       <b>Autostart</b> for SpendWise in Settings → Apps, then reopen the app.
     </div>
     {% else %}
-    <div class="mut" style="font-size:12.5px">Bank &amp; UPI messages are captured automatically and parsed on this device — they never leave your phone.</div>
+    <div class="mut" style="font-size: 0.7812rem">Bank &amp; UPI messages are captured automatically and parsed on this device — they never leave your phone.</div>
     {% endif %}
 
     {% if sms.miss_kinds %}
     <div style="border-top:1px solid var(--hairline); padding-top:12px">
-      <div style="font-size:13px; font-weight:700">{{ sms.miss_kinds }} message type(s) not understood</div>
-      <div class="mut" style="font-size:12px; margin-top:4px">
+      <div style="font-size: 0.8125rem; font-weight:700">{{ sms.miss_kinds }} message type(s) not understood</div>
+      <div class="mut" style="font-size: 0.75rem; margin-top:4px">
         {{ sms.miss_total }} bank message(s) looked financial but could not be read —
         usually a format this build doesn't know yet. They stay on your device.
       </div>
@@ -111,7 +111,7 @@
       <button class="btn-soft btn-sm" type="submit" style="width:100%; color:var(--expense)">
         Clear {{ sms.unreviewed }} unreviewed capture{{ '' if sms.unreviewed == 1 else 's' }}
       </button>
-      <div class="faint" style="font-size:11.5px; margin-top:6px">
+      <div class="faint" style="font-size: 0.7188rem; margin-top:6px">
         Use this to wipe junk captured before filtering improved. Anything you
         already confirmed or categorised is kept.
       </div>
@@ -121,7 +121,7 @@
 
   <div class="card stack">
     <div style="font-weight:700">Your data</div>
-    <div class="mut" style="font-size:12.5px; margin-top:-6px">Everything stays on this device. Download a copy any time.</div>
+    <div class="mut" style="font-size: 0.7812rem; margin-top:-6px">Everything stays on this device. Download a copy any time.</div>
     <a class="btn-soft" href="/export.csv" download
        style="display:block; text-align:center; text-decoration:none">Export transactions (CSV)</a>
   </div>
@@ -129,6 +129,6 @@
   {% if not single_user %}
   <form method="post" action="/logout"><button class="btn-soft" type="submit" style="width:100%; color:var(--expense); margin-top:4px">Sign out</button></form>
   {% endif %}
-  <div class="faint" style="text-align:center; font-size:11px; padding:8px">SpendWise · on-device & offline</div>
+  <div class="faint" style="text-align:center; font-size: 0.6875rem; padding:8px">SpendWise · on-device & offline</div>
 </div>
 {% endblock %}

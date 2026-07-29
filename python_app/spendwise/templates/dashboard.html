@@ -21,12 +21,12 @@
   {# First-run: compact setup checklist instead of empty widgets #}
   {% if d.tx_count == 0 %}
   <div class="card reveal stack" style="gap:12px">
-    <div style="font-weight:700; font-size:14px">Get set up</div>
+    <div style="font-weight:700; font-size: 0.875rem">Get set up</div>
     <div style="display:flex; gap:10px; align-items:center">
       <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex:0 0 34px;
             background:{{ 'var(--expense-soft)' if sms_denied else 'rgba(54,211,154,.12)' }};
             color:{{ 'var(--expense)' if sms_denied else 'var(--income)' }}">{{ m.icon('sms') }}</span>
-      <div style="flex:1; font-size:13px">Auto-capture bank &amp; UPI SMS</div>
+      <div style="flex:1; font-size: 0.8125rem">Auto-capture bank &amp; UPI SMS</div>
       {% if sms_denied %}
       <button class="btn btn-sm" type="button"
               onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow</button>
@@ -34,12 +34,12 @@
     </div>
     <a href="#add" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
       <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('plus') }}</span>
-      <div style="flex:1; font-size:13px">Add your first transaction</div>
+      <div style="flex:1; font-size: 0.8125rem">Add your first transaction</div>
       <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
     </a>
     <a href="/categories" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
       <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('grid') }}</span>
-      <div style="flex:1; font-size:13px">Set a monthly budget</div>
+      <div style="flex:1; font-size: 0.8125rem">Set a monthly budget</div>
       <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
     </a>
   </div>
@@ -61,17 +61,17 @@
       <text class="ring-sub" x="60" y="71" text-anchor="middle">SAVED</text>
     </svg>
     <div style="flex:1">
-      <div style="font-weight:700; font-size:15px">Money health</div>
+      <div style="font-weight:700; font-size: 0.9375rem">Money health</div>
       <span class="score-tag" style="background:{{ tag[1] }}22; color:{{ tag[1] }}; margin-top:6px">{{ tag[0] }}</span>
-      <div class="mut" style="font-size:12.5px; margin-top:8px">You keep {{ rate|round|int }}% of your income. Aim for 20%+.</div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:8px">You keep {{ rate|round|int }}% of your income. Aim for 20%+.</div>
     </div>
   </div>
   {% elif d.tx_count > 0 %}
   <div class="card score-row reveal">
     <span class="ai" style="width:48px;height:48px;border-radius:15px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 48px">{{ m.icon('sparkles') }}</span>
     <div style="flex:1">
-      <div style="font-weight:700; font-size:15px">Money health</div>
-      <div class="mut" style="font-size:12.5px; margin-top:6px">Add an income transaction and SpendWise will start tracking how much of it you keep each month.</div>
+      <div style="font-weight:700; font-size: 0.9375rem">Money health</div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:6px">Add an income transaction and SpendWise will start tracking how much of it you keep each month.</div>
     </div>
   </div>
   {% endif %}
@@ -79,7 +79,10 @@
   {# Period strip #}
   <div class="card stat-strip reveal">
     {% for k, v in [('Today', d.daily_spend), ('This week', d.weekly_spend), ('This month', d.monthly_spend)] %}
-    <div class="stat"><div class="k">{{ k }}</div><div class="v num">{{ m.money_k(v) }}</div></div>
+    {# Symbol included: this strip was the only money on the dashboard rendered
+       bare, so an empty state read "0  0  0" while every other figure read
+       "₹0" — the same quantity presented two ways on one screen. #}
+    <div class="stat"><div class="k">{{ k }}</div><div class="v num">{{ cur }}{{ m.money_k(v) }}</div></div>
     {% endfor %}
   </div>
 
@@ -89,8 +92,8 @@
   <div class="card reveal" style="display:flex; gap:10px; align-items:flex-start">
     <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('repeat') }}</span>
     <div style="flex:1">
-      <div style="font-weight:700; font-size:13.5px">Not counted as spending</div>
-      <div class="mut" style="font-size:12.5px; margin-top:4px">
+      <div style="font-weight:700; font-size: 0.8438rem">Not counted as spending</div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:4px">
         {% if d.flow.transfer_total > 0 %}{{ cur }}{{ m.money_k(d.flow.transfer_total) }} moved between your own accounts{% endif %}
         {%- if d.flow.transfer_total > 0 and d.flow.refund_total > 0 %} · {% endif %}
         {%- if d.flow.refund_total > 0 %}{{ cur }}{{ m.money_k(d.flow.refund_total) }} refunded{% endif %}.
@@ -126,8 +129,8 @@
   {% set smax = d.daily_series | map(attribute='v') | max %}
   <div class="card reveal">
     <div style="display:flex; align-items:baseline; margin-bottom:10px">
-      <div style="flex:1; font-weight:700; font-size:14px">Last 14 days</div>
-      <div class="mut num" style="font-size:12px">{{ cur }}{{ m.money_k(d.daily_series | sum(attribute='v')) }} total</div>
+      <div style="flex:1; font-weight:700; font-size: 0.875rem">Last 14 days</div>
+      <div class="mut num" style="font-size: 0.75rem">{{ cur }}{{ m.money_k(d.daily_series | sum(attribute='v')) }} total</div>
     </div>
     <div class="spark">
       {% for p in d.daily_series %}
@@ -136,8 +139,8 @@
       {% endfor %}
     </div>
     <div style="display:flex; justify-content:space-between; margin-top:6px" class="faint">
-      <span style="font-size:10.5px">{{ d.daily_series[0].d[8:] }}/{{ d.daily_series[0].d[5:7] }}</span>
-      <span style="font-size:10.5px">Today</span>
+      <span style="font-size: 0.6562rem">{{ d.daily_series[0].d[8:] }}/{{ d.daily_series[0].d[5:7] }}</span>
+      <span style="font-size: 0.6562rem">Today</span>
     </div>
   </div>
   {% endif %}
@@ -177,7 +180,7 @@
       <span class="ai" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 42px">{{ m.icon('sparkles') }}</span>
       <div style="flex:1">
         <h3>{{ d.pending_confirmations }} to review</h3>
-        <div class="mut" style="font-size:13px">Confirm merchants so the engine learns them</div>
+        <div class="mut" style="font-size: 0.8125rem">Confirm merchants so the engine learns them</div>
       </div>
       <span class="faint">{{ m.icon('chevron') }}</span>
     </div>
@@ -212,8 +215,8 @@
     <div>
       <div style="display:flex; align-items:baseline; gap:8px">
         <span style="width:9px;height:9px;border-radius:50%;background:{{ b.color }};flex:0 0 9px;align-self:center"></span>
-        <span style="flex:1; font-size:13.5px; font-weight:600">{{ b.name }}</span>
-        <span class="num" style="font-size:12.5px; font-weight:700; color:{{ 'var(--expense)' if b.pct > 100 else 'var(--text-2)' }}">
+        <span style="flex:1; font-size: 0.8438rem; font-weight:600">{{ b.name }}</span>
+        <span class="num" style="font-size: 0.7812rem; font-weight:700; color:{{ 'var(--expense)' if b.pct > 100 else 'var(--text-2)' }}">
           {{ m.money_k(b.spent) }} / {{ m.money_k(b.budget) }}</span>
       </div>
       <div class="cat-bar" style="margin-top:6px">
@@ -254,8 +257,8 @@
         {% for c in d.category_breakdown[:6] %}
         <div style="display:flex; align-items:center; gap:8px; padding:5px 0">
           <span style="width:9px;height:9px;border-radius:50%;background:{{ c.name|avatar_color }};flex:0 0 9px"></span>
-          <span style="flex:1; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.name }}</span>
-          <span class="num mut" style="font-size:12.5px; font-weight:700">{{ (c.value/total*100)|round|int if total else 0 }}%</span>
+          <span style="flex:1; font-size: 0.8125rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.name }}</span>
+          <span class="num mut" style="font-size: 0.7812rem; font-weight:700">{{ (c.value/total*100)|round|int if total else 0 }}%</span>
         </div>
         {% endfor %}
       </div>
@@ -301,7 +304,7 @@
       </div>
       {% endfor %}
     </div>
-    <div style="display:flex; gap:16px; justify-content:center; margin-top:10px; font-size:12px" class="mut">
+    <div style="display:flex; gap:16px; justify-content:center; margin-top:10px; font-size: 0.75rem" class="mut">
       <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--income);vertical-align:middle"></span> Income</span>
       <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--expense);vertical-align:middle"></span> Spending</span>
     </div>
@@ -318,7 +321,7 @@
     <span class="ai" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 42px">{{ m.icon('user') }}</span>
     <form method="post" action="/profile" style="flex:1; display:flex; gap:8px; align-items:center">
       <input name="full_name" placeholder="What should we call you?" maxlength="40" required
-             style="flex:1; padding:10px 12px; font-size:13.5px">
+             style="flex:1; padding:10px 12px; font-size: 0.8438rem">
       <button class="btn btn-sm" type="submit">Save</button>
     </form>
   </div>

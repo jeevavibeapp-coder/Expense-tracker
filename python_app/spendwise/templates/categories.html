@@ -87,7 +87,7 @@
     <div class="grip"></div>
     <h3>{{ c['name'] }} · monthly budget</h3>
     {% set spent = spent_by_cat.get(c['id'], 0) %}
-    <div class="mut" style="font-size:13px; margin:-6px 0 14px">
+    <div class="mut" style="font-size: 0.8125rem; margin:-6px 0 14px">
       Spent {{ currency|symbol }}{{ m.money(spent) }} so far this month.</div>
     <form method="post" action="/categories/{{ c['id'] }}/budget">
       <div class="field"><label class="lbl">Budget amount ({{ currency|symbol }})</label>
