@@ -29,7 +29,7 @@
               {{ a['tx_merchant'] or a['tx_raw'] or 'Unknown merchant' }}</div>
             <div class="faint" style="font-size:11.5px">{{ a['tx_occurred'][:10] }}</div>
           </div>
-          <div class="num" style="font-weight:800; font-size:13.5px">{{ currency }} {{ m.money(a['tx_amount']) }}</div>
+          <div class="num" style="font-weight:800; font-size:13.5px">{{ currency|symbol }}{{ m.money(a['tx_amount']) }}</div>
           <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
         </a>
         {% endif %}

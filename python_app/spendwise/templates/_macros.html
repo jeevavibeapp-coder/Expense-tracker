@@ -28,14 +28,12 @@
 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ p.get(name, '')|safe }}</svg>
 {%- endmacro %}
 
-{% macro money(value) -%}{{ '%.2f'|format(value|float) }}{%- endmacro %}
+{# Single source of truth for money: the `money` / `money_compact`
+   Jinja filters in app.py. Indian lakh/crore grouping, symbol, and
+   decimals only when they carry information. #}
+{% macro money(value) -%}{{ value|money }}{%- endmacro %}
 
-{% macro money_k(value) -%}
-{%- set v = value|float -%}
-{%- if v >= 100000 -%}{{ '%.1f'|format(v/100000) }}L
-{%- elif v >= 1000 -%}{{ '%.1f'|format(v/1000) }}k
-{%- else -%}{{ '%.0f'|format(v) }}{%- endif -%}
-{%- endmacro %}
+{% macro money_k(value) -%}{{ value|money_compact }}{%- endmacro %}
 
 {% macro confidence_badge(score) -%}
   {% if score is none %}<span class="badge badge-muted">—</span>

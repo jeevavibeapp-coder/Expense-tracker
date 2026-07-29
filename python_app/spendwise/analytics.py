@@ -22,6 +22,30 @@ def _now() -> dt.datetime:
     return dt.datetime.now().replace(microsecond=0, tzinfo=dt.timezone.utc)
 
 
+def _rupees(value) -> str:
+    """Money inside an insight sentence.
+
+    Insights were the last place raw numbers leaked into the UI — "your
+    biggest category is Groceries (2630)" next to a hero reading Rs.73,103.
+    Same Indian lakh/crore grouping as the display filters; duplicated
+    deliberately because analytics runs outside a Flask app context and must
+    not depend on one.
+    """
+    v = _finite(value)
+    neg = v < 0
+    whole = f"{abs(v):.0f}"
+    if len(whole) > 3:
+        head, tail = whole[:-3], whole[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        whole = ",".join(parts + [tail])
+    return ("-\u20b9" if neg else "\u20b9") + whole
+
+
 def _finite(value) -> float:
     """Coerce a stored amount to a finite float for arithmetic.
 
@@ -389,7 +413,7 @@ def _insights(monthly, weekly, top_merchants, category_breakdown, pending, fraud
     near = [b for b in budgets if 85 <= b["pct"] <= 100]
     if over:
         out.append(f"You're over budget in {over[0]['name']} "
-                   f"({over[0]['spent']:.0f} of {over[0]['budget']:.0f}).")
+                   f"({_rupees(over[0]['spent'])} of {_rupees(over[0]['budget'])}).")
     elif near:
         out.append(f"{near[0]['name']} is at {near[0]['pct']}% of its monthly budget.")
     due_soon = [r for r in recurring if 0 <= r["days_left"] <= 5]
@@ -397,25 +421,27 @@ def _insights(monthly, weekly, top_merchants, category_breakdown, pending, fraud
         r = due_soon[0]
         when = "today" if r["days_left"] == 0 else (
             "tomorrow" if r["days_left"] == 1 else f"in {r['days_left']} days")
-        out.append(f"{r['name']} (~{r['amount']:.0f}) is due {when}.")
+        out.append(f"{r['name']} (about {_rupees(r['amount'])}) is due {when}.")
     if streak >= 2:
         out.append(f"You're on a {streak}-day no-spend streak — keep it going!")
     if monthly > 0:
-        out.append(f"You've spent {monthly:.0f} so far this month.")
+        out.append(f"You've spent {_rupees(monthly)} so far this month.")
     if category_breakdown:
-        out.append(f"Your biggest category is {category_breakdown[0]['name']} "
-                   f"({category_breakdown[0]['value']:.0f}).")
+        out.append(f"{category_breakdown[0]['name']} is your biggest category "
+                   f"at {_rupees(category_breakdown[0]['value'])}.")
     if top_merchants:
-        out.append(f"You spend the most at {top_merchants[0]['name']} "
-                   f"({top_merchants[0]['value']:.0f}).")
+        out.append(f"{top_merchants[0]['name']} takes the largest share "
+                   f"at {_rupees(top_merchants[0]['value'])}.")
     if weekly > 0 and monthly > 0 and (weekly / monthly) * 100 > 40:
         out.append("A large share of this month's spending happened in the last 7 days.")
     if pending:
-        out.append(f"{pending} transaction(s) need merchant confirmation.")
+        out.append("1 transaction is waiting to be named." if pending == 1
+                   else f"{pending} transactions are waiting to be named.")
     if fraud_open:
-        out.append(f"{fraud_open} fraud alert(s) need your attention.")
+        out.append("1 alert needs a look." if fraud_open == 1
+                   else f"{fraud_open} alerts need a look.")
     if not out:
-        out.append("Add your first transaction to start seeing insights.")
+        out.append("Your spending patterns will appear here as you go.")
     return out
 
 

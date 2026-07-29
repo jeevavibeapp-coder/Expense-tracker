@@ -4,7 +4,7 @@
 {% block heading %}Hi, {{ user['full_name'].split()[0] }}{% endblock %}
 {% block subhead %}<div class="sub">Here's your money today</div>{% endblock %}
 {% block content %}
-{% set cur = d.currency %}
+{% set cur = d.currency|symbol %}
 <div class="screen stack">
 
   {# Balance hero — premium card #}
@@ -13,8 +13,8 @@
     <div class="label">Total balance</div>
     <div class="balance num"><span class="cur">{{ cur }}</span><span data-countup>{{ m.money(d.balance) }}</span></div>
     <div class="hero-row">
-      <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ cur }} {{ m.money_k(d.total_income) }}</div></div>
-      <div class="hero-pill"><div class="k">↑ Spent</div><div class="v num">{{ cur }} {{ m.money_k(d.total_expense) }}</div></div>
+      <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ cur }}{{ m.money_k(d.total_income) }}</div></div>
+      <div class="hero-pill"><div class="k">↑ Spent</div><div class="v num">{{ cur }}{{ m.money_k(d.total_expense) }}</div></div>
     </div>
   </div>
 
@@ -103,10 +103,10 @@
     <div style="flex:1">
       <div style="font-weight:700; font-size:13.5px">Not counted as spending</div>
       <div class="mut" style="font-size:12.5px; margin-top:4px">
-        {% if d.flow.transfer_total > 0 %}{{ cur }} {{ m.money_k(d.flow.transfer_total) }} moved between your own accounts{% endif %}
+        {% if d.flow.transfer_total > 0 %}{{ cur }}{{ m.money_k(d.flow.transfer_total) }} moved between your own accounts{% endif %}
         {%- if d.flow.transfer_total > 0 and d.flow.refund_total > 0 %} · {% endif %}
-        {%- if d.flow.refund_total > 0 %}{{ cur }} {{ m.money_k(d.flow.refund_total) }} refunded{% endif %}.
-        Real spending: <b class="num">{{ cur }} {{ m.money_k(d.flow.expense_net) }}</b>.
+        {%- if d.flow.refund_total > 0 %}{{ cur }}{{ m.money_k(d.flow.refund_total) }} refunded{% endif %}.
+        Real spending: <b class="num">{{ cur }}{{ m.money_k(d.flow.expense_net) }}</b>.
       </div>
     </div>
   </div>
@@ -139,7 +139,7 @@
   <div class="card reveal">
     <div style="display:flex; align-items:baseline; margin-bottom:10px">
       <div style="flex:1; font-weight:700; font-size:14px">Last 14 days</div>
-      <div class="mut num" style="font-size:12px">{{ cur }} {{ m.money_k(d.daily_series | sum(attribute='v')) }} total</div>
+      <div class="mut num" style="font-size:12px">{{ cur }}{{ m.money_k(d.daily_series | sum(attribute='v')) }} total</div>
     </div>
     <div class="spark">
       {% for p in d.daily_series %}
@@ -166,7 +166,7 @@
         <div class="tx-meta"><span style="text-transform:capitalize">{{ r.cadence }}</span></div>
       </div>
       <div style="text-align:right">
-        <div class="tx-amt num">{{ cur }} {{ m.money_k(r.amount) }}</div>
+        <div class="tx-amt num">{{ cur }}{{ m.money_k(r.amount) }}</div>
         {% if r.days_left < 0 %}
         <span class="due-pill" style="background:var(--expense-soft); color:var(--expense)">overdue</span>
         {% elif r.days_left == 0 %}
@@ -291,7 +291,7 @@
         <div class="tx-name">{{ mch.name }}</div>
         <div class="cat-bar" style="margin-top:7px"><i style="width:{{ (mch.value/mmax*100)|round|int if mmax else 0 }}%; background:{{ mch.name|avatar_color }}"></i></div>
       </div>
-      <div class="tx-amt num">{{ cur }} {{ m.money_k(mch.value) }}</div>
+      <div class="tx-amt num">{{ cur }}{{ m.money_k(mch.value) }}</div>
     </a>
     {% endfor %}
   </div>

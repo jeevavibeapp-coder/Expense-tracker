@@ -35,7 +35,7 @@
         <div class="tx-name">{{ t['merchant_name'] or t['raw_merchant'] or 'Unknown merchant' }}</div>
         <div class="tx-sub mut" style="font-size:12px">{{ t['occurred_at'][:10] }}{% if not t['category_id'] %} · <span style="color:var(--warn)">needs category</span>{% endif %}</div>
       </div>
-      <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency }} {{ m.money(t['amount']) }}</div>
+      <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency|symbol }}{{ m.money(t['amount']) }}</div>
     </div>
     {% endfor %}
   </div>

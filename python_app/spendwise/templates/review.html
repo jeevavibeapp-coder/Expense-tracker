@@ -35,7 +35,7 @@
       </div>
       <div style="text-align:right">
         <div class="num {{ gp['type'] }}" style="font-weight:800; font-size:14px">
-          {{ '+' if gp['type']=='income' else '–' }}{{ currency }} {{ m.money_k(gp['total']) }}</div>
+          {{ '+' if gp['type']=='income' else '–' }}{{ currency|symbol }}{{ m.money_k(gp['total']) }}</div>
         <div class="faint" style="font-size:11px">{{ gp['type'] }}</div>
       </div>
     </div>

@@ -62,6 +62,19 @@
   </a>
   {% endif %}
 
+  {% if cat_prompts %}
+  {# One calm, dismissible line — not a blocking decision. Tapping it opens
+     the categoriser; ignoring it costs the user nothing. #}
+  <a class="nudge" href="#categorize">
+    <span class="nudge-ic">{{ m.icon('sparkles') }}</span>
+    <span class="nudge-txt">
+      <b>{{ cat_prompts|length }} new {{ 'transaction' if cat_prompts|length == 1 else 'transactions' }}</b>
+      <span>Add a category so your spending adds up</span>
+    </span>
+    <span class="nudge-go">Sort</span>
+  </a>
+  {% endif %}
+
   <main>{% block content %}{% endblock %}</main>
 
   {# ── Bottom navigation ── #}
@@ -111,10 +124,16 @@
      app.js (keyed on #merchant), so it survives instant-nav swaps without
      re-attaching. No inline script needed here. #}
 
-  {# ── Auto-captured SMS → "which category?" popup ── #}
+  {# ── Auto-captured SMS → "which category?" sheet ──
+     Opened BY THE USER from the nudge above, never automatically. It used to
+     render over the dashboard on load: the first thing a new user saw was a
+     modal demanding a decision about a transaction they had not yet been
+     shown. Pure CSS :target, so it survives instant-nav with no JS. #}
   {% if cat_prompts %}
   {% set cp = cat_prompts[0] %}
-  <div class="cat-modal" role="dialog" aria-modal="true" aria-label="Choose a category">
+  <div class="cat-modal" id="categorize" role="dialog" aria-modal="true"
+       aria-label="Choose a category">
+    <a class="cat-scrim-close" href="#" aria-label="Close"></a>
     <div class="cat-card reveal">
       <div class="cat-head">
         <span class="cat-spark">{{ m.icon('sms') }}</span>
@@ -123,6 +142,7 @@
           <div class="cat-sub">Captured automatically · choose a category</div>
         </div>
         {% if cat_prompts|length > 1 %}<span class="badge badge-mid">1 / {{ cat_prompts|length }}</span>{% endif %}
+        <a class="sheet-x" href="#" aria-label="Close">&times;</a>
       </div>
       <div class="cat-tx">
         {{ m.avatar(cp['merchant_name'] or cp['raw_merchant'] or '?') }}

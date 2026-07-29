@@ -52,18 +52,36 @@ def test_learning_then_live_resolve(auth_client):
     assert b"Starbucks" in r.data and b"%" in r.data
 
 
+def _tx_id_for(app, raw_merchant):
+    """Look the transaction id up in the database.
+
+    Previously these tests regexed a confirm-form action out of the Activity
+    page. Activity no longer embeds one form per row — that work moved to
+    /review, where a single decision clears a whole merchant — so scraping the
+    markup coupled the tests to a presentation detail instead of to the
+    behaviour they actually exercise. The /transactions/<id>/confirm endpoint
+    they drive is unchanged.
+    """
+    from spendwise import db as _dbm
+    conn = _dbm.connect(app.config["DB_PATH"])
+    row = conn.execute(
+        "SELECT id FROM transactions WHERE raw_merchant=? ORDER BY created_at DESC",
+        (raw_merchant,)).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
 def test_confirm_pending_merchant_learns(auth_client):
     # Create a needs-review tx via the import flow (raw merchant, unknown).
     auth_client.post("/import/create", data={
         "amount": "80.00", "type": "expense", "raw_merchant": "SURESH",
         "reference_number": "", "occurred_at": ""})
+    # Activity surfaces the pending count and routes to /review, where the
+    # decision is made once per merchant instead of once per row.
     page = auth_client.get("/transactions")
-    assert b"Review" in page.data or b"Confirm?" in page.data
-    # Find the tx id from the confirm form action.
-    import re
-    m = re.search(rb"/transactions/([0-9a-f]+)/confirm", page.data)
-    assert m
-    tx_id = m.group(1).decode()
+    assert b"to review" in page.data
+    tx_id = _tx_id_for(auth_client.application, "SURESH")
+    assert tx_id, "the capture was not recorded"
     auth_client.post(f"/transactions/{tx_id}/confirm", data={"merchant": "A2B"},
                      follow_redirects=True)
     learned = auth_client.post("/transactions/resolve", data={"merchant": "SURESH"})
@@ -103,12 +121,20 @@ def test_duplicate_fraud_alert(auth_client):
 
 def test_dashboard_real_data(auth_client):
     empty = auth_client.get("/dashboard")
-    assert b"0.00" in empty.data
+    # The hero splits symbol and number into separate spans for styling, so
+    # assert on the parts rather than a contiguous byte match.
+    assert "\u20b9".encode() in empty.data           # symbol, not the ISO code
+    assert b"INR " not in empty.data
     _add(auth_client, amount="200.00", type="income", merchant="Salary")
     _add(auth_client, amount="50.00", merchant="KFC")
     dash = auth_client.get("/dashboard")
-    # Balance = 200 income - 50 expense = 150.00, and KFC is a top merchant.
-    assert b"150.00" in dash.data and b"KFC" in dash.data
+    # Balance = 200 income - 50 expense = 150, and KFC is a top merchant.
+    # Whole amounts drop the ".00" — it is noise on every row — and the ISO
+    # code is replaced by the symbol, which is what reads as money.
+    assert b">150<" in dash.data and b"KFC" in dash.data
+    assert "\u20b9".encode() in dash.data
+    assert b"150.00" not in dash.data, "trailing .00 is back"
+    assert b"INR" not in dash.data, "ISO code is back in the UI"
 
 
 def test_categories_crud(auth_client):
@@ -568,11 +594,9 @@ def test_fuzzy_alias_reuses_learning(auth_client):
         auth_client.post("/import/create", data={
             "amount": "300.00", "type": "expense", "raw_merchant": "SWIGGY GOURMET",
             "reference_number": "", "occurred_at": ""})
-        import re
-        page = auth_client.get("/transactions")
-        mm = re.search(rb"/transactions/([0-9a-f]+)/confirm", page.data)
-        if mm:
-            auth_client.post(f"/transactions/{mm.group(1).decode()}/confirm",
+        tx_id = _tx_id_for(auth_client.application, "SWIGGY GOURMET")
+        if tx_id:
+            auth_client.post(f"/transactions/{tx_id}/confirm",
                              data={"merchant": "Swiggy Gourmet"})
     res = auth_client.post("/transactions/resolve",
                            data={"merchant": "SWIGGY GOURMET KITCHENS", "amount": "300"})

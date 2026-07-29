@@ -53,44 +53,21 @@
 
   {# Merchant confirmation queue — the signature workflow #}
   {% if pending %}
-  <div class="queue">
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px">
-      <span style="color:var(--primary-2); display:flex">{{ m.icon('sparkles') }}</span>
-      <h3 style="flex:1">Needs your review</h3>
-      <span class="badge badge-mid">{{ pending|length }}</span>
-    </div>
-    <div class="mut" style="font-size:12.5px; margin-bottom:8px">Confirm the real merchant — the engine learns it for next time.</div>
-    {% if pending|length > 3 %}
-    <a class="btn btn-sm" href="/review" style="display:block; text-align:center; margin-bottom:10px">
-      Sort all {{ nav_review }} by merchant →
-    </a>
-    {% endif %}
-    {% for t in pending %}
-    <form class="qrow2" method="post" action="/transactions/{{ t['id'] }}/confirm">
-      <div class="qrow-top">
-        {{ m.avatar(t['raw_merchant'] or t['merchant_name'] or '?') }}
-        <div style="flex:1; min-width:0">
-          <div class="qname">“{{ t['raw_merchant'] or t['merchant_name'] or 'Unknown' }}”</div>
-          <div class="faint" style="font-size:11px">{{ t['occurred_at'][:10] }}{% if t['sms_sender'] %} · {{ t['sms_sender'] }}{% endif %}</div>
-        </div>
-        <div class="num" style="font-weight:800; font-size:14px">{{ currency }} {{ m.money(t['amount']) }}</div>
-      </div>
-      {% if t['sms_body'] %}<div class="cat-sms" style="margin-top:8px">{{ t['sms_body'] }}</div>{% endif %}
-      {% if suggestions.get(t['id']) %}
-      <div class="cat-chips" style="margin:8px 0 2px">
-        {% for name in suggestions[t['id']] %}
-        <button class="cat-chip" type="submit" name="merchant" value="{{ name }}">✓ {{ name }}</button>
-        {% endfor %}
-      </div>
-      {% endif %}
-      <div class="qrow-act">
-        <input name="merchant" value="{{ t['merchant_name'] or '' }}"
-               placeholder="Or type the real merchant" required>
-        <button class="btn btn-sm" type="submit">Confirm</button>
-      </div>
-    </form>
-    {% endfor %}
-  </div>
+  {# Was: one expanded confirmation FORM per pending transaction, stacked above
+     the ledger. With a normal SMS week that is seven text inputs and seven
+     buttons between the user and their own transaction list — the list stopped
+     being a list. The work itself is unchanged and lives on /review, which
+     groups by merchant so one decision clears many rows. #}
+  <a class="queue-lite" href="/review">
+    <span class="ql-ic">{{ m.icon('sparkles') }}</span>
+    <span class="ql-txt">
+      <b>{{ nav_review or pending|length }} to review</b>
+      <span>{{ (pending|map(attribute='raw_merchant')|select|list|unique|list|length) or 1 }}
+        merchant{{ '' if (pending|map(attribute='raw_merchant')|select|list|unique|list|length) == 1 else 's' }}
+        · one tap each</span>
+    </span>
+    <span class="ql-go">Review</span>
+  </a>
   {% endif %}
 
   {# Timeline #}
@@ -101,7 +78,7 @@
     {% if day != ns.day %}
       {% if ns.day is not none %}</div>{% endif %}
       <div class="tx-group-h"><span class="d">{{ 'Today' if day == today else (day[8:10] ~ ' ' ~ months[day[5:7]|int] ~ ' ' ~ day[:4]) }}</span>
-        {% if day_totals.get(day) %}<span class="t num">{{ currency }} {{ m.money_k(day_totals[day]) }} spent</span>{% endif %}</div>
+        {% if day_totals.get(day) %}<span class="t num">{{ currency|symbol }}{{ m.money_k(day_totals[day]) }} spent</span>{% endif %}</div>
       <div class="tx-list">
       {% set ns.day = day %}
     {% endif %}
@@ -117,7 +94,7 @@
             {% if t['notes'] %}<span>{{ t['notes'] }}</span>{% endif %}
           </div>
         </div>
-        <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency }} {{ m.money(t['amount']) }}</div>
+        <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency|symbol }}{{ m.money(t['amount']) }}</div>
         <span class="tx-chev">{{ m.icon('chevron') }}</span>
       </summary>
       <div style="padding:12px 16px 14px; background:var(--surface-2)">

@@ -36,7 +36,7 @@
               {{ 'income' if q['type'] == 'income' else 'an expense' }}</div>
           </div>
           <div class="num" style="font-weight:800; font-size:13.5px">
-            {{ currency }} {{ m.money(q['amount']) }}</div>
+            {{ currency|symbol }}{{ m.money(q['amount']) }}</div>
         </div>
         {% endif %}
 

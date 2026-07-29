@@ -377,8 +377,78 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         s = sum(ord(ch) for ch in (name or "?"))
         return _AVATAR_COLORS[s % len(_AVATAR_COLORS)]
 
+    # ── Money presentation ───────────────────────────────────────────────
+    # A finance app that renders "INR 73103.00" does not look like one. Indian
+    # users read amounts in the lakh/crore grouping (1,23,456), not the western
+    # thousands grouping (123,456), and a currency SYMBOL reads as money where
+    # an ISO code reads as data.
+    _CURRENCY_SYMBOLS = {"INR": "\u20b9", "USD": "$", "EUR": "\u20ac",
+                         "GBP": "\u00a3", "AED": "\u062f.\u0625", "SGD": "S$",
+                         "AUD": "A$", "CAD": "C$", "JPY": "\u00a5"}
+
+    def _symbol(code):
+        return _CURRENCY_SYMBOLS.get((code or "INR").upper(), (code or "") + " ")
+
+    def _group_indian(whole: str) -> str:
+        """1234567 -> 12,34,567. Last three digits, then pairs."""
+        if len(whole) <= 3:
+            return whole
+        head, tail = whole[:-3], whole[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        return ",".join(parts + [tail])
+
+    def _money(value, decimals=None):
+        """Format an amount for display.
+
+        Decimals are dropped when the amount is whole, because ".00" on every
+        row is visual noise that makes a list harder to scan — but they are
+        kept when they carry information (a real 290.50).
+        """
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return "0"
+        if v != v or v in (float("inf"), float("-inf")):
+            return "0"
+        neg = v < 0
+        v = abs(v)
+        if decimals is None:
+            decimals = 0 if abs(v - round(v)) < 0.005 else 2
+        text = f"{v:.{decimals}f}"
+        whole, _, frac = text.partition(".")
+        out = _group_indian(whole) + (("." + frac) if frac else "")
+        return ("-" + out) if neg else out
+
+    def _money_compact(value):
+        """Short form for dense contexts (chart centres, day headers).
+
+        Uses the Indian scale the user actually thinks in: K, L (lakh),
+        Cr (crore) — not the western M/B.
+        """
+        try:
+            v = abs(float(value))
+        except (TypeError, ValueError):
+            return "0"
+        if v != v or v == float("inf"):
+            return "0"
+        if v >= 1e7:
+            return f"{v / 1e7:.2f}".rstrip("0").rstrip(".") + "Cr"
+        if v >= 1e5:
+            return f"{v / 1e5:.2f}".rstrip("0").rstrip(".") + "L"
+        if v >= 1000:
+            return f"{v / 1000:.1f}".rstrip("0").rstrip(".") + "K"
+        return _money(v)
+
     app.jinja_env.filters["initials"] = _initials
     app.jinja_env.filters["avatar_color"] = _avatar_color
+    app.jinja_env.filters["symbol"] = _symbol
+    app.jinja_env.filters["money"] = _money
+    app.jinja_env.filters["money_compact"] = _money_compact
 
     @app.context_processor
     def _inject_globals():
