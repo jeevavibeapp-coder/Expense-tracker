@@ -233,6 +233,47 @@ def main() -> int:
                   f"{a11y_path}: heading levels skip a step ({a['jumps']}), which "
                   f"breaks screen-reader heading navigation")
 
+        # 9e) THE APP MUST SCROLL. Reported by a user and reproduced:
+        #     `body:has(.cat-modal) { overflow: hidden }` locked scrolling
+        #     whenever the categoriser element merely EXISTED in the DOM.
+        #     That was harmless while it was rendered only when visible, but
+        #     became a total scroll lock once it changed to
+        #     always-present-hidden-until-:target — anyone with a pending SMS
+        #     capture could not scroll ANY screen.
+        #
+        #     Uses a real wheel gesture, not window.scrollTo: programmatic
+        #     scrolling still worked while touch was dead, so the obvious
+        #     check would have passed straight through the bug.
+        for scroll_path in ["/dashboard", "/transactions", "/categories",
+                            "/review", "/settings"]:
+            page.goto(BASE + scroll_path, wait_until="networkidle")
+            page.evaluate("window.scrollTo(0, 0)")
+            height = page.evaluate("() => document.documentElement.scrollHeight "
+                                   "- document.documentElement.clientHeight")
+            if height < 200:
+                continue                      # nothing to scroll on this screen
+            page.mouse.move(195, 500)
+            page.mouse.wheel(0, 900)
+            page.wait_for_timeout(350)
+            moved = page.evaluate("() => window.scrollY")
+            overflow = page.evaluate(
+                "() => getComputedStyle(document.body).overflowY")
+            check(moved > 50,
+                  f"{scroll_path} did not scroll on a real gesture "
+                  f"(scrollY={moved}, body overflow-y={overflow})")
+
+        # ...and the lock must still engage while a sheet is genuinely open,
+        # or the page scrolls away behind the sheet.
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        if page.locator(".cat-modal").count() > 0:
+            page.evaluate("location.hash = 'categorize'")
+            page.wait_for_timeout(350)
+            check(page.evaluate(
+                      "() => getComputedStyle(document.body).overflowY") == "hidden",
+                  "background still scrolls while the categoriser sheet is open")
+            page.evaluate("location.hash = ''")
+            page.wait_for_timeout(250)
+
         # 10) No icon may render oversized (a bare viewBox svg once filled the sheet).
         page.goto(BASE + "/dashboard", wait_until="networkidle")
         page.click(".fab")

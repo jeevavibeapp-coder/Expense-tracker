@@ -451,7 +451,14 @@ body { overscroll-behavior-y: contain; }
 
 /* ── A11y / mobile ergonomics ─────────────────────────────────────────── */
 /* Lock background scroll while a bottom sheet or the SMS popup is open. */
-body:has(.sheet-target:target), body:has(.cat-modal) { overflow: hidden; }
+/* Scroll lock applies only while a sheet is actually OPEN.
+   `body:has(.cat-modal)` matched whenever the element merely EXISTED in the
+   DOM. That was harmless while the categoriser was rendered only when it was
+   meant to be visible, but it became a total scroll lock the moment the sheet
+   was changed to always-present-and-hidden-until-:target — any user with a
+   pending SMS capture could not scroll ANY screen. :target is the same signal
+   that makes it visible, so the lock and the sheet can no longer disagree. */
+body:has(.sheet-target:target), body:has(.cat-modal:target) { overflow: hidden; }
 /* Visible focus ring for keyboard / D-pad / switch-access users. */
 a:focus-visible, button:focus-visible, summary:focus-visible,
 .tab:focus-visible, .chip:focus-visible, .cat-chip:focus-visible,
