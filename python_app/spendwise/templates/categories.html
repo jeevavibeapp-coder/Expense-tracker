@@ -65,14 +65,14 @@
 <a class="scrim" href="#!" aria-label="Close"></a>
 <div class="sheet" role="dialog" aria-label="New category">
   <div class="grip"></div>
-  <h3>New category</h3>
+  <h2 class="empty-h">New category</h2>
   <form method="post" action="/categories">
     <div class="field"><label class="lbl">Name</label><input name="name" placeholder="e.g. Coffee" required></div>
     <div class="seg" style="margin-bottom:14px">
       <label><input type="radio" name="type" value="expense" checked><span>Expense</span></label>
       <label><input type="radio" name="type" value="income"><span>Income</span></label>
     </div>
-    <div class="field"><label class="lbl">Colour</label><input name="color" type="color" value="#7c5cff"></div>
+    <div class="field"><label class="lbl">Colour</label><input name="color" type="color" value="#7c5cff" aria-label="Category colour"></div>
     <button class="btn" type="submit">Add category</button>
   </form>
 </div>

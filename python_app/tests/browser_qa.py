@@ -186,6 +186,53 @@ def main() -> int:
         check(page.evaluate("window.__sawSkeleton") is False,
               "a fast local navigation flashed a skeleton")
 
+        # 9d) Accessibility contract. Measured before this was enforced:
+        #     10 unlabelled controls and 51 sub-44px touch targets across five
+        #     screens. Both classes of defect existed DESPITE rules being
+        #     written for them — `min-height` silently does nothing on
+        #     display:inline, and visible <label> elements were never
+        #     associated with their inputs, so TalkBack announced a bare
+        #     "edit box".
+        A11Y = """() => {
+          let unlabelled = 0, small = 0, jumps = 0;
+          const bad = [];
+          document.querySelectorAll(
+            'a[href],button,input,select,textarea,[role=\"button\"]').forEach(el => {
+            if (el.offsetParent === null) return;
+            if (el.type === 'radio' || el.type === 'checkbox') return; // label is the target
+            const name = (el.getAttribute('aria-label') || el.getAttribute('title') ||
+                          (el.textContent || '').trim() ||
+                          (el.labels && el.labels.length ? 'l' : '') ||
+                          el.getAttribute('placeholder') || '');
+            if (!name) { unlabelled++; bad.push('unlabelled ' + el.tagName); }
+            const r = el.getBoundingClientRect();
+            const overlay = parseFloat(getComputedStyle(el, '::after').height) || 0;
+            if (r.width > 0 && Math.max(r.height, overlay) < 44) {
+              small++; bad.push('small ' + el.tagName + '.' +
+                                String(el.className).slice(0, 14) + ' ' + Math.round(r.height));
+            }
+          });
+          let prev = 0;
+          document.querySelectorAll('h1,h2,h3,h4').forEach(h => {
+            const lvl = +h.tagName[1];
+            if (prev && lvl > prev + 1) jumps++;
+            prev = lvl;
+          });
+          return {unlabelled, small, jumps, bad: bad.slice(0, 4)};
+        }"""
+        for a11y_path in ["/dashboard", "/transactions", "/categories",
+                          "/review", "/fraud", "/sms/quarantine"]:
+            page.goto(BASE + a11y_path, wait_until="networkidle")
+            a = page.evaluate(A11Y)
+            check(a["unlabelled"] == 0,
+                  f"{a11y_path}: {a['unlabelled']} controls a screen reader "
+                  f"cannot name {a['bad']}")
+            check(a["small"] == 0,
+                  f"{a11y_path}: {a['small']} touch targets under 44px {a['bad']}")
+            check(a["jumps"] == 0,
+                  f"{a11y_path}: heading levels skip a step ({a['jumps']}), which "
+                  f"breaks screen-reader heading navigation")
+
         # 10) No icon may render oversized (a bare viewBox svg once filled the sheet).
         page.goto(BASE + "/dashboard", wait_until="networkidle")
         page.click(".fab")

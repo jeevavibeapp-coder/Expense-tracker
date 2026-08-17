@@ -11,7 +11,7 @@
     <form method="post" action="/profile" style="flex:1; display:flex; gap:8px; align-items:center">
       <div style="flex:1">
         <input name="full_name" value="{{ user['full_name'] }}" maxlength="40" required
-               style="font-weight:700; font-size: 0.9375rem; padding:8px 10px">
+               style="font-weight:700; font-size: 0.9375rem; padding:8px 10px" aria-label="Your name">
         {% if not single_user %}<div class="mut" style="font-size: 0.75rem; margin-top:4px">{{ user['email'] }}</div>{% endif %}
       </div>
       <button class="btn-ghost btn-sm" type="submit">Save</button>
@@ -23,7 +23,7 @@
       <div style="font-weight:700">Preferences</div>
       <div class="row">
         <div class="field" style="margin:0"><label class="lbl">Currency</label>
-          <input name="currency" value="{{ s['currency'] }}" maxlength="8"></div>
+          <input name="currency" value="{{ s['currency'] }}" maxlength="8" aria-label="Currency code"></div>
       </div>
       <div class="field" style="margin:0"><label class="lbl">Appearance</label>
         <div class="seg">
@@ -39,11 +39,11 @@
       <div class="field" style="margin:0">
         <label class="lbl">Auto-save at <b id="autoVal" class="num" style="color:var(--income)">{{ s['auto_save_threshold'] }}%</b> confidence</label>
         <input type="range" name="auto_save_threshold" min="0" max="100" value="{{ s['auto_save_threshold'] }}"
-               oninput="document.getElementById('autoVal').textContent=this.value+'%'"></div>
+               oninput="document.getElementById('autoVal').textContent=this.value+'%'" aria-label="Auto-save confidence threshold"></div>
       <div class="field" style="margin:0">
         <label class="lbl">Ask to confirm above <b id="confVal" class="num" style="color:var(--warn)">{{ s['confirm_threshold'] }}%</b></label>
         <input type="range" name="confirm_threshold" min="0" max="100" value="{{ s['confirm_threshold'] }}"
-               oninput="document.getElementById('confVal').textContent=this.value+'%'"></div>
+               oninput="document.getElementById('confVal').textContent=this.value+'%'" aria-label="Ask-to-confirm threshold"></div>
     </div>
 
     <div class="card stack">

@@ -8,7 +8,7 @@
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post" action="/signup">
     <div class="field"><label class="lbl">Full name</label>
-      <input name="full_name" autocomplete="name" value="{{ full_name or '' }}" required autofocus></div>
+      <input name="full_name" autocomplete="name" value="{{ full_name or '' }}" required autofocus aria-label="Your name"></div>
     <div class="field"><label class="lbl">Email</label>
       <input name="email" type="email" autocomplete="email" value="{{ email or '' }}" required></div>
     <div class="field"><label class="lbl">Password</label>

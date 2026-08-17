@@ -104,7 +104,7 @@
 
   {% if r.tx_count == 0 %}
   <div class="empty"><div class="ei">{{ m.icon('calendar') }}</div>
-    <h3>Nothing in {{ r.label }}</h3><p>No transactions were recorded this month.</p></div>
+    <h2 class="empty-h">Nothing in {{ r.label }}</h2><p>No transactions were recorded this month.</p></div>
   {% endif %}
 </div>
 {% endblock %}

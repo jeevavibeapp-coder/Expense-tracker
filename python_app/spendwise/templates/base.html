@@ -111,7 +111,7 @@
   <a class="scrim" href="#!" aria-label="Close"></a>
   <div class="sheet" role="dialog" aria-label="Add transaction">
     <div class="grip"></div>
-    <h3>Add transaction</h3>
+    <h2 class="sheet-h">Add transaction</h2>
     <form method="post" action="/transactions">
       <div class="seg exp" style="margin-bottom:14px">
         <label><input type="radio" name="type" value="expense" checked><span>Expense</span></label>
@@ -124,9 +124,9 @@
         <div id="resolve-preview"></div></div>
       <div class="row">
         <div class="field"><label class="lbl">Category</label>
-          <select name="category_id"><option value="">None</option>
+          <select name="category_id" aria-label="Category"><option value="">None</option>
             {% for c in nav_categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}</select></div>
-        <div class="field"><label class="lbl">Date</label><input name="occurred_at" type="date"></div>
+        <div class="field"><label class="lbl">Date</label><input name="occurred_at" type="date" aria-label="Date"></div>
       </div>
       <div class="field"><label class="lbl">Notes</label><input name="notes" placeholder="Optional"></div>
       <button class="btn" type="submit">Add transaction</button>

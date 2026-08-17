@@ -111,15 +111,17 @@
           <div class="row">
             <div class="field" style="margin:0"><label class="lbl">Amount</label>
               <input name="amount" type="number" step="0.01" min="0.01" inputmode="decimal"
-                     value="{{ '%.2f'|format(t['amount']) }}" required></div>
+                     value="{{ '%.2f'|format(t['amount']) }}" required
+                     aria-label="Amount"></div>
             <div class="field" style="margin:0"><label class="lbl">Date</label>
-              <input name="occurred_at" type="date" value="{{ t['occurred_at'][:10] }}"></div>
+              <input name="occurred_at" type="date" value="{{ t['occurred_at'][:10] }}" aria-label="Date"></div>
           </div>
           <div class="row">
             <div class="field" style="margin:0"><label class="lbl">Merchant</label>
-              <input name="merchant" value="{{ t['merchant_name'] or t['raw_merchant'] or '' }}"></div>
+              <input name="merchant" value="{{ t['merchant_name'] or t['raw_merchant'] or '' }}"
+                     aria-label="Merchant"></div>
             <div class="field" style="margin:0"><label class="lbl">Category</label>
-              <select name="category_id"><option value="">None</option>
+              <select name="category_id" aria-label="Category"><option value="">None</option>
                 {% for c in categories %}
                 <option value="{{ c['id'] }}" {{ 'selected' if c['id'] == t['category_id'] }}>{{ c['name'] }}</option>
                 {% endfor %}</select></div>
@@ -143,7 +145,7 @@
   {% endfor %}
   </div>
   {% else %}
-  <div class="empty"><div class="ei">{{ m.icon('activity') }}</div><h3>No transactions yet</h3>
+  <div class="empty"><div class="ei">{{ m.icon('activity') }}</div><h2 class="empty-h">No transactions yet</h2>
     <p>Your bank SMS are captured automatically — or add one yourself.</p>
     <a class="btn btn-sm" href="#add" style="margin-top:14px">Add a transaction</a>
     <a class="btn-ghost btn-sm" href="/import" style="margin-top:8px">Import from SMS</a></div>

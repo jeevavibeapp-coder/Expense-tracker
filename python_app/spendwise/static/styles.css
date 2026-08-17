@@ -264,7 +264,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .row { display: flex; gap: 12px; } .row > .field { flex: 1; }
 .seg { display: flex; background: var(--surface-2); border-radius: var(--r-sm); padding: 4px; gap: 4px; }
 .seg label { flex: 1; }
-.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { position: relative; }
+/* Absolute WITHOUT an inset leaves the input at its static position and lets
+   it size to the containing block: three theme radios at 390px each pushed
+   Settings 253px wide, so the whole screen scrolled sideways. Pinning and
+   clamping removes it from layout entirely while keeping it focusable for
+   keyboard and switch users. */
+.seg input { position: absolute; left: 0; top: 0; width: 1px; height: 1px;
+  opacity: 0; pointer-events: none; margin: 0; }
 .seg span { display: block; text-align: center; padding: 9px; border-radius: 9px; font-size: 0.8125rem; font-weight: 700; color: var(--text-2); cursor: pointer; }
 .seg input:checked + span { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 .seg.exp input:checked + span { color: var(--expense); }
@@ -737,3 +744,106 @@ button, [role="button"], a.btn, a.btn-soft, a.btn-ghost {
 .page-in { animation: page-in .22s var(--ease) both; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .page-in { animation: none; } }
+
+/* ── Touch targets, actually applied ─────────────────────────────────────
+   An earlier pass set `min-height: var(--tap)` on button-like elements and
+   it silently did nothing: min-height has no effect on display:inline, and
+   `a.btn-sm` computed to inline. Measured 51 controls under 44px across five
+   screens despite the rule existing. Setting the display is what makes the
+   rule real. */
+a.btn, a.btn-soft, a.btn-ghost, a.btn-sm, a.pill-btn,
+button.btn, button.btn-soft, button.btn-ghost, button.btn-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* Small inline links (legend entries, "See all", chips inside cards) must
+   stay visually small — inflating them to 44px would wreck the layout. They
+   get an INVISIBLE centred hit area instead, which is what the guideline
+   actually asks for: a 44px touch region, not a 44px painted box. */
+.hit-44 { position: relative; }
+.hit-44::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 100%; height: var(--tap); min-width: var(--tap);
+  transform: translate(-50%, -50%);
+}
+/* Applied to the small links the audit found. */
+.card-h a, .legend a, .see-all, .queue-lite, .nudge, .tx-row > a,
+a.link-sm { position: relative; }
+.card-h a::after, .see-all::after, a.link-sm::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 100%; min-width: var(--tap); height: var(--tap);
+  transform: translate(-50%, -50%);
+}
+
+/* Empty-state headings are h2 (they are the section title), but must keep the
+   smaller visual weight an h3 had — heading LEVEL is semantics for screen
+   readers, size is presentation, and they were conflated. */
+.empty-h { font-size: var(--t-h3); font-weight: 800; margin: 0 0 6px; }
+
+/* Remaining sub-44px targets, fixed by container rather than by a blanket
+   rule: a global 44px overlay on every <a> would make adjacent rows in a
+   dense list overlap, so a tap near an edge would activate the wrong one. */
+
+/* Setup checklist rows and budget links: real rows, so grow them. */
+.card .stack > a, .cat-card > a[href^="#budget"] {
+  min-height: var(--tap); display: flex; align-items: center;
+}
+
+/* Section actions ("+ New") must stay visually small; give the touch area
+   only, so the painted size is unchanged. */
+.section-h a { position: relative; display: inline-flex; align-items: center; }
+.section-h a::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 100%; min-width: var(--tap); height: var(--tap);
+  transform: translate(-50%, -50%);
+}
+
+/* Form controls. A 40px field is close enough to look right but still misses
+   the guideline, and the range track was 6px tall — effectively undraggable
+   without precise aim. */
+.field input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+.field select, .field textarea, input[type="text"], input[type="number"],
+input[type="date"], input[type="email"], input[type="password"], select {
+  min-height: var(--tap);
+}
+input[type="range"] {
+  height: var(--tap);            /* the TOUCH zone */
+  background: transparent;        /* the visible track is drawn below */
+  -webkit-appearance: none; appearance: none;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: var(--r-pill); background: var(--surface-3);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 22px; height: 22px; margin-top: -8px; border-radius: 50%;
+  background: var(--primary); border: 2px solid var(--surface);
+}
+
+/* The setup-checklist card carries BOTH classes (`card reveal stack`), so
+   `.card .stack > a` matched nothing — the rows stayed 34px. */
+.card.stack > a, .card > .stack > a { min-height: var(--tap); display: flex; align-items: center; }
+
+/* Inputs outside a .field wrapper (the search box, the inline name prompt)
+   were missed by the field-scoped rule. */
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+textarea { min-height: var(--tap); }
+
+/* The add-sheet title is an h2 for correct heading order (it sits directly
+   under the page h1) but keeps the h3 visual weight it had. */
+.sheet-h { font-size: var(--t-h1); font-weight: 800; margin: 0 0 14px; }
+
+/* The budget grid is a fixed two-column layout. At the 200% font setting the
+   category names no longer fit in half a screen and pushed the page 79px
+   wide. auto-fit lets it fall to a single column exactly when it needs to,
+   rather than at a breakpoint guessed in advance. */
+.cat-grid { grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); }
+.cat-card { min-width: 0; }
+.cat-name, .cat-val, .cat-card > a { overflow-wrap: anywhere; min-width: 0; }
+
+/* Segmented control at the extreme corner (320dp + 200% font): three labels
+   of "System / Light / Dark" no longer fit on one row. Wrapping is the right
+   failure mode — the control stays usable, it just becomes two rows. */
+.seg { flex-wrap: wrap; }
+.seg label { flex: 1 1 5.5rem; min-width: 0; }
+.seg span { overflow-wrap: anywhere; }
