@@ -5,7 +5,17 @@
 (function () {
   "use strict";
   var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var buzz = function (ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+  /* Haptic tick. Gated on transient user activation because Chromium (and the
+     Android WebView) refuse vibrate() outside a gesture and log a console
+     error when refused — confetti fires on a freshly loaded /transactions
+     ?added=1 document, where no tap has happened yet, so the call was always
+     going to be blocked there. Skipping it silently is the same outcome
+     without the noise. */
+  var buzz = function (ms) {
+    if (!navigator.vibrate) return;
+    if (navigator.userActivation && !navigator.userActivation.isActive) return;
+    try { navigator.vibrate(ms); } catch (e) {}
+  };
 
   /* The balance is server-rendered with the correct value already, so there is
      no JS count-up: content is correct and instant, with no per-frame layout
@@ -317,6 +327,97 @@
         location.href = url;               // graceful fallback -> real navigation
       });
     }
+
+    /* ── Swipe to delete ─────────────────────────────────────────────────
+       Deleting used to be: tap to expand, scroll the panel, find the button.
+       Three actions for the most common correction in a ledger.
+
+       Safety first, because a gesture handler that fights the scroller is
+       worse than no gesture at all:
+         - CSS sets touch-action: pan-y, so the browser keeps vertical
+           scrolling and only hands us the horizontal axis.
+         - We only start tracking once horizontal movement clearly dominates
+           (2x vertical AND past a 10px slop), so a slightly-diagonal scroll
+           is still a scroll.
+         - Nothing is ever preventDefault()ed on the vertical axis.
+       Deletion is soft and the existing undo bar appears, so a mis-swipe
+       costs one tap to reverse. */
+    var SWIPE_SLOP = 10;        // ignore movement below this — it is a tap
+    var SWIPE_COMMIT = 0.32;    // fraction of row width that triggers delete
+    var sw = null;
+
+    function swipeRow(t) { return t && t.closest ? t.closest(".tx-item") : null; }
+
+    document.addEventListener("touchstart", function (e) {
+      if (e.touches.length !== 1) return;
+      var row = swipeRow(e.target);
+      if (!row || row.open) return;          // an expanded row is being edited
+      sw = { row: row, x: e.touches[0].clientX, y: e.touches[0].clientY,
+             dx: 0, active: false,
+             sum: row.querySelector("summary.tx") };
+    }, { passive: true });
+
+    document.addEventListener("touchmove", function (e) {
+      if (!sw || e.touches.length !== 1) return;
+      var dx = e.touches[0].clientX - sw.x;
+      var dy = e.touches[0].clientY - sw.y;
+      if (!sw.active) {
+        if (Math.abs(dy) > Math.abs(dx)) { sw = null; return; }   // it's a scroll
+        if (Math.abs(dx) < SWIPE_SLOP || Math.abs(dx) < Math.abs(dy) * 2) return;
+        sw.active = true;
+        sw.row.classList.add("swiping");
+        sw.row.classList.remove("swipe-settle");
+      }
+      sw.dx = Math.min(0, dx);               // left only; right does nothing
+      sw.sum.style.transform = "translateX(" + sw.dx + "px)";
+    }, { passive: true });
+
+    function swipeEnd() {
+      if (!sw) return;
+      var s = sw; sw = null;
+      if (!s.active) return;
+      var width = s.row.getBoundingClientRect().width || 1;
+      var committed = Math.abs(s.dx) > width * SWIPE_COMMIT;
+      s.row.classList.remove("swiping");
+      s.row.classList.add("swipe-settle");
+      if (!committed) { s.sum.style.transform = ""; return; }
+
+      /* Slide fully out, then submit the row's own delete form — the endpoint
+         and CSRF-free POST shape stay defined in the template, not here. */
+      s.sum.style.transform = "translateX(-100%)";
+      /* No navigator.vibrate() here. Chromium gates it on activation from a
+         TAP, and a swipe is not a tap — the call is refused and logged as a
+         console error even mid-gesture with userActivation.isActive true.
+         Shipping a call that is guaranteed to be blocked buys nothing; the
+         slide-out and the undo bar already confirm what happened. */
+      var id = s.row.getAttribute("data-tx-id");
+      var form = s.row.querySelector('form[action$="/delete"]');
+      setTimeout(function () {
+        /* requestSubmit() over submit(): submit() on a form inside a collapsed
+           <details> silently did nothing in testing, while requestSubmit()
+           follows the normal submission path. The button click is the fallback
+           for engines without requestSubmit (it is not in the Android 7
+           WebView), and a direct POST is the last resort. */
+        if (form && typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+          return;
+        }
+        var btn = form && form.querySelector('button[type="submit"], button:not([type])');
+        if (btn) { btn.click(); return; }
+        if (id) {
+          var f = document.createElement("form");
+          f.method = "post";
+          f.action = "/transactions/" + id + "/delete";
+          document.body.appendChild(f);
+          f.submit();
+        }
+      }, 180);
+    }
+    document.addEventListener("touchend", swipeEnd, { passive: true });
+    document.addEventListener("touchcancel", function () {
+      if (sw && sw.active) { sw.sum.style.transform = ""; sw.row.classList.remove("swiping"); }
+      sw = null;
+    }, { passive: true });
 
     document.addEventListener("click", function (e) {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

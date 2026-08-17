@@ -854,3 +854,27 @@ textarea { min-height: var(--tap); }
 .seg { flex-wrap: wrap; }
 .seg label { flex: 1 1 5.5rem; min-width: 0; }
 .seg span { overflow-wrap: anywhere; }
+
+/* ── Swipe to delete ─────────────────────────────────────────────────────
+   Deleting a row previously meant: tap to expand, scroll to the bottom of the
+   expanded panel, find the delete button. Three actions for the most common
+   correction in a ledger.
+
+   touch-action: pan-y is what makes this safe — the BROWSER keeps ownership
+   of vertical scrolling and only hands JS the horizontal axis, so the gesture
+   cannot fight the scroller. */
+.tx-item { position: relative; overflow: hidden; }
+.tx-item > summary.tx { position: relative; z-index: 1; background: var(--surface);
+  touch-action: pan-y; }
+.tx-swipe-bg {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: flex-end; gap: 8px; padding-right: 20px;
+  background: var(--expense); color: #fff;
+  font-size: var(--t-sm); font-weight: 700; opacity: 0; pointer-events: none;
+}
+.tx-item.swiping .tx-swipe-bg { opacity: 1; }
+.tx-item.swiping > summary.tx { transition: none; }
+.tx-item.swipe-settle > summary.tx { transition: transform .22s var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  .tx-item.swipe-settle > summary.tx { transition: none; }
+}

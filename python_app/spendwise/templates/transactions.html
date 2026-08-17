@@ -83,7 +83,12 @@
       <div class="tx-list">
       {% set ns.day = day %}
     {% endif %}
-    <details class="tx-item {{ 'tx-focus' if focus_tx == t['id'] }}" {{ 'open' if focus_tx == t['id'] }}>
+    {# data-tx-id lets the swipe handler in app.js find the matching delete
+       form without duplicating the endpoint in JS. #}
+    <details class="tx-item {{ 'tx-focus' if focus_tx == t['id'] }}" {{ 'open' if focus_tx == t['id'] }}
+             data-tx-id="{{ t['id'] }}"
+             data-tx-name="{{ (t['merchant_name'] or t['raw_merchant'])|merchant or 'this transaction' }}">
+      <span class="tx-swipe-bg" aria-hidden="true">{{ m.icon('trash') }} Delete</span>
       <summary class="tx">
         {{ m.avatar((t['merchant_name'] or t['raw_merchant'])|merchant or '?') }}
         <div class="tx-main">

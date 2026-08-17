@@ -274,6 +274,73 @@ def main() -> int:
             page.evaluate("location.hash = ''")
             page.wait_for_timeout(250)
 
+        # 9f) Swipe-to-delete. Two properties must hold AT THE SAME TIME, and
+        #     the second is the one a gesture handler usually breaks:
+        #       a) a decisive left swipe deletes the row (and undo is offered),
+        #       b) a small nudge does NOT, and vertical scrolling still works.
+        #     Driven through CDP touch events because Playwright's touchscreen
+        #     API can only tap, and a mouse drag would not exercise the
+        #     touch-action: pan-y contract this relies on.
+        def touch_swipe(px, py, dx, steps=14):
+            cdp.send("Input.dispatchTouchEvent",
+                     {"type": "touchStart",
+                      "touchPoints": [{"x": px, "y": py}]})
+            for i in range(1, steps + 1):
+                cdp.send("Input.dispatchTouchEvent",
+                         {"type": "touchMove",
+                          "touchPoints": [{"x": px + dx * i / steps, "y": py}]})
+            cdp.send("Input.dispatchTouchEvent",
+                     {"type": "touchEnd", "touchPoints": []})
+
+        cdp = page.context.new_cdp_session(page)
+        page.goto(BASE + "/transactions", wait_until="networkidle")
+        page.evaluate("""async () => {
+          for (const n of ['SwipeA','SwipeB','SwipeC','SwipeD']) {
+            await fetch('/transactions', {method: 'POST',
+              headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+              body: new URLSearchParams({amount: '42', merchant: n,
+                                         type: 'expense'})});
+          }
+        }""")
+        page.goto(BASE + "/transactions", wait_until="networkidle")
+        before = page.locator("details.tx-item").count()
+        check(before >= 4, f"swipe test needs rows to swipe, found {before}")
+
+        if before >= 4:
+            # a) A nudge below the commit threshold must leave the row alone.
+            box = page.locator("details.tx-item").first.bounding_box()
+            touch_swipe(box["x"] + box["width"] - 30,
+                        box["y"] + box["height"] / 2, -40)
+            page.wait_for_timeout(600)
+            check(page.locator("details.tx-item").count() == before,
+                  "a 40px nudge deleted a transaction — the commit threshold "
+                  "is too low to be safe")
+
+            # b) A decisive swipe deletes, and undo must be offered.
+            box = page.locator("details.tx-item").first.bounding_box()
+            touch_swipe(box["x"] + box["width"] - 30,
+                        box["y"] + box["height"] / 2, -260)
+            page.wait_for_timeout(1200)
+            page.wait_for_load_state("networkidle")
+            check(page.locator("details.tx-item").count() == before - 1,
+                  f"a full swipe did not delete the row "
+                  f"({page.locator('details.tx-item').count()} rows, "
+                  f"expected {before - 1})")
+            check(page.locator("form[action$='/restore']").count() > 0,
+                  "swipe-delete offered no undo — a mis-swipe would be "
+                  "unrecoverable")
+
+            # c) The gesture must not have stolen the vertical axis.
+            page.goto(BASE + "/transactions", wait_until="networkidle")
+            page.evaluate("window.scrollTo(0, 0)")
+            if page.evaluate("() => document.documentElement.scrollHeight "
+                             "- document.documentElement.clientHeight") > 200:
+                page.mouse.move(195, 500)
+                page.mouse.wheel(0, 900)
+                page.wait_for_timeout(350)
+                check(page.evaluate("() => window.scrollY") > 50,
+                      "the swipe handler broke vertical scrolling on Activity")
+
         # 10) No icon may render oversized (a bare viewBox svg once filled the sheet).
         page.goto(BASE + "/dashboard", wait_until="networkidle")
         page.click(".fab")
