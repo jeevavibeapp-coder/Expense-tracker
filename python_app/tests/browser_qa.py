@@ -221,7 +221,8 @@ def main() -> int:
           return {unlabelled, small, jumps, bad: bad.slice(0, 4)};
         }"""
         for a11y_path in ["/dashboard", "/transactions", "/categories",
-                          "/review", "/fraud", "/sms/quarantine"]:
+                          "/review", "/fraud", "/sms/quarantine", "/report",
+                          "/settings"]:
             page.goto(BASE + a11y_path, wait_until="networkidle")
             a = page.evaluate(A11Y)
             check(a["unlabelled"] == 0,
@@ -412,6 +413,22 @@ def main() -> int:
             closed = (page.evaluate(
                 "() => !document.querySelector('.sheet-target:target')"))
             check(closed, "dragging the sheet down did not dismiss it")
+
+        # 9i) The report screen is where all the locally-computed intelligence
+        #     lands. Every section there is conditional on having evidence, so
+        #     the failure mode is a 500 on one of the branches — which only
+        #     shows up when the page is actually rendered in a browser.
+        page.goto(BASE + "/report", wait_until="networkidle")
+        check("Monthly report" in page.content(), "the report screen did not render")
+        check(page.locator("text=Forbidden").count() == 0,
+              "the report screen hit an auth error")
+        # Whatever sections did render must not overflow the viewport: the
+        # cash-flow chart and the trend sparks are the widest things in the app.
+        overflow = page.evaluate(
+            "() => document.documentElement.scrollWidth > "
+            "document.documentElement.clientWidth + 1")
+        check(not overflow,
+              "the report screen scrolls horizontally — a chart is too wide")
 
         # 10) No icon may render oversized (a bare viewBox svg once filled the sheet).
         page.goto(BASE + "/dashboard", wait_until="networkidle")

@@ -23,7 +23,7 @@ from flask import (
 )
 
 from . import (analytics, auth, calibration, categorizer, db, engine,
-               fraud, search, senders)
+               fraud, insights, search, senders)
 from .parsing import MAX_AMOUNT, PARSER_VERSION, parse_sms, safe_amount
 
 
@@ -745,7 +745,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
             m = cur_m
         s = settings_for(uid)
         r = analytics.build_report(g.conn, uid, m)
-        return render_template("report.html", r=r, cur_m=cur_m, currency=s["currency"],
+        # Computed on the device from the user's own rows. Nothing here leaves
+        # the phone, and nothing here needs a network.
+        ins = insights.build_insights(g.conn, uid, m)
+        return render_template("report.html", r=r, ins=ins, cur_m=cur_m,
+                               currency=s["currency"],
                                user=current_user(), active="dashboard",
                                back_href="/dashboard")
 

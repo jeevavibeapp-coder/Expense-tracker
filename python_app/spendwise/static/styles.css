@@ -907,3 +907,24 @@ html, body { overscroll-behavior-y: contain; }
 /* While a finger is on the sheet the transform must follow it exactly, with
    no easing in between; the transition comes back on release. */
 .sheet.dragging { transition: none; }
+
+/* ── Cash-flow timeline ──────────────────────────────────────────────────
+   Income and expense as a paired bar per month. Paired rather than stacked
+   because the question this chart answers is "did more come in than went
+   out", and a stacked bar hides exactly that. */
+.flow { display: flex; align-items: flex-end; gap: 6px; height: 96px; }
+.flow-m { flex: 1; min-width: 0; display: flex; flex-direction: column;
+  align-items: center; height: 100%; }
+.flow-bars { flex: 1; width: 100%; display: flex; align-items: flex-end;
+  justify-content: center; gap: 3px; }
+.flow-bars i { display: block; width: 42%; min-height: 3px; border-radius: 3px 3px 1px 1px; }
+.flow-bars i.in { background: var(--income); }
+.flow-bars i.out { background: var(--expense); }
+.flow-l { font-size: var(--t-micro); color: var(--text-3); margin-top: 6px;
+  white-space: nowrap; }
+
+/* A six-point series in a full-width .spark renders as six grey slabs, not a
+   chart. Trend sparks keep the bars narrow and left-aligned so the shape of
+   the series is what the eye picks up. */
+.spark-trend { gap: 6px; justify-content: flex-start; }
+.spark-trend i { flex: 0 0 auto; width: 14px; }
