@@ -640,6 +640,22 @@ def _m9_sanitise_amounts(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM rollup_dirty")
 
 
+def _m10_onboarding(conn: sqlite3.Connection) -> None:
+    """Remember that the first-run explanation has been seen.
+
+    Stored per user rather than in app_state so that a multi-user web install
+    does not show one person's onboarding state to another, and so that a
+    restore can carry it. Existing installs are marked as already onboarded:
+    someone who has been using the app for months should not be walked through
+    an introduction because they updated it.
+    """
+    _add_column_if_missing(conn, "settings", "onboarded_at", "TEXT")
+    conn.execute("UPDATE settings SET onboarded_at = ? "
+                 "WHERE onboarded_at IS NULL AND user_id IN "
+                 "(SELECT DISTINCT user_id FROM transactions)",
+                 ("1970-01-01T00:00:00",))
+
+
 # Ordered list. Index + 1 == the schema version the entry produces.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m1_baseline,
@@ -651,6 +667,7 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _m7_fts_search,
     _m8_daily_rollups,
     _m9_sanitise_amounts,
+    _m10_onboarding,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -740,7 +757,8 @@ CREATE TABLE IF NOT EXISTS settings (
     theme TEXT NOT NULL DEFAULT 'system',
     auto_save_threshold INTEGER NOT NULL DEFAULT 80,
     confirm_threshold INTEGER NOT NULL DEFAULT 50,
-    high_value_amount REAL
+    high_value_amount REAL,
+    onboarded_at TEXT
 );
 CREATE TABLE IF NOT EXISTS app_state (
     key TEXT PRIMARY KEY,

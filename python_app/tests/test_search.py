@@ -24,6 +24,9 @@ def _client(tmp_path, name="s.db"):
     # Authenticate exactly as the WebView does: a one-time ?k=<device token>
     # grant on the first navigation, which mints the signed session cookie.
     c.get(f"/?k={TOKEN}", environ_overrides={"REMOTE_ADDR": "127.0.0.1"})
+    # Skip the first-run introduction: these tests are about the app after
+    # setup, not about the introduction itself, which has its own tests.
+    c.post("/welcome/done")
     return app, c
 
 

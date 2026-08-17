@@ -56,13 +56,34 @@ def main() -> int:
             if not cond:
                 failures.append(msg)
 
+        # 0) First run: the app must explain what it will read from the phone
+        #    before it reads anything. Everything after this point is the app
+        #    as a returning user sees it, so onboarding is completed here.
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        check("/welcome" in page.url,
+              f"a brand-new install did not land on the introduction (at {page.url})")
+        check(page.locator("text=What SpendWise reads").count() > 0,
+              "the introduction does not say what the app reads")
+        check(page.locator("nav.tabbar").count() == 0,
+              "the introduction shows the tab bar, which invites skipping it")
+        page.click("button[type=submit]")
+        page.wait_for_load_state("networkidle")
+        check("/dashboard" in page.url,
+              "finishing the introduction did not land on the dashboard")
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        check("/welcome" not in page.url,
+              "the introduction was shown again after being completed")
+
         # 1) Every screen renders with VISIBLE content (opacity > 0).
         for path, marker in [("/dashboard", "Total balance"),
                              ("/transactions", "Activity"),
                              ("/categories", "Spending"),
                              ("/fraud", "clear"),
                              ("/settings", "Preferences"),
-                             ("/import", "Paste")]:
+                             ("/import", "Paste"),
+                             ("/privacy", "stays on this phone"),
+                             ("/help", "Autostart"),
+                             ("/restore", "Choose a backup file")]:
             page.goto(BASE + path, wait_until="networkidle")
             # A .reveal element must be actually visible (not opacity:0).
             rev = page.query_selector(".reveal")
@@ -200,6 +221,16 @@ def main() -> int:
             'a[href],button,input,select,textarea,[role=\"button\"]').forEach(el => {
             if (el.offsetParent === null) return;
             if (el.type === 'radio' || el.type === 'checkbox') return; // label is the target
+            // WCAG 2.5.5 exempts a link sitting INSIDE a sentence: forcing a
+            // 44px box on it would break the line it lives in, and the rest of
+            // the sentence is not a competing target. Detected as an anchor
+            // whose parent also holds text of its own.
+            if (el.tagName === 'A' && el.parentElement) {
+              const own = [...el.parentElement.childNodes]
+                .filter(n => n.nodeType === 3)
+                .map(n => n.textContent.trim()).join('');
+              if (own.length > 20) return;
+            }
             const name = (el.getAttribute('aria-label') || el.getAttribute('title') ||
                           (el.textContent || '').trim() ||
                           (el.labels && el.labels.length ? 'l' : '') ||
@@ -222,7 +253,8 @@ def main() -> int:
         }"""
         for a11y_path in ["/dashboard", "/transactions", "/categories",
                           "/review", "/fraud", "/sms/quarantine", "/report",
-                          "/settings"]:
+                          "/settings", "/privacy", "/help", "/restore",
+                          "/welcome"]:
             page.goto(BASE + a11y_path, wait_until="networkidle")
             a = page.evaluate(A11Y)
             check(a["unlabelled"] == 0,

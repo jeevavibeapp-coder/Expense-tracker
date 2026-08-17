@@ -165,7 +165,12 @@ def test_settings_roundtrip(auth_client):
 def test_single_user_mode_auto_login(tmp_path):
     app = create_app(db_path=str(tmp_path / "su.db"), single_user=True, secret_key="x")
     c = app.test_client()
-    # No login performed, yet the dashboard is accessible.
+    # No login performed, yet the dashboard is reachable. On a brand-new
+    # install it redirects to the first-run introduction rather than to
+    # /login — which is the thing this test is about.
+    first = c.get("/dashboard")
+    assert first.status_code == 302 and "/welcome" in first.headers["Location"]
+    c.post("/welcome/done")
     assert c.get("/dashboard").status_code == 200
 
 
@@ -177,7 +182,11 @@ def test_sms_parser_unit():
 
 def _su_client(tmp_path, name="s.db"):
     app = create_app(db_path=str(tmp_path / name), single_user=True, secret_key="t")
-    return app.test_client()
+    c = app.test_client()
+    # Skip the first-run introduction: these tests are about the app after
+    # setup, not about the introduction itself, which has its own tests.
+    c.post("/welcome/done")
+    return c
 
 
 def test_sms_ingest_auto_captures(tmp_path):
@@ -287,6 +296,7 @@ def test_no_endpoint_is_reachable_without_a_grant(tmp_path):
 
     # After the grant the app works normally.
     c.get("/?k=sekret")
+    c.post("/welcome/done")          # past the first-run introduction
     assert c.get("/dashboard").status_code == 200
     assert c.get("/export.csv").status_code == 200
 

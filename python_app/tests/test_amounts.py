@@ -34,6 +34,9 @@ def _client(tmp_path, name="amt.db"):
     # Authenticate exactly as the WebView does: a one-time ?k=<device token>
     # grant on the first navigation, which mints the signed session cookie.
     c.get(f"/?k={TOKEN}", environ_overrides={"REMOTE_ADDR": "127.0.0.1"})
+    # Skip the first-run introduction: these tests are about the app after
+    # setup, not about the introduction itself, which has its own tests.
+    c.post("/welcome/done")
     return app, c
 
 
@@ -269,6 +272,7 @@ def test_every_page_renders_with_a_poisoned_row_present(tmp_path):
                      device_token=TOKEN)
     c = app.test_client()
     c.get(f"/?k={TOKEN}")            # authenticate as the WebView does
+    c.post("/welcome/done")          # past the first-run introduction
     c.get("/dashboard")
     conn = db.connect(path)
     uid = conn.execute("SELECT id FROM users").fetchone()[0]

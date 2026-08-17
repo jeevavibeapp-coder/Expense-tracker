@@ -18,9 +18,9 @@
     </form>
   </div>
 
+  <div class="section-h"><h2>Preferences</h2></div>
   <form method="post" action="/settings" class="stack">
     <div class="card stack">
-      <div style="font-weight:700">Preferences</div>
       <div class="row">
         <div class="field" style="margin:0"><label class="lbl">Currency</label>
           <input name="currency" value="{{ s['currency'] }}" maxlength="8" aria-label="Currency code"></div>
@@ -58,9 +58,10 @@
   </form>
 
   {# ── Auto-capture diagnostics: is SMS capture actually working? ── #}
+  <div class="section-h"><h2>SMS auto-capture</h2></div>
   <div class="card stack">
     <div style="display:flex; align-items:center; gap:10px">
-      <span style="font-weight:700; flex:1">SMS auto-capture</span>
+      <span style="font-weight:700; flex:1">Status</span>
       {% if sms.permission == 'denied' %}
         <span class="pill pill-warn">Permission off</span>
       {% elif sms.captured %}
@@ -119,11 +120,52 @@
     {% endif %}
   </div>
 
+  {# ── Data & privacy ──
+     Backup comes first because it is the one thing in this app that cannot
+     be undone by any other screen: there is no cloud copy, so a phone lost
+     without a backup is a ledger lost for good. #}
+  <div class="section-h"><h2>Your data</h2></div>
   <div class="card stack">
-    <div style="font-weight:700">Your data</div>
-    <div class="mut" style="font-size: 0.7812rem; margin-top:-6px">Everything stays on this device. Download a copy any time.</div>
-    <a class="btn-soft" href="/export.csv" download
-       style="display:block; text-align:center; text-decoration:none">Export transactions (CSV)</a>
+    <div class="mut" style="font-size: 0.7812rem">
+      Everything stays on this phone, which means the only copy is the one you
+      make.
+    </div>
+    <a class="btn-soft" href="/backup.json" download
+       style="display:block; text-align:center; text-decoration:none">Download a full backup</a>
+    <a class="settings-row" href="/restore">
+      <span class="sr-i">{{ m.icon('activity') }}</span>
+      <span class="sr-t"><b>Restore from a backup</b>
+        <span class="sr-d">Moving to a new phone, or undoing a mistake</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+    <a class="settings-row" href="/export.csv" download>
+      <span class="sr-i">{{ m.icon('grid') }}</span>
+      <span class="sr-t"><b>Export as CSV</b>
+        <span class="sr-d">A report for a spreadsheet — not a backup</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+  </div>
+
+  <div class="section-h"><h2>About</h2></div>
+  <div class="card stack" style="gap:0">
+    <a class="settings-row" href="/privacy">
+      <span class="sr-i">{{ m.icon('shield') }}</span>
+      <span class="sr-t"><b>Privacy</b>
+        <span class="sr-d">What is stored, and what is never done</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+    <a class="settings-row" href="/help">
+      <span class="sr-i">{{ m.icon('sms') }}</span>
+      <span class="sr-t"><b>Help &amp; troubleshooting</b>
+        <span class="sr-d">Captures not arriving, duplicates, new phone</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+    <a class="settings-row" href="/welcome">
+      <span class="sr-i">{{ m.icon('home') }}</span>
+      <span class="sr-t"><b>How SpendWise works</b>
+        <span class="sr-d">The introduction, again</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
   </div>
 
   {% if not single_user %}

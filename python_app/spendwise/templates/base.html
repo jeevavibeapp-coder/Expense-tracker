@@ -85,6 +85,9 @@
      into the label because a bare "10" announced after "Activity" is
      meaningless out of context, and the badge itself is hidden from the
      reader to avoid announcing the number twice. #}
+  {# Onboarding hides the chrome: a first-run screen with a tab bar invites
+     the user to skip past the one explanation of what the app will read. #}
+  {% if not hide_nav %}
   <nav class="tabbar" role="navigation" aria-label="Main">
     <a class="tab {{ 'active' if active == 'dashboard' }}" href="/dashboard"
        {% if active == 'dashboard' %}aria-current="page"{% endif %}>
@@ -105,8 +108,13 @@
       {% if nav_fraud %}<span class="nbadge" aria-hidden="true">{{ nav_fraud }}</span>{% endif %}</a>
   </nav>
   <a class="fab" href="#add" aria-label="Add transaction">{{ m.icon('plus') }}</a>
+  {% endif %}
 
-  {# ── Add transaction (app-wide, FAB opens it directly — no chooser hop) ── #}
+  {# ── Add transaction (app-wide, FAB opens it directly — no chooser hop) ──
+     Not rendered during onboarding: there is no FAB to open it there, so it
+     would be an unreachable #add target and a form the introduction never
+     mentions. #}
+  {% if not hide_nav %}
   <span id="add" class="sheet-target"></span>
   <a class="scrim" href="#!" aria-label="Close"></a>
   <div class="sheet" role="dialog" aria-label="Add transaction">
@@ -134,6 +142,8 @@
         {{ m.icon('sms') }} Import a bank / UPI SMS instead</a>
     </form>
   </div>
+
+  {% endif %}
 
   {# Merchant resolve-preview is handled by a delegated 'input' listener in
      app.js (keyed on #merchant), so it survives instant-nav swaps without

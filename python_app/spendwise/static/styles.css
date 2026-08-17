@@ -928,3 +928,49 @@ html, body { overscroll-behavior-y: contain; }
    the series is what the eye picks up. */
 .spark-trend { gap: 6px; justify-content: flex-start; }
 .spark-trend i { flex: 0 0 auto; width: 14px; }
+
+/* ── FAQ list ────────────────────────────────────────────────────────────
+   Native <details> so a screen reader gets real expand/collapse semantics
+   with no JavaScript, and so the page still works if app.js never loads. */
+.faq { border-bottom: 1px solid var(--hairline); }
+.faq:last-child { border-bottom: 0; }
+.faq > summary {
+  list-style: none; cursor: pointer; padding: 14px 2px;
+  min-height: var(--tap); display: flex; align-items: center;
+  font-size: var(--t-sm); font-weight: 600; gap: 10px;
+}
+.faq > summary::-webkit-details-marker { display: none; }
+.faq > summary::after {
+  content: ""; margin-left: auto; flex: 0 0 8px; width: 8px; height: 8px;
+  border-right: 2px solid var(--text-3); border-bottom: 2px solid var(--text-3);
+  transform: rotate(45deg); transition: transform .18s var(--ease);
+}
+.faq[open] > summary::after { transform: rotate(-135deg); }
+.faq-b { padding: 0 2px 14px; font-size: var(--t-xs); color: var(--text-2); }
+.faq-b p { margin: 0 0 10px; }
+.faq-b p:last-child { margin-bottom: 0; }
+.faq-b ol, .faq-b ul { margin: 0 0 10px; padding-left: 20px; }
+.faq-b li { margin-bottom: 6px; }
+.faq-b b { color: var(--text); }
+
+/* ── Settings rows ───────────────────────────────────────────────────────
+   Settings was one long undifferentiated scroll of cards. These rows give
+   the secondary destinations (privacy, help, restore) a consistent shape and
+   a 44px target, so the screen reads as a menu rather than a wall. */
+.settings-row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 2px;
+  min-height: var(--tap); color: var(--text); text-decoration: none;
+}
+.settings-row + .settings-row { border-top: 1px solid var(--hairline); }
+.settings-row .sr-i {
+  width: 34px; height: 34px; flex: 0 0 34px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: var(--surface-2); color: var(--text-2);
+}
+.settings-row .sr-t { flex: 1; min-width: 0; font-size: var(--t-sm); }
+.settings-row .sr-d {
+  display: block; font-size: var(--t-micro); color: var(--text-3);
+  font-weight: 400; margin-top: 2px;
+}
+.settings-row .sr-c { flex: 0 0 auto; color: var(--text-3); display: flex; }
+.settings-row .sr-c svg { width: 16px; height: 16px; }

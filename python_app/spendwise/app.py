@@ -22,8 +22,8 @@ from flask import (
     Flask, Response, abort, g, redirect, render_template, request, session, url_for,
 )
 
-from . import (analytics, auth, calibration, categorizer, db, engine,
-               fraud, insights, search, senders)
+from . import (analytics, auth, backup, calibration, categorizer, db,
+               engine, fraud, insights, search, senders)
 from .parsing import MAX_AMOUNT, PARSER_VERSION, parse_sms, safe_amount
 
 
@@ -725,6 +725,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not uid:
             return redirect(url_for("login"))
         s = settings_for(uid)
+        # First run: explain what this app does and what it will read before
+        # it reads anything. Only from the dashboard, so a deep link into any
+        # other screen is never hijacked by an introduction.
+        if not s.get("onboarded_at"):
+            return redirect(url_for("welcome_page"))
         d = analytics.build_dashboard(g.conn, uid, currency=s["currency"])
         return render_template("dashboard.html", d=d, user=current_user(), active="dashboard")
 
@@ -1706,6 +1711,91 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         return render_template("settings.html", s=settings_for(uid, fresh=True),
                                user=current_user(), active="settings", flash=flash,
                                sms=sms_status(uid))
+
+    # ── Routes: onboarding, privacy, help ────────────────────────────────
+    @app.get("/welcome")
+    def welcome_page():
+        """First-run explanation. Reachable any time from Settings, because a
+        privacy promise nobody can re-read is not a promise."""
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        return render_template("welcome.html", user=current_user(),
+                               active="dashboard", sms=sms_status(uid),
+                               hide_nav=True)
+
+    @app.post("/welcome/done")
+    def welcome_done():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        db.execute(g.conn, "UPDATE settings SET onboarded_at=? WHERE user_id=?",
+                   (dt.datetime.now().replace(microsecond=0).isoformat(), uid))
+        g.conn.commit()
+        return redirect(url_for("dashboard"))
+
+    @app.get("/privacy")
+    def privacy_page():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        return render_template("privacy.html", user=current_user(),
+                               active="settings", back_href="/settings")
+
+    @app.get("/help")
+    def help_page():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        return render_template("help.html", user=current_user(),
+                               active="settings", back_href="/settings",
+                               sms=sms_status(uid))
+
+    # ── Routes: backup & restore ─────────────────────────────────────────
+    @app.get("/backup.json")
+    def backup_download():
+        """A full-fidelity copy of the ledger, for the user to keep.
+
+        The CSV export is a report, not a backup: it drops merchant links,
+        learning, budgets and every id. This is the file that can actually
+        rebuild the app on a new phone.
+        """
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        stamp = dt.datetime.now().strftime("%Y%m%d")
+        return Response(
+            backup.backup_bytes(g.conn, uid), mimetype="application/json",
+            headers={"Content-Disposition":
+                     f"attachment; filename=spendwise-backup-{stamp}.json"})
+
+    @app.route("/restore", methods=["GET", "POST"])
+    def restore_page():
+        uid = require_login()
+        if not uid:
+            return redirect(url_for("login"))
+        error, result, preview = "", None, None
+        if request.method == "POST":
+            f = request.files.get("backup")
+            raw = f.read() if f else b""
+            # A phone photo picked by mistake would otherwise be read into
+            # memory in full before being rejected for not being JSON.
+            if len(raw) > 25_000_000:
+                error = "That file is too large to be a SpendWise backup."
+            else:
+                try:
+                    doc = backup.parse_backup(raw)
+                    preview = backup.summarise(doc)
+                    if request.form.get("confirm") == "yes":
+                        result = backup.restore(
+                            g.conn, uid,
+                            doc, replace=request.form.get("mode") == "replace")
+                        preview = None
+                except backup.RestoreError as exc:
+                    error = str(exc)
+        return render_template("restore.html", user=current_user(),
+                               active="settings", back_href="/settings",
+                               error=error, result=result, preview=preview)
 
     # ── Routes: data export ──────────────────────────────────────────────
     @app.get("/export.csv")

@@ -350,7 +350,11 @@ def test_lock_contention_does_not_trigger_spurious_safe_mode(tmp_path):
     assert not unexpected, unexpected
     assert 503 not in codes, "lock contention produced a spurious safe-mode page"
     assert codes, "no instance completed startup at all"
-    assert set(codes) == {200}, sorted(set(codes))
+    # 302 is the first-run redirect to the introduction: this is a brand-new
+    # database, so every instance legitimately lands there. What matters is
+    # that startup succeeded — anything in the 4xx/5xx range would mean
+    # contention was mistaken for damage.
+    assert set(codes) <= {200, 302}, sorted(set(codes))
     conn = sqlite3.connect(path)
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

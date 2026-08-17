@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Welcome · {{ app_name }}{% endblock %}
+{% block heading %}Welcome{% endblock %}
+{% block content %}
+{# One scrollable screen rather than a swipeable carousel. A carousel lets
+   people flick past the only page that explains what will be read from their
+   phone, and it is the hardest pattern on this screen to use with TalkBack. #}
+<div class="screen stack">
+
+  <div class="hero reveal">
+    <div class="label">SpendWise</div>
+    <div style="font-size: var(--t-h1); font-weight:800; margin-top:6px; line-height:1.2">
+      Your money, tracked on your phone.</div>
+    <div style="font-size: var(--t-sm); opacity:.9; margin-top:10px">
+      No account. No cloud. No ads. Nothing about your spending is sent
+      anywhere, because there is nowhere for it to go.</div>
+  </div>
+
+  <div class="section-h"><h2>How it works</h2></div>
+  <div class="card stack" style="gap:16px">
+    <div style="display:flex; gap:12px">
+      <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;
+                              place-items:center;background:var(--grad);color:#fff;
+                              flex:0 0 38px">{{ m.icon('sms') }}</span>
+      <div>
+        <div style="font-weight:700; font-size: var(--t-sm)">It reads your bank SMS</div>
+        <div class="mut" style="font-size: var(--t-xs); margin-top:3px">
+          Bank and UPI messages already arrive on your phone. SpendWise reads
+          the amount, the merchant and the date out of them, so you do not
+          type anything in.</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:12px">
+      <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;
+                              place-items:center;background:var(--grad);color:#fff;
+                              flex:0 0 38px">{{ m.icon('grid') }}</span>
+      <div>
+        <div style="font-weight:700; font-size: var(--t-sm)">It learns your merchants</div>
+        <div class="mut" style="font-size: var(--t-xs); margin-top:3px">
+          Correct a category once and it remembers. The learning happens on
+          this device, from your corrections only.</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:12px">
+      <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;
+                              place-items:center;background:var(--grad);color:#fff;
+                              flex:0 0 38px">{{ m.icon('shield') }}</span>
+      <div>
+        <div style="font-weight:700; font-size: var(--t-sm)">It flags what looks wrong</div>
+        <div class="mut" style="font-size: var(--t-xs); margin-top:3px">
+          Messages from senders your bank never uses, or with the shape of a
+          scam, are held aside for you instead of being added silently.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-h"><h2>What SpendWise reads</h2></div>
+  <div class="card stack" style="gap:12px">
+    <div class="mut" style="font-size: var(--t-xs)">
+      Being specific here matters more than being reassuring, so here is
+      exactly what the SMS permission is used for.
+    </div>
+    <div class="stack" style="gap:8px; font-size: var(--t-xs)">
+      <div style="display:flex; gap:8px"><span style="color:var(--income)">✓</span>
+        <span>Messages from bank and UPI sender IDs — the amount, merchant,
+          date and reference number in them.</span></div>
+      <div style="display:flex; gap:8px"><span style="color:var(--income)">✓</span>
+        <span>Kept in a database on this phone, which only this app can open.</span></div>
+      <div style="display:flex; gap:8px"><span style="color:var(--expense)">✗</span>
+        <span>Never messages from people. Never OTPs.</span></div>
+      <div style="display:flex; gap:8px"><span style="color:var(--expense)">✗</span>
+        <span>Never uploaded, never analysed off the device, never shared —
+          there is no server and no analytics in this app at all.</span></div>
+    </div>
+    <a class="btn-ghost btn-sm" href="/privacy"
+       style="display:block; text-align:center">Read the full privacy note</a>
+  </div>
+
+  {% if sms.permission == 'denied' or not sms.captured %}
+  <div class="card stack" style="gap:10px">
+    <div style="font-weight:700; font-size: var(--t-sm)">Turn on SMS capture</div>
+    <div class="mut" style="font-size: var(--t-xs)">
+      Without it SpendWise still works — you can add transactions yourself or
+      paste a message in. With it, the ledger fills itself.
+    </div>
+    <button class="btn btn-sm" type="button"
+            onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">
+      Allow SMS access</button>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/welcome/done" style="margin-top:4px">
+    <button class="btn" type="submit" style="width:100%">Start using SpendWise</button>
+  </form>
+  <div class="faint" style="text-align:center; font-size: var(--t-micro); padding:4px 8px 20px">
+    You can read this again any time from Settings.
+  </div>
+</div>
+{% endblock %}
