@@ -49,6 +49,8 @@ def main() -> int:
         page.on("console", lambda m: console_errors.append(f"{m.type}: {m.text}")
                 if m.type == "error" else None)
         page.on("pageerror", lambda e: console_errors.append(f"pageerror: {e}"))
+        page.on("response", lambda r: console_errors.append(
+            f"HTTP {r.status}: {r.url}") if r.status >= 400 else None)
 
         def check(cond, msg):
             if not cond:
@@ -142,6 +144,47 @@ def main() -> int:
             page.wait_for_timeout(900)
             check(page.locator(".cat-modal").count() == 0,
                   "SMS popup stayed mounted after navigating to /review")
+
+        # 9b) Loading states. Navigation used to hold the OLD page until new
+        #     HTML arrived — a frozen screen on a slow device. A skeleton must
+        #     appear while a navigation is in flight, be shaped like the
+        #     destination, and ALWAYS be cleared.
+        #
+        #     The threshold is forced to 0 rather than simulating a slow
+        #     network: racing a real delay made this flaky, and a sleep inside
+        #     a sync-API route handler blocks Playwright's own loop.
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        page.evaluate("window.__skDelay = 0;"
+                      "window.__sk = {seen: 0, busy: 0};"
+                      "new MutationObserver(function(){"
+                      "  var m = document.querySelector('main');"
+                      "  if (m && m.querySelector('.sk')) window.__sk.seen++;"
+                      "  if (m && m.getAttribute('aria-busy') === 'true') window.__sk.busy++;"
+                      "}).observe(document.body,{childList:true,subtree:true,attributes:true});")
+        page.evaluate("document.querySelector('a[href=\"/transactions\"]').click()")
+        page.wait_for_timeout(900)
+        sk = page.evaluate("window.__sk")
+        check(sk["seen"] > 0, "no skeleton appeared while a navigation was in flight")
+        check(sk["busy"] > 0,
+              "loading region was never marked aria-busy for screen readers")
+        check(page.locator("main .sk").count() == 0,
+              "skeleton was still mounted after content arrived")
+        check(page.locator("main[aria-busy='true']").count() == 0,
+              "aria-busy was not cleared after loading finished")
+        check("Activity" in page.content(), "the real page never rendered")
+
+        # 9c) With the normal threshold a fast local navigation must NOT flash
+        #     a skeleton — a 40ms flicker reads as a glitch, which is worse
+        #     than no feedback at all.
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        page.evaluate("window.__sawSkeleton = false;"
+                      "new MutationObserver(function(){"
+                      "if(document.querySelector('main .sk')) window.__sawSkeleton = true;"
+                      "}).observe(document.querySelector('main'),{childList:true,subtree:true});")
+        page.evaluate("document.querySelector('a[href=\"/transactions\"]').click()")
+        page.wait_for_timeout(900)
+        check(page.evaluate("window.__sawSkeleton") is False,
+              "a fast local navigation flashed a skeleton")
 
         # 10) No icon may render oversized (a bare viewBox svg once filled the sheet).
         page.goto(BASE + "/dashboard", wait_until="networkidle")

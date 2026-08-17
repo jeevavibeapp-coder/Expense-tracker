@@ -293,18 +293,42 @@ def resolve(conn, *, user_id: str, raw_name: str, amount=None, category_id=None,
 
 def get_or_create_merchant(conn, *, user_id: str, canonical_name: str,
                            category_id=None) -> dict:
+    """Return the merchant row for ``canonical_name``, creating it if needed.
+
+    Concurrency-safe. The obvious SELECT-then-INSERT shape is a race: the
+    embedded server runs four waitress threads, and two requests naming the
+    same merchant both see "no row", both INSERT, and the loser dies on
+    ``UNIQUE constraint failed: merchants.user_id, merchants.canonical_name``.
+    Because this is called from inside ``create_transaction``, that exception
+    propagated as an HTTP 500 and the user's transaction was LOST — measured
+    at 7-18 lost rows per 200 concurrent writes.
+
+    ``INSERT OR IGNORE`` collapses the race into one atomic statement: the
+    winner inserts, the loser is silently skipped, and both then read the same
+    committed row. Deliberately NOT ``ON CONFLICT ... DO NOTHING``, which
+    needs SQLite 3.24+; ``OR IGNORE`` is understood by every version this app
+    can meet on Android 7+. Deliberately NOT try/except IntegrityError either:
+    that works, but it leaves the caller's in-flight transaction in a state
+    the caller has to reason about, and this runs mid-transaction.
+    """
     name = canonical_name.strip()
     row = db.one(conn, "SELECT * FROM merchants WHERE user_id=? AND canonical_name=?",
                  (user_id, name))
-    if row:
-        if category_id and row["category_id"] != category_id:
-            db.execute(conn, "UPDATE merchants SET category_id=? WHERE id=?",
-                       (category_id, row["id"]))
-        return {"id": row["id"], "canonical_name": row["canonical_name"]}
-    mid = db.new_id()
-    db.execute(conn, "INSERT INTO merchants(id, user_id, canonical_name, category_id) "
-                     "VALUES (?,?,?,?)", (mid, user_id, name, category_id))
-    return {"id": mid, "canonical_name": name}
+    if row is None:
+        # The insert may lose the race; the SELECT below is what decides.
+        db.execute(conn,
+                   "INSERT OR IGNORE INTO merchants(id, user_id, canonical_name, "
+                   "category_id) VALUES (?,?,?,?)",
+                   (db.new_id(), user_id, name, category_id))
+        row = db.one(conn,
+                     "SELECT * FROM merchants WHERE user_id=? AND canonical_name=?",
+                     (user_id, name))
+        if row is None:                       # pragma: no cover - defensive
+            raise RuntimeError(f"merchant {name!r} vanished after insert")
+    if category_id and row["category_id"] != category_id:
+        db.execute(conn, "UPDATE merchants SET category_id=? WHERE id=?",
+                   (category_id, row["id"]))
+    return {"id": row["id"], "canonical_name": row["canonical_name"]}
 
 
 def _baseline_confidence(row) -> int:

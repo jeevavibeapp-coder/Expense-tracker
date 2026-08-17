@@ -694,3 +694,46 @@ button, [role="button"], a.btn, a.btn-soft, a.btn-ghost {
 /* Long merchant names must not shove the amount off the row. */
 .tx-name { overflow-wrap: anywhere; }
 .tx-amt { flex: none; white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LOADING STATES
+   The app never showed one. Navigation held the OLD page until the new HTML
+   arrived, so a slow device got a frozen screen, and first paint on a cold
+   start got nothing at all. Skeletons communicate "your data is coming and
+   it will look like THIS", which is why they are shaped like the destination
+   rather than being a generic spinner.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.sk { position: relative; overflow: hidden; border-radius: var(--r-sm);
+  background: var(--surface-2); }
+/* The shimmer is a single translating gradient — one compositor-friendly
+   transform, no layout or paint per frame, so it stays cheap on a low-end
+   phone where this is most likely to be seen. */
+.sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--hairline-2), transparent);
+  animation: sk-sweep 1.25s var(--ease) infinite; }
+@keyframes sk-sweep { to { transform: translateX(100%); } }
+
+.sk-line { height: .75rem; border-radius: var(--r-pill); }
+.sk-line.sm { height: .625rem; }
+.sk-line.lg { height: 1.25rem; }
+.sk-ava { width: 42px; height: 42px; border-radius: 13px; flex: none; }
+.sk-hero { height: 168px; border-radius: var(--r-xl); }
+.sk-chart { height: 132px; border-radius: var(--r); }
+.sk-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--r); margin-bottom: var(--s2); }
+.sk-row .sk-body { flex: 1; min-width: 0; display: grid; gap: 7px; }
+.sk-stack { display: grid; gap: var(--s3); padding: 0 var(--s4); }
+
+/* Motion-sensitive users get the shape without the sweep — the layout still
+   communicates what is loading, which is the part that matters. */
+@media (prefers-reduced-motion: reduce) {
+  .sk::after { animation: none; opacity: .5; }
+}
+
+/* Content arriving after a skeleton fades in rather than snapping, so the
+   transition reads as "it finished" instead of "something flickered". */
+.page-in { animation: page-in .22s var(--ease) both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .page-in { animation: none; } }

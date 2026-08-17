@@ -491,3 +491,118 @@ def test_first_launch_survives_concurrent_requests(tmp_path):
     assert check.execute("SELECT COUNT(*) FROM settings WHERE user_id=?",
                          (uid,)).fetchone()[0] == 1
     check.close()
+
+
+# ── Production write path under concurrency ───────────────────────────────
+def test_concurrent_writes_through_the_real_route_lose_nothing(tmp_path):
+    """The gap that hid a data-loss bug for four review cycles.
+
+    Every other concurrency test in this file issues raw SQL INSERTs, which
+    proves SQLite and WAL behave but exercises none of the application write
+    path. Driving POST /transactions instead goes through create_transaction
+    -> engine.get_or_create_merchant, where a SELECT-then-INSERT race made
+    the loser die on a UNIQUE violation. That surfaced as HTTP 500 and the
+    user's transaction was silently lost: measured 7-18 losses per 200 writes
+    across three runs before the fix.
+
+    Merchants deliberately COLLIDE (i % 5) so every thread races for the same
+    five names — the condition that triggers it.
+    """
+    from spendwise.app import create_app
+    token = "concurrency-token"
+    app = create_app(db_path=str(tmp_path / "prod-conc.db"), single_user=True,
+                     secret_key="s", device_token=token)
+    app.logger.disabled = True
+
+    threads_n, per_thread = 8, 25
+    codes: list[int] = []
+    errors: list[str] = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(threads_n)
+
+    def writer(tag: int) -> None:
+        client = app.test_client()
+        client.get(f"/?k={token}")            # authenticate like the WebView
+        try:
+            barrier.wait(timeout=30)
+            for i in range(per_thread):
+                r = client.post("/transactions", data={
+                    "amount": str(10 + i), "type": "expense",
+                    "merchant": f"Shared Merchant {i % 5}"})
+                with lock:
+                    codes.append(r.status_code)
+        except Exception as exc:              # noqa: BLE001
+            with lock:
+                errors.append(f"{type(exc).__name__}: {exc}")
+
+    threads = [threading.Thread(target=writer, args=(t,)) for t in range(threads_n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=90)
+
+    expected = threads_n * per_thread
+    assert not errors, errors
+    assert 500 not in codes, f"{codes.count(500)} requests failed with a 500"
+
+    conn = db.connect(str(tmp_path / "prod-conc.db"))
+    stored = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    merchants = conn.execute("SELECT COUNT(*) FROM merchants").fetchone()[0]
+    dupes = conn.execute(
+        "SELECT COUNT(*) FROM (SELECT user_id, canonical_name FROM merchants "
+        "GROUP BY 1, 2 HAVING COUNT(*) > 1)").fetchone()[0]
+    integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+    fk = conn.execute("PRAGMA foreign_key_check").fetchall()
+    conn.close()
+
+    assert stored == expected, f"lost {expected - stored} of {expected} transactions"
+    # The race could also have produced duplicate merchant rows, which would
+    # silently split one merchant's learning history in two.
+    assert merchants == 5, f"expected 5 merchants, got {merchants}"
+    assert dupes == 0, "duplicate merchant rows were created"
+    assert integrity == "ok"
+    assert fk == []
+
+
+def test_get_or_create_merchant_is_atomic_under_direct_contention(tmp_path):
+    """Same invariant one layer down, without HTTP in the way."""
+    from spendwise import engine
+    path = str(tmp_path / "gocm.db")
+    conn, _ = db.open_database(path, backup=False)
+    conn.execute("INSERT INTO users VALUES ('u1','a@b.c','U','x','2024-01-01')")
+    conn.commit()
+    conn.close()
+
+    ids: list[str] = []
+    errors: list[str] = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(12)
+
+    def worker() -> None:
+        c = db.connect(path)
+        try:
+            barrier.wait(timeout=30)
+            m = engine.get_or_create_merchant(c, user_id="u1",
+                                              canonical_name="Contended Cafe")
+            c.commit()
+            with lock:
+                ids.append(m["id"])
+        except Exception as exc:              # noqa: BLE001
+            with lock:
+                errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            c.close()
+
+    threads = [threading.Thread(target=worker) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+
+    assert not errors, errors
+    # Every caller must receive the SAME merchant id, or the learning history
+    # for one shop ends up split across several ids.
+    assert len(set(ids)) == 1, f"callers disagreed on the merchant id: {set(ids)}"
+    check = db.connect(path)
+    assert check.execute("SELECT COUNT(*) FROM merchants").fetchone()[0] == 1
+    check.close()

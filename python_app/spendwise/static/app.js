@@ -152,6 +152,72 @@
       return true;
     }
 
+    /* ── Loading states ──────────────────────────────────────────────────
+       Navigation used to hold the OLD page until the new HTML arrived: on a
+       slow device that is a frozen screen with no signal that anything is
+       happening. These skeletons are SHAPED like the destination, so the
+       screen tells you what is coming rather than just that something is.
+
+       They appear only after SKELETON_DELAY. Most navigations here are local
+       and finish in well under that, and a skeleton that flashes for 40ms is
+       worse than none — it reads as a glitch. */
+    /* Read at call time, and overridable, so the loading state is testable
+       without timing races: a test sets window.__skDelay = 0 and asserts
+       deterministically instead of racing a real slow network. */
+    var SKELETON_DELAY = 120;
+    function skDelay() {
+      return (typeof window.__skDelay === "number") ? window.__skDelay : SKELETON_DELAY;
+    }
+    var skTimer = null;
+
+    function skRows(n) {
+      var out = "";
+      for (var i = 0; i < n; i++) {
+        out += '<div class="sk-row"><div class="sk sk-ava"></div>' +
+               '<div class="sk-body"><div class="sk sk-line" style="width:' +
+               (58 + (i % 3) * 12) + '%"></div>' +
+               '<div class="sk sk-line sm" style="width:34%"></div></div>' +
+               '<div class="sk sk-line" style="width:58px"></div></div>';
+      }
+      return out;
+    }
+
+    function skeletonFor(url) {
+      var p = (url || "").split("?")[0];
+      if (p.indexOf("/dashboard") === 0 || p === "/") {
+        return '<div class="sk-stack">' +
+               '<div class="sk sk-hero"></div>' +
+               '<div class="sk-row"><div class="sk-body">' +
+               '<div class="sk sk-line lg" style="width:44%"></div>' +
+               '<div class="sk sk-line sm" style="width:70%"></div></div></div>' +
+               '<div class="sk sk-chart"></div>' + skRows(3) + '</div>';
+      }
+      if (p.indexOf("/report") === 0 || p.indexOf("/categories") === 0) {
+        return '<div class="sk-stack"><div class="sk sk-chart"></div>' + skRows(4) + '</div>';
+      }
+      /* transactions, review, quarantine, fraud, settings — all list-shaped */
+      return '<div class="sk-stack">' +
+             '<div class="sk sk-line lg" style="width:100%; height:2.6rem; border-radius:var(--r)"></div>' +
+             skRows(6) + '</div>';
+    }
+
+    function skShow(url) {
+      skClear();
+      skTimer = setTimeout(function () {
+        var main = document.querySelector("main");
+        if (!main) return;
+        main.setAttribute("aria-busy", "true");
+        main.innerHTML = skeletonFor(url);
+        skTimer = null;
+      }, skDelay());
+    }
+
+    function skClear() {
+      if (skTimer) { clearTimeout(skTimer); skTimer = null; }
+      var main = document.querySelector("main");
+      if (main) main.removeAttribute("aria-busy");
+    }
+
     function fetchPage(url) {
       return fetch(url, { credentials: "same-origin", headers: { "X-SPA": "1" } }).then(function (r) {
         var ct = r.headers.get("content-type") || "";
@@ -201,9 +267,9 @@
     function render(payload, url, opts) {
       var doc;
       try { doc = new DOMParser().parseFromString(payload.html, "text/html"); }
-      catch (e) { location.href = url; return; }
+      catch (e) { skClear(); location.href = url; return; }
       var nextMain = doc.querySelector("main");
-      if (!nextMain) { location.href = payload.url || url; return; } // auth page -> full load
+      if (!nextMain) { skClear(); location.href = payload.url || url; return; } // auth page -> full load
 
       if (doc.title) document.title = doc.title;
       var th = doc.documentElement.getAttribute("data-theme");
@@ -212,7 +278,14 @@
       swapRegion(doc, "header.appbar"); // heading + subhead + back/avatar
       swapRegion(doc, "nav.tabbar");     // active tab + nav badge counts
       var main = document.querySelector("main");
+      var wasBusy = main.getAttribute("aria-busy") === "true";
+      skClear();
       main.innerHTML = nextMain.innerHTML; // swap ONLY the page body — shell stays mounted
+      if (wasBusy) {                       // only animate if a skeleton was actually shown
+        main.classList.remove("page-in");
+        void main.offsetWidth;             // restart the animation
+        main.classList.add("page-in");
+      }
       execScripts(main);                   // re-run per-page inline scripts (import.html)
       syncOverlay(doc, ".cat-modal");      // SMS categorize popup
       syncOverlay(doc, ".perm-banner");    // SMS permission nudge
@@ -228,16 +301,18 @@
       opts = opts || {};
       if (opts.push) { try { history.replaceState({ spa: 1, scroll: window.scrollY }, ""); } catch (e) {} }
       barStart();
+      skShow(url);
       var mine = ++seq;
       var e = cache[url];
       var src = (e && Date.now() - e.t < 10000) ? e.p : fetchPage(url); // reuse prefetch if fresh
       delete cache[url];
       src.then(function (payload) {
         if (mine !== seq) return;          // a newer tap superseded this one
-        render(payload, url, opts);
+        render(payload, url, opts);        // render() clears the skeleton
         barDone();
       }).catch(function () {
         if (mine !== seq) return;
+        skClear();                         // never leave a stuck skeleton behind
         barDone();
         location.href = url;               // graceful fallback -> real navigation
       });
