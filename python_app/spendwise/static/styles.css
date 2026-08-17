@@ -878,3 +878,32 @@ textarea { min-height: var(--tap); }
 @media (prefers-reduced-motion: reduce) {
   .tx-item.swipe-settle > summary.tx { transition: none; }
 }
+
+/* ── Pull to refresh ─────────────────────────────────────────────────────
+   The ledger fills itself from SMS in the background, so what is on screen
+   can go stale while you look at it. overscroll-behavior-y: contain stops
+   the browser's own pull-to-refresh from firing underneath ours. */
+html, body { overscroll-behavior-y: contain; }
+.ptr {
+  position: fixed; top: 8px; left: 50%; z-index: 60;
+  transform: translateX(-50%); opacity: 0; pointer-events: none;
+  width: 34px; height: 34px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--hairline);
+  box-shadow: 0 6px 18px rgba(0,0,0,.18);
+  display: grid; place-items: center;
+  transition: opacity .18s var(--ease);
+}
+.ptr-c {
+  width: 16px; height: 16px; border-radius: 999px;
+  border: 2px solid var(--hairline-2); border-top-color: var(--primary);
+}
+.ptr.ready .ptr-c { border-top-color: var(--income); }
+.ptr.spin .ptr-c { animation: ptr-spin .7s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .ptr.spin .ptr-c { animation: none; border-top-color: var(--income); }
+}
+
+/* While a finger is on the sheet the transform must follow it exactly, with
+   no easing in between; the transition comes back on release. */
+.sheet.dragging { transition: none; }

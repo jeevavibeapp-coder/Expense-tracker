@@ -419,6 +419,150 @@
       sw = null;
     }, { passive: true });
 
+    /* ── Pull to refresh ─────────────────────────────────────────────────
+       This ledger fills itself from SMS in the background, so the screen in
+       front of you can go stale while you are looking at it. The only way to
+       get fresh numbers was to leave the screen and come back.
+
+       Same safety rules as the row swipe, plus one more: we only ever engage
+       at the very top of the page pulling DOWN, so the gesture is impossible
+       to trigger mid-scroll. preventDefault() is called ONLY after the pull
+       has been claimed, which is why this one listener is non-passive while
+       every other touch listener stays passive. */
+    var PTR_TRIGGER = 72;       // px of pull needed to commit
+    var PTR_MAX = 110;          // resistance ceiling
+    var ptr = null, ptrEl = null;
+
+    function ptrIndicator() {
+      if (!ptrEl || !document.body.contains(ptrEl)) {
+        ptrEl = document.createElement("div");
+        ptrEl.className = "ptr";
+        ptrEl.setAttribute("aria-hidden", "true");
+        ptrEl.innerHTML = '<span class="ptr-c"></span>';
+        document.body.appendChild(ptrEl);
+      }
+      return ptrEl;
+    }
+
+    function ptrSet(dist, ready) {
+      var el = ptrIndicator();
+      el.style.transform = "translateX(-50%) translateY(" + dist + "px)";
+      el.style.opacity = Math.min(1, dist / PTR_TRIGGER);
+      el.classList.toggle("ready", !!ready);
+    }
+
+    function ptrReset(spin) {
+      var el = ptrIndicator();
+      el.classList.toggle("spin", !!spin);
+      if (!spin) { el.style.opacity = "0"; el.style.transform = "translateX(-50%) translateY(0)"; }
+    }
+
+    document.addEventListener("touchstart", function (e) {
+      ptr = null;
+      if (e.touches.length !== 1) return;
+      if (window.scrollY > 0) return;                       // not at the top
+      if (location.hash && document.querySelector(".sheet-target:target")) return;
+      if (document.querySelector("main[aria-busy='true']")) return;  // already loading
+      ptr = { y: e.touches[0].clientY, x: e.touches[0].clientX,
+              d: 0, active: false };
+    }, { passive: true });
+
+    document.addEventListener("touchmove", function (e) {
+      if (!ptr || e.touches.length !== 1) return;
+      var dy = e.touches[0].clientY - ptr.y;
+      var dx = e.touches[0].clientX - ptr.x;
+      if (!ptr.active) {
+        if (dy <= 0 || window.scrollY > 0) { ptr = null; return; }   // scrolling up/away
+        if (dy < 12 || Math.abs(dx) > dy) return;                    // not clearly a pull
+        ptr.active = true;
+        ptrReset(false);
+      }
+      /* Rubber band: the pull gets heavier the further it goes, so it never
+         feels like the page came unstuck. */
+      ptr.d = Math.min(PTR_MAX, dy * 0.55);
+      ptrSet(ptr.d, ptr.d >= PTR_TRIGGER);
+      e.preventDefault();               // only ever reached once claimed
+    }, { passive: false });
+
+    function ptrEnd() {
+      if (!ptr) return;
+      var p = ptr; ptr = null;
+      if (!p.active) return;
+      if (p.d < PTR_TRIGGER) { ptrReset(false); return; }
+      ptrSet(56, true);
+      ptrReset(true);
+      buzz(8);
+      navigate(location.pathname + location.search, { scroll: 0 });
+      /* navigate() replaces <main>; the indicator lives outside it, so it has
+         to be taken down here. barDone/skClear cannot see it. */
+      setTimeout(function () { ptrReset(false); }, 700);
+    }
+    document.addEventListener("touchend", ptrEnd, { passive: true });
+    document.addEventListener("touchcancel", function () {
+      if (ptr && ptr.active) ptrReset(false);
+      ptr = null;
+    }, { passive: true });
+
+    /* ── Drag a sheet down to dismiss it ─────────────────────────────────
+       The grip at the top of every sheet has always looked draggable and
+       never was — the only way out was the scrim or the close button. An
+       affordance that does nothing is worse than no affordance.
+
+       The sheet is itself scrollable, so a drag is only a dismissal when the
+       sheet is already scrolled to its top; otherwise it is the user reading
+       the form. */
+    var SHEET_DISMISS = 0.28;   // fraction of sheet height that commits
+    var sh = null;
+
+    function openSheet() {
+      var t = document.querySelector(".sheet-target:target");
+      return t ? t.parentNode.querySelector(".sheet") : null;
+    }
+
+    document.addEventListener("touchstart", function (e) {
+      sh = null;
+      if (e.touches.length !== 1) return;
+      var sheet = e.target.closest && e.target.closest(".sheet");
+      if (!sheet || sheet !== openSheet()) return;
+      if (sheet.scrollTop > 0) return;             // they are reading, not dragging
+      sh = { el: sheet, y: e.touches[0].clientY, x: e.touches[0].clientX,
+             d: 0, active: false };
+    }, { passive: true });
+
+    document.addEventListener("touchmove", function (e) {
+      if (!sh || e.touches.length !== 1) return;
+      var dy = e.touches[0].clientY - sh.y;
+      var dx = e.touches[0].clientX - sh.x;
+      if (!sh.active) {
+        if (dy <= 0 || sh.el.scrollTop > 0) { sh = null; return; }
+        if (dy < 10 || Math.abs(dx) > dy) return;
+        sh.active = true;
+        sh.el.classList.add("dragging");
+      }
+      sh.d = dy;
+      sh.el.style.transform = "translateX(-50%) translateY(" + dy + "px)";
+      e.preventDefault();                          // only after the drag is claimed
+    }, { passive: false });
+
+    function sheetEnd() {
+      if (!sh) return;
+      var s2 = sh; sh = null;
+      if (!s2.active) return;
+      s2.el.classList.remove("dragging");
+      var h = s2.el.getBoundingClientRect().height || 1;
+      if (s2.d > h * SHEET_DISMISS) {
+        s2.el.style.transform = "";                // let the CSS close animation run
+        location.hash = "#!";
+      } else {
+        s2.el.style.transform = "";                // springs back to open
+      }
+    }
+    document.addEventListener("touchend", sheetEnd, { passive: true });
+    document.addEventListener("touchcancel", function () {
+      if (sh && sh.active) { sh.el.classList.remove("dragging"); sh.el.style.transform = ""; }
+      sh = null;
+    }, { passive: true });
+
     document.addEventListener("click", function (e) {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       var a = e.target.closest && e.target.closest("a[href]");

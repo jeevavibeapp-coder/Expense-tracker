@@ -341,6 +341,78 @@ def main() -> int:
                 check(page.evaluate("() => window.scrollY") > 50,
                       "the swipe handler broke vertical scrolling on Activity")
 
+        # 9g) Pull-to-refresh. The dangerous failure is not "it didn't
+        #     refresh" — it is "it ate the scroll", because the handler is the
+        #     only non-passive touch listener in the app and it calls
+        #     preventDefault(). So both directions are asserted.
+        page.goto(BASE + "/transactions", wait_until="networkidle")
+        page.evaluate("window.scrollTo(0, 0)")
+        # a) A short pull must not refresh: no spinner is left behind.
+        def pull(px, py, dy, steps=14):
+            cdp.send("Input.dispatchTouchEvent",
+                     {"type": "touchStart", "touchPoints": [{"x": px, "y": py}]})
+            for i in range(1, steps + 1):
+                cdp.send("Input.dispatchTouchEvent",
+                         {"type": "touchMove",
+                          "touchPoints": [{"x": px, "y": py + dy * i / steps}]})
+            cdp.send("Input.dispatchTouchEvent",
+                     {"type": "touchEnd", "touchPoints": []})
+
+        pull(195, 140, 30)
+        page.wait_for_timeout(400)
+        check(page.locator(".ptr.spin").count() == 0,
+              "a 30px pull triggered a refresh — the threshold is too low")
+
+        # b) A decisive pull must actually refetch the page, and must ALWAYS
+        #    clear its spinner. Counting fetches is what makes this a real
+        #    assertion: "the spinner is gone and the page still says Activity"
+        #    would also pass if the gesture did nothing at all.
+        page.evaluate("""() => {
+          window.__fetches = 0;
+          const orig = window.fetch;
+          window.fetch = function (u, o) {
+            if (String(u).indexOf('/transactions') === 0) window.__fetches++;
+            return orig.apply(this, arguments);
+          };
+        }""")
+        pull(195, 140, 220)
+        page.wait_for_timeout(1600)
+        check(page.evaluate("() => window.__fetches") > 0,
+              "a 220px pull did not refetch the page — pull-to-refresh is dead")
+        check(page.locator(".ptr.spin").count() == 0,
+              "the pull-to-refresh spinner was left spinning after the reload")
+        check("Activity" in page.content(),
+              "the page did not survive a pull-to-refresh")
+
+        # c) ...and scrolling must still work after all that.
+        page.evaluate("window.scrollTo(0, 0)")
+        if page.evaluate("() => document.documentElement.scrollHeight "
+                         "- document.documentElement.clientHeight") > 200:
+            page.mouse.move(195, 500)
+            page.mouse.wheel(0, 900)
+            page.wait_for_timeout(350)
+            check(page.evaluate("() => window.scrollY") > 50,
+                  "pull-to-refresh broke vertical scrolling on Activity")
+
+        # 9h) A sheet must be dismissable by dragging it down, and must NOT be
+        #     dismissed by a small drag (that would eat form interaction).
+        page.goto(BASE + "/dashboard", wait_until="networkidle")
+        page.click(".fab")
+        page.wait_for_timeout(400)
+        box = page.locator(".sheet[aria-label='Add transaction']").bounding_box()
+        check(box is not None, "add sheet did not open for the drag test")
+        if box:
+            top = box["y"] + 20
+            pull(195, top, 25)                      # small drag: must stay open
+            page.wait_for_timeout(450)
+            check(page.locator(".sheet[aria-label='Add transaction']").is_visible(),
+                  "a 25px drag closed the sheet — a scroll would dismiss it")
+            pull(195, top, 320)                     # decisive drag: must close
+            page.wait_for_timeout(600)
+            closed = (page.evaluate(
+                "() => !document.querySelector('.sheet-target:target')"))
+            check(closed, "dragging the sheet down did not dismiss it")
+
         # 10) No icon may render oversized (a bare viewBox svg once filled the sheet).
         page.goto(BASE + "/dashboard", wait_until="networkidle")
         page.click(".fab")
