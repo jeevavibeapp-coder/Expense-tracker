@@ -34,6 +34,45 @@ DEFAULT_PORT = 8765
 INBOX_NAME = "sms_inbox.jsonl"
 
 
+def _watch_until_serving(host: str, port: int) -> None:
+    """Flip the stage to "serving" once the socket actually answers."""
+    def _watch() -> None:
+        global _stage
+        for _ in range(240):                         # ~60s, then give up quietly
+            if _healthz_ok(host, port, timeout=0.5):
+                _stage = "serving"
+                return
+            time.sleep(0.25)
+
+    threading.Thread(target=_watch, daemon=True,
+                     name="spendwise-stage-watch").start()
+
+
+def _log_traceback() -> None:
+    try:
+        import traceback
+        traceback.print_exc()                        # lands in logcat
+    except Exception:
+        pass
+
+
+def _healthz_ok(host: str, port: int, timeout: float = 1.5) -> bool:
+    """Is a SpendWise server already answering on this address?
+
+    The Android process outlives the activity, and the OS is free to start a
+    new one before the old has released its socket. So "the port is taken" is
+    a normal thing to find, and usually what is holding it is OUR OWN server
+    from a moment ago, still perfectly able to serve. Asking it is the only
+    way to tell that apart from a genuine conflict with another app.
+    """
+    try:
+        with urllib.request.urlopen(
+                f"http://{host}:{port}/healthz", timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
 def _run(db_path: str, host: str, port: int, token: "str | None",
          secret: "str | None" = None) -> None:
     """Build the app and serve it. Runs on a daemon thread.
@@ -45,22 +84,40 @@ def _run(db_path: str, host: str, port: int, token: "str | None",
     respond", which says nothing about what actually happened. The failure is
     now recorded where Java can ask for it.
     """
-    global _startup_error
+    global _startup_error, _stage
     try:
         _serve(db_path, host, port, token, secret)
+    except OSError as exc:
+        # EADDRINUSE (98). If our own server is on the other end of that
+        # socket the app is fine and this thread simply has nothing to do —
+        # reporting a failure here is what put "Address already in use" on
+        # screen while a working server was listening the whole time.
+        if _healthz_ok(host, port):
+            _stage = "serving"
+            _startup_error = None
+            return
+        _startup_error = (
+            f"{type(exc).__name__}: {exc}. Port {port} is held by something "
+            f"that is not SpendWise. Close the other app, or restart the "
+            f"phone.")
+        _log_traceback()
+        raise
     except BaseException as exc:                     # noqa: BLE001
         _startup_error = f"{type(exc).__name__}: {exc}"
-        try:
-            import traceback
-            traceback.print_exc()                    # lands in logcat
-        except Exception:
-            pass
+        _log_traceback()
         raise
 
 
 def _serve(db_path: str, host: str, port: int, token: "str | None",
            secret: "str | None" = None) -> None:
     global _stage
+    # Cheapest possible check first: if a server is already up on this port,
+    # there is nothing to do and nothing to fail.
+    _stage = "checking for a running engine"
+    if _healthz_ok(host, port):
+        _stage = "serving"
+        return
+
     _stage = "importing the app"
     from spendwise.app import create_app
 
@@ -79,7 +136,12 @@ def _serve(db_path: str, host: str, port: int, token: "str | None",
         # sockets to the loopback port until the process is killed — taking an
         # in-flight ledger write with it. These limits bound that.
         from waitress import serve
-        _stage = "serving"
+        _stage = f"binding port {port}"
+        # serve() blocks for the life of the process, so nothing after it can
+        # advance the stage. Without this watcher the splash would sit on
+        # "binding port 8765" for as long as it was shown — while the server
+        # was already answering.
+        _watch_until_serving(host, port)
         serve(app, host=host, port=port,
               threads=4,               # a single on-device user
               connection_limit=32,     # refuse floods instead of exhausting RAM
@@ -89,7 +151,7 @@ def _serve(db_path: str, host: str, port: int, token: "str | None",
     except ImportError:
         # Never leave the user without an app if the wheel is missing from a
         # given build; fall back with the same bounded intent.
-        _stage = "serving (waitress missing, using the fallback server)"
+        _stage = f"binding port {port} (fallback server)"
         app.run(host=host, port=port, threaded=True, use_reloader=False, debug=False)
 
 

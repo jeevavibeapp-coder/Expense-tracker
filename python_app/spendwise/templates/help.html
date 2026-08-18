@@ -46,6 +46,13 @@
         <p>If it keeps failing, the grey box on that screen carries the actual
           error. That line is what identifies the problem; a screenshot of it
           is more useful than any description.</p>
+        <p>One of those lines used to be <b>“Address already in use”</b>. That
+          meant the previous copy of the engine had not let go of its port
+          yet — the app was fine and simply refused to notice. It now checks
+          whether the engine is already running before trying to start a
+          second one. If you see that message on a current build, something
+          other than SpendWise is using the port, and restarting the phone
+          clears it.</p>
       </div>
     </details>
 

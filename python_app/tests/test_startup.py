@@ -305,12 +305,29 @@ def test_startup_reports_which_step_it_is_on(tmp_path):
         time.sleep(0.05)
 
     assert "serving" in seen, f"never reached serving; stages were {seen}"
-    assert "opening the database" in seen, \
-        f"the database step was never announced; stages were {seen}"
+    assert seen[-1] == "serving", f"ended on {seen[-1]!r}; stages were {seen}"
+
+    # Not asserting that a particular intermediate stage was OBSERVED: on a
+    # fast machine several complete between polls, and a test that depends on
+    # losing that race is a flake waiting to happen. What matters is that the
+    # ones we did see came in the defined order.
+    ORDER = ["not started", "checking for a running engine", "importing the app",
+             "opening the database", "starting the web server", "binding port",
+             "serving"]
+
+    def rank(stage):
+        for i, known in enumerate(ORDER):
+            if stage.startswith(known):
+                return i
+        raise AssertionError(f"unknown stage {stage!r}")
+
+    ranks = [rank(st) for st in seen]
+    assert ranks == sorted(ranks), f"stages went backwards: {seen}"
+
     # Every stage must read as a phrase for a person, not an identifier.
     for st in seen:
-        assert st == st.lower() or " " in st, f"{st!r} is not a readable phrase"
         assert "_" not in st, f"{st!r} looks like an identifier"
+        assert st[0].islower() or st[0].isdigit(), f"{st!r} is not a phrase"
 
 
 def test_the_activity_puts_the_stage_on_the_loading_screen():
@@ -326,3 +343,70 @@ def test_the_activity_puts_the_stage_on_the_loading_screen():
         "the stage is injected into JS without quoting"
     assert "Still at: " in raw, \
         "a stuck start with no exception still reports nothing"
+
+
+def test_relaunching_onto_our_own_port_is_not_a_failure(tmp_path):
+    """The device failure, reproduced.
+
+    The Android process outlives the activity and the OS may start a new one
+    before the old has released its socket, so a fresh launch routinely finds
+    port 8765 taken — by the previous SpendWise server, still perfectly able
+    to serve. Treating that as fatal put
+
+        OSError: [Errno 98] Address already in use
+
+    on screen while a working server was listening the whole time.
+    """
+    import time
+    from spendwise import android_entry as ae
+
+    port = 8981
+    ae.start_server(str(tmp_path), "tok", "secret", port=port)
+    for _ in range(200):
+        if ae.startup_stage() == "serving":
+            break
+        time.sleep(0.05)
+    assert ae.startup_stage() == "serving"
+
+    # A second process: no live thread of its own, but the port is held.
+    ae._server_thread = None
+    ae._startup_error = None
+    ae._stage = "not started"
+    ae.start_server(str(tmp_path), "tok", "secret", port=port)
+    for _ in range(200):
+        if ae.startup_stage() == "serving" or ae.startup_error():
+            break
+        time.sleep(0.05)
+
+    assert ae.startup_error() == "", \
+        f"a relaunch reported a failure: {ae.startup_error()}"
+    assert ae.startup_stage() == "serving"
+
+
+def test_a_port_held_by_something_else_says_so(tmp_path, monkeypatch):
+    """The opposite case must still be reported, and must name the port —
+    'Address already in use' alone gives the user nothing to act on."""
+    import socket
+    import time
+    from spendwise import android_entry as ae
+
+    blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    blocker.bind(("127.0.0.1", 0))
+    port = blocker.getsockname()[1]
+    blocker.listen(1)
+    try:
+        ae._server_thread = None
+        ae._startup_error = None
+        ae._stage = "not started"
+        ae.start_server(str(tmp_path), "tok", "secret", port=port)
+        for _ in range(200):
+            if ae.startup_error():
+                break
+            time.sleep(0.05)
+        err = ae.startup_error()
+        assert err, "a genuine port conflict was swallowed"
+        assert str(port) in err, "the message does not name the port"
+        assert "not SpendWise" in err
+    finally:
+        blocker.close()
