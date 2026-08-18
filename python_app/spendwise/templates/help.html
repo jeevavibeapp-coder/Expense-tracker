@@ -33,6 +33,23 @@
 
   <div class="card stack" style="gap:0">
     <details class="faq">
+      <summary>“Couldn't start SpendWise”</summary>
+      <div class="faq-b">
+        <p>The app runs a small Python engine on the phone and waits for it to
+          answer before showing anything. This screen means it did not answer
+          in time.</p>
+        <p>On the <b>first</b> launch that engine has a lot to do: unpack
+          Python, load the app, and build the database. On a slower phone that
+          can take a while, so tapping <b>Retry</b> once is worth doing before
+          anything else — the second launch is much faster because the work is
+          already done.</p>
+        <p>If it keeps failing, the grey box on that screen carries the actual
+          error. That line is what identifies the problem; a screenshot of it
+          is more useful than any description.</p>
+      </div>
+    </details>
+
+    <details class="faq">
       <summary>Android refused to install the app</summary>
       <div class="faq-b">
         <p>Two different refusals, with two different causes.</p>

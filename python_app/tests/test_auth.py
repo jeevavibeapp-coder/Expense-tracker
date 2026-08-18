@@ -323,7 +323,10 @@ def test_android_entry_always_supplies_a_device_token():
     gets one — this pins the call contract that guarantees it."""
     import inspect
     from spendwise import android_entry
-    src = inspect.getsource(android_entry._run)
+    # The whole module, not one function: create_app has already moved once
+    # (from _run into _serve, when startup failures started being recorded),
+    # and this contract must survive the next refactor too.
+    src = inspect.getsource(android_entry)
     assert "device_token=token" in src
     params = list(inspect.signature(android_entry.start_server).parameters)
     assert params[:3] == ["files_dir", "token", "secret"]

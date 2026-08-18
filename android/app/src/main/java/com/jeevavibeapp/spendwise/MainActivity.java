@@ -37,7 +37,14 @@ public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "SpendWise";
     private static final String SERVER_URL = "http://127.0.0.1:8765";
-    private static final long SERVER_TIMEOUT_MS = 20000L;  // extra headroom on low-end devices
+    // A COLD first launch has to do a lot before /healthz can answer: Chaquopy
+    // unpacks Python and the stdlib, Flask and waitress import, then ten schema
+    // migrations run against a database that does not exist yet. Twenty seconds
+    // was enough on a fast phone and not on a slow one, where it produced
+    // "the app engine didn't respond" for a server that was simply still
+    // starting. Polling is cheap, so a higher ceiling costs nothing when
+    // startup is quick — it only changes how long a slow device may take.
+    private static final long SERVER_TIMEOUT_MS = 90000L;
     private static final long POLL_INTERVAL_MS = 250L;
     private static final int SMS_PERMISSION_REQUEST = 4011;
     private static final String PREFS = "spendwise";
@@ -390,7 +397,7 @@ public class MainActivity extends BridgeActivity {
                     .callAttr("start_server", filesDir, token, secret);
         } catch (Throwable t) {
             Log.e(TAG, "Failed to start embedded Python server", t);
-            showStartupError();
+            showStartupError(t.getClass().getSimpleName() + ": " + t.getMessage());
             return;
         }
 
@@ -442,8 +449,24 @@ public class MainActivity extends BridgeActivity {
             });
             catchUpFromInbox(filesDir, token, secret);
         } else {
-            Log.e(TAG, "Embedded server did not become ready within timeout");
-            showStartupError();
+            // The server thread may have died with an exception that never
+            // reached this thread — start_server() returns as soon as the
+            // thread is spawned. Ask for it before blaming the clock.
+            String reason = pythonStartupError();
+            Log.e(TAG, "Embedded server not ready within " + SERVER_TIMEOUT_MS
+                    + "ms" + (reason.isEmpty() ? "" : "; python said: " + reason));
+            showStartupError(reason);
+        }
+    }
+
+    /** Whatever killed the Python server thread, or "" if it is merely slow. */
+    private String pythonStartupError() {
+        try {
+            return Python.getInstance()
+                    .getModule("spendwise.android_entry")
+                    .callAttr("startup_error").toString();
+        } catch (Throwable t) {
+            return "";
         }
     }
 
@@ -468,15 +491,25 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void showStartupError() {
+    private void showStartupError(final String reason) {
+        // A retry button and nothing else asks the user to guess. When Python
+        // told us why, show it — that is the difference between "try again"
+        // and a line someone can search for or send on.
+        final String detail = (reason == null || reason.isEmpty())
+                ? ""
+                : "<pre>" + android.text.TextUtils.htmlEncode(reason) + "</pre>";
         final String html =
             "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
             + "<style>html,body{margin:0;height:100%;font-family:-apple-system,Roboto,sans-serif;"
             + "background:linear-gradient(135deg,#8b5cff,#5b8cff);color:#fff;display:flex;align-items:center;"
             + "justify-content:center;text-align:center}.b{padding:28px}h1{font-size:20px;margin:0 0 8px}"
             + "p{opacity:.9;font-size:14px;margin:0 0 22px}button{padding:13px 28px;border:none;border-radius:999px;"
-            + "font-size:15px;font-weight:700;color:#5b3cff;background:#fff}</style></head><body><div class='b'>"
+            + "font-size:15px;font-weight:700;color:#5b3cff;background:#fff}"
+            + "pre{white-space:pre-wrap;word-break:break-word;font-size:11px;opacity:.9;"
+            + "background:rgba(0,0,0,.25);padding:10px;border-radius:10px;margin:0 0 18px;text-align:left}"
+            + "</style></head><body><div class='b'>"
             + "<h1>Couldn't start SpendWise</h1><p>The app engine didn't respond. Please try again.</p>"
+            + detail
             + "<button onclick=\"if(window.AndroidSms&&AndroidSms.retry){AndroidSms.retry()}\">Retry</button>"
             + "</div></body></html>";
         runOnUiThread(new Runnable() {

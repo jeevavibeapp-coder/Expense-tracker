@@ -17,6 +17,9 @@ _server_thread: "threading.Thread | None" = None
 _lock = threading.Lock()
 _device_token: "str | None" = None
 _session_secret: "str | None" = None
+# Set by the server thread when startup fails, so the activity can show
+# the real reason instead of a generic timeout message.
+_startup_error: "str | None" = None
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -28,6 +31,30 @@ INBOX_NAME = "sms_inbox.jsonl"
 
 def _run(db_path: str, host: str, port: int, token: "str | None",
          secret: "str | None" = None) -> None:
+    """Build the app and serve it. Runs on a daemon thread.
+
+    Anything that goes wrong in here used to vanish. Java calls start_server(),
+    which returns as soon as the thread is spawned, so an import error or a
+    failed migration on THIS thread never reached the caller — the activity
+    just polled /healthz for twenty seconds and put up "the app engine didn't
+    respond", which says nothing about what actually happened. The failure is
+    now recorded where Java can ask for it.
+    """
+    global _startup_error
+    try:
+        _serve(db_path, host, port, token, secret)
+    except BaseException as exc:                     # noqa: BLE001
+        _startup_error = f"{type(exc).__name__}: {exc}"
+        try:
+            import traceback
+            traceback.print_exc()                    # lands in logcat
+        except Exception:
+            pass
+        raise
+
+
+def _serve(db_path: str, host: str, port: int, token: "str | None",
+           secret: "str | None" = None) -> None:
     from spendwise.app import create_app
 
     # `secret` comes from the Android Keystore (SecretVault). Passing it here
@@ -150,3 +177,13 @@ def start_server(files_dir: str = None, token: str = None, secret: str = None,
 
 def is_running() -> bool:
     return _server_thread is not None and _server_thread.is_alive()
+
+
+def startup_error() -> str:
+    """The exception that killed the server thread, or "" if there was none.
+
+    Called from Java when the readiness poll times out. A string rather than
+    an object because it crosses the Chaquopy boundary and is only ever shown
+    to a person.
+    """
+    return _startup_error or ""

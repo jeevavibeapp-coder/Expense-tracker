@@ -217,3 +217,69 @@ def test_the_webview_authenticates_itself_to_the_server():
     raw = _source()
     assert "/?k=" in raw, "the WebView no longer performs the auth grant"
     assert "Uri.encode(token)" in raw
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_a_dead_server_thread_reports_why(monkeypatch):
+    """start_server() returns as soon as the thread is spawned, so an
+    exception raised while building or serving the app never reached the
+    Android activity. It polled /healthz, gave up, and showed "the app engine
+    didn't respond" — a message that describes the symptom and hides the
+    cause. The reason is now recorded where Java can ask for it.
+    """
+    import time
+    from spendwise import android_entry as ae
+
+    monkeypatch.setattr(ae, "_startup_error", None)
+    monkeypatch.setattr(ae, "_server_thread", None)
+
+    def boom(*a, **kw):
+        raise RuntimeError("simulated on-device failure")
+
+    monkeypatch.setattr(ae, "_serve", boom)
+    ae.start_server("/tmp", "tok", "sec", port=8998)
+
+    for _ in range(60):
+        if ae.startup_error():
+            break
+        time.sleep(0.05)
+    assert "simulated on-device failure" in ae.startup_error()
+    assert "RuntimeError" in ae.startup_error()
+
+
+def test_no_startup_error_is_reported_when_nothing_failed(monkeypatch):
+    """The activity shows this string to the user, so a healthy launch must
+    not put a stray value on the error screen."""
+    from spendwise import android_entry as ae
+    monkeypatch.setattr(ae, "_startup_error", None)
+    assert ae.startup_error() == ""
+
+
+def test_the_startup_timeout_leaves_room_for_a_cold_chaquopy_launch():
+    """A first launch unpacks Python and the stdlib, imports Flask and
+    waitress, and runs every schema migration against a database that does
+    not exist yet. Twenty seconds covered a fast phone and not a slow one,
+    where the activity reported a failure for a server that was still
+    starting."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise/MainActivity.java")
+    raw = src.read_text()
+    import re
+    m = re.search(r"SERVER_TIMEOUT_MS\s*=\s*(\d+)L", raw)
+    assert m, "the startup timeout constant moved"
+    assert int(m.group(1)) >= 60000, \
+        f"startup timeout is {m.group(1)}ms — too tight for a cold launch"
+
+
+def test_the_startup_error_screen_shows_the_reason():
+    """A retry button and nothing else asks the user to guess."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise/MainActivity.java")
+    raw = src.read_text()
+    assert "pythonStartupError()" in raw, \
+        "the activity no longer asks Python why it failed"
+    assert "showStartupError(reason)" in raw
+    assert "htmlEncode(reason)" in raw, \
+        "the reason is interpolated into HTML without escaping"
