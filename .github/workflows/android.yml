@@ -53,7 +53,7 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug assembleRelease
+          ./gradlew assembleSmsRelease assembleNosmsRelease assembleSmsDebug
         env:
           # Empty unless configured as repository secrets; the build then
           # produces an unsigned release rather than signing with a repo key.
@@ -62,45 +62,46 @@ jobs:
           SPENDWISE_KEY_ALIAS: ${{ secrets.SPENDWISE_KEY_ALIAS }}
           SPENDWISE_KEY_PASSWORD: ${{ secrets.SPENDWISE_KEY_PASSWORD }}
 
-      # The release APK is now always signed (repo secrets if present, the
-      # stable committed key otherwise), and release builds are not
-      # debuggable. That combination is what gets past Play Protect and MIUI:
-      # a debuggable app requesting READ_SMS is blocked hardest, which is why
-      # the debug build was refused with INSTALL_FAILED_VERIFICATION_FAILURE.
-      - name: Upload Release APK (install this one)
+      # Two APKs, because Play Protect blocks the sideload of any app that
+      # requests READ_SMS — in India/Singapore/Thailand/Brazil with no
+      # override. That block is about the permission being in the manifest,
+      # not about signing or the debuggable flag, so the only build that
+      # installs on those devices is one that never asks for it.
+      - name: Upload no-SMS APK (installs anywhere)
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-INSTALL-THIS
+          name: app-NOSMS-installs-anywhere
           if-no-files-found: error
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/nosms/release/app-nosms-release.apk
 
-      # Kept for debugging on a machine with adb attached. Do not sideload it:
-      # it is debuggable and Play Protect blocks it.
-      - name: Upload Debug APK (for adb debugging only)
+      - name: Upload full APK (needs Play Protect allowances)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-FULL-sms-autocapture
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/sms/release/app-sms-release.apk
+
+      # Debuggable. For `adb install` during development only — Play Protect
+      # blocks debuggable builds hardest of all.
+      - name: Upload debug APK (adb only)
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-for-adb-only
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          path: android/app/build/outputs/apk/sms/debug/app-sms-debug.apk
 
       - name: Report what was built
         if: always()
         run: |
-          out=android/app/build/outputs/apk/release
-          if [ -f "$out/app-release-unsigned.apk" ]; then
-            echo "::error::The release APK came out UNSIGNED. It cannot be"\
-                 "installed. This should not happen — build.gradle falls back"\
-                 "to the committed key when no secrets are set."
+          find android/app/build/outputs/apk -name '*.apk' -printf '%f  %s bytes\n' \
+            2>/dev/null | sort || true
+          if ls android/app/build/outputs/apk/*/release/*unsigned*.apk >/dev/null 2>&1; then
+            echo "::error::An UNSIGNED release APK was produced. It cannot be"\
+                 "installed. build.gradle should fall back to the committed key."
             exit 1
           fi
-          if [ -n "${SPENDWISE_KEYSTORE_FILE}" ]; then
-            echo "::notice::Release signed with your repository secrets."
-          else
-            echo "::notice::Release signed with the committed stable key."\
-                 "Fine for your own phone. Set the SPENDWISE_* secrets before"\
-                 "distributing to anyone else."
-          fi
-          echo "::notice::Install 'app-release-INSTALL-THIS'. Play Protect may"\
-               "still warn because the app reads bank SMS — that warning is"\
-               "about the permission, not about the app."
-        env:
-          SPENDWISE_KEYSTORE_FILE: ${{ secrets.SPENDWISE_KEYSTORE_FILE }}
+          echo "::notice::Play Protect blocks sideloaded apps that request"\
+               "READ_SMS. If 'app-FULL-sms-autocapture' is refused with"\
+               "INSTALL_FAILED_VERIFICATION_FAILURE, install"\
+               "'app-NOSMS-installs-anywhere' instead — same app, no automatic"\
+               "capture, paste bank messages into the Import screen."

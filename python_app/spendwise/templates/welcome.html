@@ -77,7 +77,16 @@
        style="display:block; text-align:center">Read the full privacy note</a>
   </div>
 
-  {% if sms.permission == 'denied' or not sms.captured %}
+  {% if sms.permission == 'unavailable' %}
+  <div class="card stack" style="gap:10px">
+    <div style="font-weight:700; font-size: var(--t-sm)">About this build</div>
+    <div class="mut" style="font-size: var(--t-xs)">
+      This copy was built without SMS access, so nothing is read from your
+      messages at all. Add transactions yourself, or paste a bank message into
+      the Import screen and SpendWise will read the amount out of it.
+    </div>
+  </div>
+  {% elif sms.permission == 'denied' or not sms.captured %}
   <div class="card stack" style="gap:10px">
     <div style="font-weight:700; font-size: var(--t-sm)">Turn on SMS capture</div>
     <div class="mut" style="font-size: var(--t-xs)">

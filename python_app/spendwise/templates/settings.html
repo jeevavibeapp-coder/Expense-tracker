@@ -62,7 +62,9 @@
   <div class="card stack">
     <div style="display:flex; align-items:center; gap:10px">
       <span style="font-weight:700; flex:1">Status</span>
-      {% if sms.permission == 'denied' %}
+      {% if sms.permission == 'unavailable' %}
+        <span class="pill">Not in this build</span>
+      {% elif sms.permission == 'denied' %}
         <span class="pill pill-warn">Permission off</span>
       {% elif sms.captured %}
         <span class="pill pill-ok">Working</span>
@@ -76,7 +78,16 @@
       <div class="stat"><div class="k">Last</div>
         <div class="v num" style="font-size: 0.875rem">{{ sms.last[:10] if sms.last else '–' }}</div></div>
     </div>
-    {% if sms.permission == 'denied' %}
+    {% if sms.permission == 'unavailable' %}
+    {# The no-SMS build. Offering an "Allow" button here would ask the user to
+       grant something this APK never requests. #}
+    <div class="mut" style="font-size: 0.7812rem">
+      This copy of SpendWise was built without SMS access, so bank messages
+      can't be captured automatically. Everything else works — add a
+      transaction yourself, or paste a bank message into
+      <a href="/import">Import</a>.
+    </div>
+    {% elif sms.permission == 'denied' %}
     <div class="mut" style="font-size: 0.7812rem">SpendWise can't read bank messages. Tap Allow to turn capture back on.</div>
     <button class="btn btn-sm" type="button"
             onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow SMS access</button>

@@ -74,6 +74,15 @@ android {
             }
         }
     }
+    // Two flavours of the same app, same applicationId and same signing key,
+    // so a phone can move from one to the other later without losing its
+    // ledger. See src/nosms/AndroidManifest.xml for why the second exists.
+    flavorDimensions "capture"
+    productFlavors {
+        sms   { dimension "capture" }      // the full app, needs sideload allowances
+        nosms { dimension "capture" }      // installs where Play Protect blocks SMS
+    }
+
     buildTypes {
         debug {
             signingConfig signingConfigs.devDebug

@@ -236,7 +236,43 @@ public class MainActivity extends BridgeActivity {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    /** Is this permission actually in OUR merged manifest?
+     *
+     * The nosms flavour strips READ_SMS and RECEIVE_SMS, because Play Protect
+     * refuses to sideload any app that asks for them. Requesting a permission
+     * the manifest does not declare is not a crash — the system returns
+     * PERMISSION_DENIED immediately — but the app would then show "SMS access
+     * is off, tap Allow" forever, on a build where there is nothing to allow.
+     * So the request, and the reported state, are both gated on this. */
+    private boolean isPermissionDeclared(String permission) {
+        try {
+            String[] declared = getPackageManager()
+                    .getPackageInfo(getPackageName(), PackageManager.GET_PERMISSIONS)
+                    .requestedPermissions;
+            if (declared == null) {
+                return false;
+            }
+            for (String p : declared) {
+                if (permission.equals(p)) {
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w("SpendWise", "Could not read declared permissions", t);
+        }
+        return false;
+    }
+
+    /** True on the full build, false on the no-SMS build. */
+    private boolean smsCaptureIsPossible() {
+        return isPermissionDeclared(Manifest.permission.RECEIVE_SMS)
+                && isPermissionDeclared(Manifest.permission.READ_SMS);
+    }
+
     private void requestSmsPermissions() {
+        if (!smsCaptureIsPossible()) {
+            return;              // nothing to ask for on this build
+        }
         if (!hasSmsPermission() || !hasReadSmsPermission()) {
             // getSharedPreferences blocks on the first call while the file is
             // read, and this runs from onCreate — so the write goes to a
@@ -284,6 +320,7 @@ public class MainActivity extends BridgeActivity {
         // from onResume, i.e. on EVERY return to the app, so it is the hottest
         // main-thread path in the activity.
         final boolean granted = hasSmsPermission();
+        final boolean capturePossible = smsCaptureIsPossible();
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -298,7 +335,7 @@ public class MainActivity extends BridgeActivity {
                 SharedPreferences p = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 final boolean changed = p.getInt("last_perm", -1) != (granted ? 1 : 0);
                 p.edit().putInt("last_perm", granted ? 1 : 0).apply();
-                boolean delivered = postState(granted, token);
+                boolean delivered = postState(granted, capturePossible, token);
                 if (delivered && granted && changed && reloadOnChange) {
                     runOnUiThread(new Runnable() {
                         @Override
@@ -314,7 +351,8 @@ public class MainActivity extends BridgeActivity {
         }, "spendwise-perm-report").start();
     }
 
-    private boolean postState(boolean granted, String token) {
+    private boolean postState(boolean granted, boolean capturePossible,
+                              String token) {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(SERVER_URL + "/device/state");
@@ -327,7 +365,12 @@ public class MainActivity extends BridgeActivity {
             if (token != null && !token.isEmpty()) {
                 conn.setRequestProperty("X-SpendWise-Token", token);
             }
-            String form = "sms_permission=" + (granted ? "granted" : "denied");
+            // Three states, not two. "unavailable" lets the UI say that this
+            // build cannot capture SMS at all, instead of blaming the user for
+            // a permission they were never offered.
+            String state = !capturePossible ? "unavailable"
+                                            : (granted ? "granted" : "denied");
+            String form = "sms_permission=" + state;
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(form.getBytes("UTF-8"));
             }

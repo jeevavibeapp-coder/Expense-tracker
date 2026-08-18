@@ -515,6 +515,8 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         theme, nav_fraud, nav_review, nav_held = "system", 0, 0, 0
         cat_prompts, prompt_categories = [], []
         st = db.one(g.conn, "SELECT value FROM app_state WHERE key='sms_permission'")
+        # Only a real refusal gets the "turn it on" banner. On a build with no
+        # SMS permission there is nothing to turn on.
         sms_denied = bool(st and st["value"] == "denied")
         uid = session.get("user_id")
         if uid:
@@ -1346,7 +1348,11 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         if not device_authorized():
             abort(403)
         perm = request.form.get("sms_permission")
-        if perm in ("granted", "denied"):
+        # "unavailable" is the no-SMS build reporting that it cannot capture
+        # at all, which is different from a user who declined. Nagging someone
+        # to grant a permission their build never asks for is the worst of the
+        # three states to get wrong.
+        if perm in ("granted", "denied", "unavailable"):
             db.execute(g.conn, "INSERT OR REPLACE INTO app_state(key, value) "
                        "VALUES ('sms_permission', ?)", (perm,))
             g.conn.commit()

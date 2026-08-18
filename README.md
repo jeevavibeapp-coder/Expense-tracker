@@ -125,41 +125,52 @@ Android SDK 36 → Python 3.11 for Chaquopy → `npx cap sync android &&
 
 ### Which APK to install
 
-**Download `app-release-INSTALL-THIS`.**
+**If you are in India, Singapore, Thailand or Brazil, download
+`app-NOSMS-installs-anywhere`.** Everywhere else, try the full build first.
 
-| Artifact | Signed | Debuggable | Sideload it? |
-|---|---|---|---|
-| `app-release-INSTALL-THIS` | yes | no | **yes** |
-| `app-debug-for-adb-only` | yes | **yes** | no — see below |
+| Artifact | SMS auto-capture | Play Protect |
+|---|---|---|
+| `app-NOSMS-installs-anywhere` | no | installs normally |
+| `app-FULL-sms-autocapture` | yes | may be blocked — see below |
+| `app-debug-for-adb-only` | yes | blocked; `adb install` only |
 
-The release APK is always signed: with the `SPENDWISE_*` repository secrets
-when they exist, and with the committed stable key otherwise. It is never
-emitted unsigned, and CI fails the build if it ever is.
+Both release builds are signed with the same key and the same
+`applicationId`, so you can start on the no-SMS build and move to the full
+one later **without losing your ledger**.
 
-Do not sideload the debug APK. It is built `debuggable="true"`, and a
-debuggable app that requests `READ_SMS` is the profile Play Protect and MIUI
-block hardest:
+### Play Protect blocks the full build
+
+Play Protect refuses to sideload any app that requests `READ_SMS` or
+`RECEIVE_SMS`:
 
 ```
 INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed for file:///data/app/...
 ```
 
-It is kept only for `adb install` during development.
+It is reacting to the permission being present in the manifest. **Signing,
+the `debuggable` flag and app behaviour make no difference** — a correctly
+signed, non-debuggable release is blocked exactly the same. Under Google's
+enhanced fraud protection (India, Singapore, Thailand, Brazil) there is often
+no "install anyway" override at all.
 
-### If Play Protect blocks the install
+Three ways round it, most reliable first:
 
-SpendWise reads bank SMS, and Play Protect warns about **any** sideloaded app
-requesting SMS access — "This app can request access to sensitive data." It is
-reacting to the permission being requested, not to anything found in the app.
+1. **Install `app-NOSMS-installs-anywhere`.** No SMS permission, nothing for
+   Play Protect to object to. You lose automatic capture; paste bank messages
+   into the Import screen instead. Everything else is identical.
+2. **`adb install app-sms-release.apk`** from a computer. This skips the
+   installer-side check entirely and is the only reliable way to get the full
+   build onto a device in the affected countries.
+3. **Turn Play Protect scanning off**, install, turn it back on: Play Store →
+   profile picture → Play Protect → gear → *Scan apps with Play Protect*. On
+   Xiaomi/Redmi/POCO also check Settings → Privacy protection → Special
+   permissions → Install unknown apps, and turn off **MIUI optimization** in
+   Developer options. This does not work where enhanced fraud protection is
+   active.
 
-Play Store → your profile picture → Play Protect → gear icon → turn off
-**Scan apps with Play Protect** → install → **turn it back on**.
-
-On Xiaomi/Redmi/POCO, also turn off Settings → Privacy protection → **Special
-permissions** → Install unknown apps → scan restrictions, and disable **MIUI
-optimization** in Developer options if the install still fails.
-
-From a computer, `adb install app-release.apk` skips the prompt entirely.
+The no-SMS build reports its state to the app as `unavailable` rather than
+`denied`, so it explains itself instead of asking you to grant a permission
+it never requests.
 
 ### This app cannot go on the Play Store as built
 

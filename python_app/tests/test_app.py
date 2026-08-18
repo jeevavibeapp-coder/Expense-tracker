@@ -938,3 +938,48 @@ def test_a_search_with_no_matches_does_not_claim_the_ledger_is_empty(auth_client
     # A genuinely empty ledger must still get the onboarding message.
     empty = auth_client.get("/transactions?q=Swiggy").data
     assert b"Swiggy" in empty
+
+
+def test_a_build_without_sms_access_reports_unavailable_not_denied(tmp_path):
+    """The no-SMS flavour exists because Play Protect refuses to sideload any
+    app that requests READ_SMS. On that build there is no permission to
+    grant, so reporting "denied" would nag the user forever to allow
+    something the APK never asks for.
+    """
+    app = create_app(db_path=str(tmp_path / "nosms.db"), single_user=True,
+                     secret_key="t", device_token="tok")
+    c = app.test_client()
+    c.get("/?k=tok")
+    c.post("/welcome/done")
+
+    r = c.post("/device/state", data={"sms_permission": "unavailable"},
+               headers={"X-SpendWise-Token": "tok"})
+    assert r.status_code == 200
+
+    settings = c.get("/settings").data
+    assert b"Not in this build" in settings
+    assert b"Allow SMS access" not in settings, \
+        "offered to grant a permission this build never requests"
+    assert b"paste a bank message" in settings.lower() or b"Import" in settings, \
+        "no route to the thing that still works"
+
+    # And the nag banner must not appear on any screen.
+    for path in ("/dashboard", "/transactions", "/settings"):
+        assert b"Auto-capture is paused" not in c.get(path).data, \
+            f"{path} nagged about a permission that cannot exist"
+
+
+def test_a_real_refusal_still_gets_the_banner(tmp_path):
+    """The opposite case must keep working: someone who actually declined
+    should still be offered a way to turn capture on."""
+    app = create_app(db_path=str(tmp_path / "denied.db"), single_user=True,
+                     secret_key="t", device_token="tok")
+    c = app.test_client()
+    c.get("/?k=tok")
+    c.post("/welcome/done")
+    c.post("/device/state", data={"sms_permission": "denied"},
+           headers={"X-SpendWise-Token": "tok"})
+    settings = c.get("/settings").data
+    assert b"Permission off" in settings
+    assert b"Allow SMS access" in settings
+    assert b"Auto-capture is paused" in c.get("/dashboard").data
