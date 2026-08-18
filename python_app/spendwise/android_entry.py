@@ -20,6 +20,11 @@ _session_secret: "str | None" = None
 # Set by the server thread when startup fails, so the activity can show
 # the real reason instead of a generic timeout message.
 _startup_error: "str | None" = None
+# Where startup has got to. Polled by the activity while the loading screen is
+# up, so a hang can be located without a USB cable: "stuck at building the app"
+# and "stuck at opening the database" point at completely different bugs, and
+# an unchanging "Starting your money engine…" points at neither.
+_stage: str = "not started"
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -55,13 +60,18 @@ def _run(db_path: str, host: str, port: int, token: "str | None",
 
 def _serve(db_path: str, host: str, port: int, token: "str | None",
            secret: "str | None" = None) -> None:
+    global _stage
+    _stage = "importing the app"
     from spendwise.app import create_app
+
+    _stage = "opening the database"
 
     # `secret` comes from the Android Keystore (SecretVault). Passing it here
     # means the session key never has to be persisted in the database;
     # create_app also erases any plaintext copy an older build left behind.
     app = create_app(db_path=db_path, single_user=True, device_token=token,
                      secret_key=secret)
+    _stage = "starting the web server"
     try:
         # waitress is pure Python (py3-none-any), so it runs under Chaquopy.
         # Werkzeug's dev server is explicitly not for production: it has no
@@ -69,6 +79,7 @@ def _serve(db_path: str, host: str, port: int, token: "str | None",
         # sockets to the loopback port until the process is killed — taking an
         # in-flight ledger write with it. These limits bound that.
         from waitress import serve
+        _stage = "serving"
         serve(app, host=host, port=port,
               threads=4,               # a single on-device user
               connection_limit=32,     # refuse floods instead of exhausting RAM
@@ -78,6 +89,7 @@ def _serve(db_path: str, host: str, port: int, token: "str | None",
     except ImportError:
         # Never leave the user without an app if the wheel is missing from a
         # given build; fall back with the same bounded intent.
+        _stage = "serving (waitress missing, using the fallback server)"
         app.run(host=host, port=port, threaded=True, use_reloader=False, debug=False)
 
 
@@ -177,6 +189,14 @@ def start_server(files_dir: str = None, token: str = None, secret: str = None,
 
 def is_running() -> bool:
     return _server_thread is not None and _server_thread.is_alive()
+
+
+def startup_stage() -> str:
+    """How far startup got, as a phrase fit to show a user.
+
+    Crosses the Chaquopy boundary, so it is a plain string.
+    """
+    return _stage
 
 
 def startup_error() -> str:

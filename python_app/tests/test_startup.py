@@ -283,3 +283,46 @@ def test_the_startup_error_screen_shows_the_reason():
     assert "showStartupError(reason)" in raw
     assert "htmlEncode(reason)" in raw, \
         "the reason is interpolated into HTML without escaping"
+
+
+def test_startup_reports_which_step_it_is_on(tmp_path):
+    """A splash reading "Starting your money engine…" for ninety seconds and
+    then failing tells nobody anything. The stage turns a hang into a located
+    hang — "opening the database" and "importing the app" are different bugs
+    — without needing a cable and adb.
+    """
+    import time
+    from spendwise import android_entry as ae
+
+    seen = []
+    ae.start_server(str(tmp_path), "tok", "secret", port=8973)
+    for _ in range(200):
+        st = ae.startup_stage()
+        if not seen or seen[-1] != st:
+            seen.append(st)
+        if st == "serving":
+            break
+        time.sleep(0.05)
+
+    assert "serving" in seen, f"never reached serving; stages were {seen}"
+    assert "opening the database" in seen, \
+        f"the database step was never announced; stages were {seen}"
+    # Every stage must read as a phrase for a person, not an identifier.
+    for st in seen:
+        assert st == st.lower() or " " in st, f"{st!r} is not a readable phrase"
+        assert "_" not in st, f"{st!r} looks like an identifier"
+
+
+def test_the_activity_puts_the_stage_on_the_loading_screen():
+    """Java has to actually surface it, or the Python side is decoration."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise/MainActivity.java")
+    raw = src.read_text()
+    assert "startup_stage" in raw, "the activity never asks Python for the stage"
+    assert "showStage(" in raw
+    assert "evaluateJavascript" in raw
+    assert "JSONObject.quote(stage)" in raw, \
+        "the stage is injected into JS without quoting"
+    assert "Still at: " in raw, \
+        "a stuck start with no exception still reports nothing"

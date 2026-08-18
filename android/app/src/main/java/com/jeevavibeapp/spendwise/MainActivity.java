@@ -15,6 +15,8 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
+import org.json.JSONObject;
+
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -453,6 +455,12 @@ public class MainActivity extends BridgeActivity {
             // reached this thread — start_server() returns as soon as the
             // thread is spawned. Ask for it before blaming the clock.
             String reason = pythonStartupError();
+            String stage = pythonStartupStage();
+            if (reason.isEmpty() && !stage.isEmpty()) {
+                // No exception: it is simply stuck. Where it is stuck is the
+                // only useful thing we know, so say that instead of nothing.
+                reason = "Still at: " + stage;
+            }
             Log.e(TAG, "Embedded server not ready within " + SERVER_TIMEOUT_MS
                     + "ms" + (reason.isEmpty() ? "" : "; python said: " + reason));
             showStartupError(reason);
@@ -523,8 +531,43 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
+    /** Push Python's current startup stage onto the loading screen.
+     *
+     * A splash that says "Starting your money engine…" for ninety seconds and
+     * then fails tells nobody anything. Naming the step it is on turns a hang
+     * into a located hang — "opening the database" and "importing the app"
+     * point at completely different bugs — and it does so without needing a
+     * USB cable and adb. */
+    private void showStage(final String stage) {
+        if (stage == null || stage.isEmpty()) {
+            return;
+        }
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String js = "(function(){var p=document.querySelector('.w p');"
+                            + "if(p){p.textContent=" + JSONObject.quote(stage) + ";}})()";
+                    getBridge().getWebView().evaluateJavascript(js, null);
+                } catch (Throwable ignored) {
+                }
+            }
+        });
+    }
+
+    private String pythonStartupStage() {
+        try {
+            return Python.getInstance()
+                    .getModule("spendwise.android_entry")
+                    .callAttr("startup_stage").toString();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     private boolean waitForServer() {
         long deadline = System.currentTimeMillis() + SERVER_TIMEOUT_MS;
+        long nextStageReport = System.currentTimeMillis() + 4000L;
         while (System.currentTimeMillis() < deadline) {
             HttpURLConnection conn = null;
             try {
@@ -539,6 +582,12 @@ public class MainActivity extends BridgeActivity {
                 // Server not up yet; keep polling.
             } finally {
                 if (conn != null) conn.disconnect();
+            }
+            // Only after a few seconds, so a fast start never flickers a
+            // stage name on its way to the real UI.
+            if (System.currentTimeMillis() >= nextStageReport) {
+                showStage(pythonStartupStage());
+                nextStageReport = System.currentTimeMillis() + 4000L;
             }
             try {
                 Thread.sleep(POLL_INTERVAL_MS);
