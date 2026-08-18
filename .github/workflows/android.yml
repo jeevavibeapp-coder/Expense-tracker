@@ -62,20 +62,50 @@ jobs:
           SPENDWISE_KEY_ALIAS: ${{ secrets.SPENDWISE_KEY_ALIAS }}
           SPENDWISE_KEY_PASSWORD: ${{ secrets.SPENDWISE_KEY_PASSWORD }}
 
-      - name: Upload Debug APK
+      # The debug APK is signed with the committed, stable dev keystore, so it
+      # installs on any phone and updates over a previous install. For
+      # sideloading, this is the one you want.
+      - name: Upload Debug APK (installable)
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: app-debug-INSTALL-THIS
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      # Release is signed ONLY when the signing secrets are present; without
-      # them Gradle emits app-release-unsigned.apk. Upload whichever exists so
-      # a fork/PR build never fails on missing secrets.
-      - name: Upload Release APK
+      # Release is signed ONLY when the signing secrets are present. Without
+      # them Gradle emits app-release-unsigned.apk, which Android refuses with
+      # INSTALL_PARSE_FAILED_NO_CERTIFICATES.
+      #
+      # These used to be one upload step named "app-release", so an unsigned
+      # APK was published under the name that reads like the one to install.
+      # Someone downloaded it, sideloaded it, and got a parse failure with
+      # nothing in the artifact name to explain why. Two steps now, and the
+      # unsigned one says what it is.
+      - name: Upload Release APK (signed)
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          if-no-files-found: warn
-          path: |
-            android/app/build/outputs/apk/release/app-release.apk
-            android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: ignore
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload Release APK (UNSIGNED — cannot be installed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-UNSIGNED-cannot-be-installed
+          if-no-files-found: ignore
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Explain which APK to install
+        if: always()
+        run: |
+          out=android/app/build/outputs/apk/release
+          if [ -f "$out/app-release.apk" ]; then
+            echo "::notice::Signed release built. Install 'app-release'."
+          else
+            echo "::warning::No signing secrets are configured, so the release"\
+                 "APK is UNSIGNED and Android will refuse it with"\
+                 "INSTALL_PARSE_FAILED_NO_CERTIFICATES."
+            echo "::warning::To sideload, download 'app-debug-INSTALL-THIS'."
+            echo "::warning::To get a signed release, add the repository"\
+                 "secrets SPENDWISE_KEYSTORE_FILE, SPENDWISE_KEYSTORE_PASSWORD,"\
+                 "SPENDWISE_KEY_ALIAS and SPENDWISE_KEY_PASSWORD."
+          fi

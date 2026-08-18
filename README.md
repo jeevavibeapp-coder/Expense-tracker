@@ -119,12 +119,32 @@ cross-origin POST rejection, hex-validated colours, PBKDF2 password hashing
 
 ## Building
 
-CI (`.github/workflows/android.yml`) produces signed debug + release APKs on
-every push: Node 22 → `npm install && npm run build` → JDK 21 + Android SDK 36
-→ Python 3.11 for Chaquopy → `npx cap sync android && ./gradlew assembleDebug
-assembleRelease`. Artifacts: **app-debug** / **app-release** on the run.
+CI (`.github/workflows/android.yml`) builds on every push: Node 22 → JDK 21 +
+Android SDK 36 → Python 3.11 for Chaquopy → `npx cap sync android &&
+./gradlew assembleDebug assembleRelease`.
 
-Python tests run in `python-app-ci.yml` (`pytest`, 51 tests).
+### Which APK to install
+
+**Sideloading? Download `app-debug-INSTALL-THIS`.**
+
+| Artifact | Signed with | Installs? |
+|---|---|---|
+| `app-debug-INSTALL-THIS` | the committed dev keystore | yes, and updates over an existing install |
+| `app-release` | your CI signing secrets | yes — only produced when those secrets exist |
+| `app-release-UNSIGNED-cannot-be-installed` | nothing | **no** |
+
+Without the four `SPENDWISE_*` repository secrets, Gradle emits
+`app-release-unsigned.apk`. Android refuses an unsigned APK with:
+
+```
+INSTALL_PARSE_FAILED_NO_CERTIFICATES: Failed to collect certificates
+from /data/app/.../0.apk: Attempt to get length of null array
+```
+
+That message means exactly one thing — the APK has no signature block. It is
+not a problem with the phone, the installer app, or the download.
+
+Python tests run in `python-app-ci.yml` (`pytest`, 457 tests).
 
 ### Local development
 
@@ -141,9 +161,33 @@ desktop browser at mobile viewport before building the APK.
 
 ### Release signing
 
-`android/app/build.gradle` currently signs with a committed keystore so CI
-produces installable APKs out of the box. **Before a public store release**,
-move the keystore + passwords to CI secrets and rotate the key.
+`android/app/spendwise.jks` is a committed **debug-only** keystore. Debug
+signing material is not a secret by design — Android ships a world-known
+debug keystore — and keeping a stable one means sideloaded debug builds
+update over an existing install instead of forcing an uninstall, which would
+destroy the user's on-device financial history.
+
+Release builds are signed only when all four environment variables are set,
+and are left unsigned otherwise rather than silently falling back to a key
+that is public:
+
+| Secret | Meaning |
+|---|---|
+| `SPENDWISE_KEYSTORE_FILE` | path to the keystore inside the checkout |
+| `SPENDWISE_KEYSTORE_PASSWORD` | store password |
+| `SPENDWISE_KEY_ALIAS` | key alias |
+| `SPENDWISE_KEY_PASSWORD` | key password |
+
+To produce a signed release, generate a key and add these as repository
+secrets:
+
+```bash
+keytool -genkeypair -v -keystore release.jks -alias spendwise \
+        -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Keep that keystore. Losing it means never being able to update the app for
+anyone who installed it.
 
 ---
 
