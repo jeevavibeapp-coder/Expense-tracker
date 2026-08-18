@@ -24,8 +24,13 @@
     <div class="balance num"><span class="cur">{{ currency|symbol }}</span><span>{{ m.money(r.expense) }}</span></div>
     <div class="hero-row">
       <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ currency|symbol }}{{ m.money_k(r.income) }}</div></div>
+      {# Amount and rate on separate lines: at the display type size the two
+         packed onto one line wrapped mid-value and broke the pill. #}
       <div class="hero-pill"><div class="k">Saved</div>
-        <div class="v num">{{ currency|symbol }}{{ m.money_k([r.saved, 0]|max) }}{% if r.save_rate is not none %} · {{ [r.save_rate, 0]|max }}%{% endif %}</div></div>
+        <div class="v num">{{ currency|symbol }}{{ m.money_k([r.saved, 0]|max) }}</div>
+        {% if r.save_rate is not none %}
+        <div class="k" style="margin-top:2px">{{ [r.save_rate, 0]|max }}% of income</div>
+        {% endif %}</div>
     </div>
   </div>
 

@@ -974,3 +974,287 @@ html, body { overscroll-behavior-y: contain; }
 }
 .settings-row .sr-c { flex: 0 0 auto; color: var(--text-3); display: flex; }
 .settings-row .sr-c svg { width: 16px; height: 16px; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   PREMIUM REFINEMENT LAYER
+   ═════════════════════════════════════════════════════════════════════════
+   The screens worked and were accessible, but they read as a competent
+   utility rather than a premium product. Rendered at full height the
+   dashboard was fourteen cards of identical visual weight stacked on a grey
+   field: nothing was more important than anything else, so the eye had
+   nowhere to land and the screen just kept going.
+
+   Premium in this category is not more decoration. It is the opposite —
+   restraint plus hierarchy. Five moves, in order of how much they change:
+
+     1. ONE thing per screen is loud. The balance. Everything else is
+        whispered until you look at it directly.
+     2. Money is set in tabular figures at a real display size with tight
+        tracking; labels shrink to uppercase micro-type with wide tracking.
+        The contrast between those two does most of the work.
+     3. Surfaces get depth from a hairline and a one-pixel top highlight —
+        the way light catches a machined edge — instead of drop shadows.
+     4. Colour is rationed. One accent, on the one element that deserves it.
+        Semantic colour (income/expense) stays, decorative colour goes.
+     5. Motion is slower and staggered, so a screen assembles rather than
+        appearing all at once.
+
+   Written as a layer on top of the base rather than as edits through it, so
+   the whole aesthetic can be read in one place — and removed in one piece.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Deeper and cooler. The old #0a0a0f with a purple radial wash sat too
+     close to the card surfaces to separate them, so every card needed a
+     shadow to be seen at all. */
+  --bg: #07070b;
+  --bg-grad: radial-gradient(140% 60% at 50% -20%, #14131f 0%, rgba(7,7,11,0) 60%), var(--bg);
+  --surface: #101017;
+  --surface-2: #17171f;
+  --surface-3: #1f1f29;
+  --hairline: rgba(255,255,255,.06);
+  --hairline-2: rgba(255,255,255,.10);
+  /* The highlight along a surface's top edge. This single line is what makes
+     a flat rectangle read as a physical object. */
+  --edge: rgba(255,255,255,.055);
+  --text-2: #9a9aab;
+  --text-3: #63636f;
+
+  --shadow: 0 18px 50px rgba(0,0,0,.55);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+
+  /* Slower and more confident. The old .2s read as eager. */
+  --dur-slow: .42s;
+  --ease-out: cubic-bezier(.16,1,.3,1);
+
+  --t-display: 2.75rem;
+  --t-micro: .6875rem;
+  /* Wide tracking is what turns a small label into a considered one. */
+  --track-micro: .12em;
+}
+
+[data-theme="light"] {
+  /* The light theme was pure white cards on flat grey — the weakest of the
+     two by far. Warming the field and softening the cards gives it the same
+     layered feel instead of looking like an unstyled form. */
+  --bg: #f4f4f7;
+  --bg-grad: radial-gradient(140% 60% at 50% -20%, #ffffff 0%, rgba(244,244,247,0) 60%), var(--bg);
+  --surface: #ffffff;
+  --surface-2: #f7f7fa;
+  --surface-3: #eeeef3;
+  --hairline: rgba(12,12,20,.07);
+  --hairline-2: rgba(12,12,20,.12);
+  --edge: rgba(255,255,255,.9);
+  --text: #0d0d14;
+  --text-2: #5f5f70;
+  --text-3: #8b8b9c;
+  --shadow: 0 18px 40px rgba(16,18,40,.10);
+  --shadow-sm: 0 1px 2px rgba(16,18,40,.05);
+  --hero-light:
+    radial-gradient(120% 140% at 15% -20%, rgba(124,92,255,.10) 0%, rgba(124,92,255,0) 55%),
+    linear-gradient(168deg, #ffffff 0%, #fbfbfe 100%);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f4f7;
+    --bg-grad: radial-gradient(140% 60% at 50% -20%, #ffffff 0%, rgba(244,244,247,0) 60%), var(--bg);
+    --surface: #ffffff; --surface-2: #f7f7fa; --surface-3: #eeeef3;
+    --hairline: rgba(12,12,20,.07); --hairline-2: rgba(12,12,20,.12);
+    --edge: rgba(255,255,255,.9);
+    --text: #0d0d14; --text-2: #5f5f70; --text-3: #8b8b9c;
+    --shadow: 0 18px 40px rgba(16,18,40,.10);
+    --shadow-sm: 0 1px 2px rgba(16,18,40,.05);
+    --hero-light:
+      radial-gradient(120% 140% at 15% -20%, rgba(124,92,255,.10) 0%, rgba(124,92,255,0) 55%),
+      linear-gradient(168deg, #ffffff 0%, #fbfbfe 100%);
+  }
+}
+
+/* ── Numerals ────────────────────────────────────────────────────────────
+   Every figure in the app is tabular, not just the ones tagged .num. A
+   column of amounts whose digits do not align is the fastest way to look
+   unfinished, and it was happening wherever a template forgot the class. */
+body { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* ── Surfaces ────────────────────────────────────────────────────────────
+   Depth from an edge, not a shadow. The inset line sits along the top of
+   each surface where light would catch it. */
+.card, .tx-list, .hero {
+  box-shadow: inset 0 1px 0 var(--edge), var(--shadow-sm);
+}
+.card { border-radius: var(--r-xl); }
+
+/* ── Section headings ────────────────────────────────────────────────────
+   These were 15px semibold — nearly the size of the content beneath them,
+   so they read as more content rather than as structure. As uppercase
+   micro-type they organise the page without competing with it. */
+.section-h { margin: 30px 4px 12px; }
+.section-h h2 {
+  font-size: var(--t-micro); font-weight: 700; text-transform: uppercase;
+  letter-spacing: var(--track-micro); color: var(--text-3);
+}
+.section-h a { font-size: var(--t-xs); }
+
+/* ── The one loud thing ──────────────────────────────────────────────────
+   The hero was a saturated purple slab with a white-on-purple label at 78%
+   opacity — loud and hard to read at the same time. Now it is the darkest
+   surface on the screen with a single sheen, and the balance carries it. */
+.hero {
+  background:
+    radial-gradient(120% 140% at 15% -20%, rgba(124,92,255,.20) 0%, rgba(124,92,255,0) 55%),
+    linear-gradient(168deg, var(--surface-2) 0%, var(--surface) 60%);
+  color: var(--text);
+  border: 1px solid var(--hairline);
+  padding: 24px 22px 22px;
+}
+/* The light hero must be behind BOTH guards. Written without the media
+   query the first time, it matched :root:not([data-theme="dark"]) — which is
+   true for the default data-theme="system" — and painted a white hero with
+   white text on every dark-mode screen. */
+[data-theme="light"] .hero { background: var(--hero-light); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .hero { background: var(--hero-light); }
+}
+.hero::after {                     /* a narrower, dimmer sheen than before */
+  right: -60px; top: -90px; width: 220px; height: 220px;
+  background: radial-gradient(circle, rgba(255,255,255,.06), transparent 62%);
+}
+.hero .label {
+  font-size: var(--t-micro); font-weight: 600; opacity: 1; color: var(--text-3);
+  letter-spacing: var(--track-micro); text-transform: uppercase;
+}
+.hero .balance {
+  font-size: var(--t-display); font-weight: 800; letter-spacing: -.035em;
+  margin: 10px 0 18px; line-height: 1;
+}
+.hero .cur {
+  font-size: 1.25rem; font-weight: 600; opacity: 1; color: var(--text-3);
+  margin-right: 6px; vertical-align: baseline;
+}
+.hero-pill {
+  background: transparent; border: 1px solid var(--hairline);
+  border-radius: var(--r-sm); padding: 11px 13px;
+}
+.hero-pill .k {
+  font-size: var(--t-micro); opacity: 1; color: var(--text-3); font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.hero-pill .v { font-size: 1.0625rem; font-weight: 700; margin-top: 3px; }
+
+/* ── Stat strips ─────────────────────────────────────────────────────────
+   These were full cards, which gave three secondary numbers the same
+   presence as the balance. Stripped of card chrome they read as a caption
+   to the hero, which is what they are. */
+.card.stat-strip {
+  background: transparent; border: 0; box-shadow: none;
+  padding: 4px 2px; border-radius: 0;
+}
+.card.stat-strip .stat + .stat { border-left: 1px solid var(--hairline); }
+.stat-strip .k {
+  font-size: var(--t-micro); letter-spacing: var(--track-micro);
+  text-transform: uppercase; color: var(--text-3);
+}
+.stat-strip .v { font-size: 1.0625rem; font-weight: 700; margin-top: 5px; }
+
+/* ── Transaction rows ────────────────────────────────────────────────────
+   Slightly more air per row and a quieter secondary line. A ledger is read
+   as a column, and the column needs rhythm more than it needs density. */
+.tx { padding: 15px 16px; }
+.tx-name { font-weight: 600; font-size: .9375rem; }
+.tx-meta { font-size: var(--t-micro); color: var(--text-3); }
+.tx-amt { font-weight: 700; }
+.tx-list { border-radius: var(--r-xl); }
+
+/* ── Avatars ─────────────────────────────────────────────────────────────
+   Every merchant avatar was a saturated colour block, so a list of ten was
+   ten competing accents. Muted to a tinted surface with coloured text: the
+   letter still identifies the merchant, without shouting. */
+.tx-ava, .avatar { font-weight: 700; letter-spacing: -.01em; }
+.tx-ava {
+  border-radius: 13px;
+  /* Initials in the normal text colour, not the merchant hue. A merchant
+     colour reads fine on a dark field and fails contrast on a pale tint in
+     light mode, and this text is content, not decoration. */
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.btn {
+  letter-spacing: -.01em; font-weight: 650;
+  box-shadow: 0 6px 20px rgba(124,92,255,.28), inset 0 1px 0 rgba(255,255,255,.16);
+}
+.btn-soft, .btn-ghost { box-shadow: inset 0 1px 0 var(--edge); }
+.pill {
+  font-size: var(--t-micro); letter-spacing: .04em; font-weight: 650;
+}
+
+/* ── Bottom bar ──────────────────────────────────────────────────────────
+   Frosted rather than opaque, so content passing under it reads as depth
+   instead of as a hard cut. Falls back to the solid fill where the browser
+   has no backdrop-filter (older Android WebViews). */
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .tabbar {
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    backdrop-filter: blur(22px) saturate(1.4);
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+/* ── Entrance ────────────────────────────────────────────────────────────
+   A screen that assembles top-down reads as considered; one that appears
+   all at once reads as a page load. Six steps only — beyond that the last
+   card arrives late enough to feel broken rather than deliberate. */
+@media (prefers-reduced-motion: no-preference) {
+  .screen > * {
+    animation: rise var(--dur-slow) var(--ease-out) both;
+  }
+  .screen > *:nth-child(1) { animation-delay: 0ms; }
+  .screen > *:nth-child(2) { animation-delay: 30ms; }
+  .screen > *:nth-child(3) { animation-delay: 60ms; }
+  .screen > *:nth-child(4) { animation-delay: 90ms; }
+  .screen > *:nth-child(5) { animation-delay: 120ms; }
+  .screen > *:nth-child(n+6) { animation-delay: 150ms; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+/* ── Insight rows ────────────────────────────────────────────────────────
+   Insights were one card each, every card carrying the same sparkle icon.
+   Three cards for three sentences is three times the chrome for one idea,
+   and a repeated icon carries no information at all. One card, hairline
+   rows, and a dot that marks a row without pretending to mean something. */
+.insight-row {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 13px 0; border-bottom: 1px solid var(--hairline);
+}
+.insight-row:last-child { border-bottom: 0; }
+.insight-row:first-child { padding-top: 0; }
+.insight-row:last-child { padding-bottom: 0; }
+.insight-row .dot {
+  flex: 0 0 5px; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--primary-2); margin-top: 7px;
+}
+.insight-row p { margin: 0; font-size: var(--t-sm); color: var(--text-2); }
+
+/* An empty state should occupy the space its absence deserves, not the
+   space its presence would have. */
+.empty-inline {
+  display: flex; align-items: center; gap: 12px; padding: 4px 0;
+}
+.empty-inline p {
+  margin: 0; flex: 1; font-size: var(--t-sm); color: var(--text-3);
+}
+
+/* The currency symbol was floating beside a 44px figure at its own size and
+   baseline, reading as a stray glyph rather than part of the amount. */
+.hero .balance { display: flex; align-items: baseline; gap: 2px; }
+.hero .cur { font-size: 1.375rem; font-weight: 500; letter-spacing: 0; }
+.hero-top { align-items: center; margin-bottom: 14px; }
+
+/* Two facts in one pill must not wrap mid-number. */
+.hero-pill .v { white-space: nowrap; }

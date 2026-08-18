@@ -9,8 +9,7 @@
 
   {# Balance hero — premium card #}
   <div class="hero reveal">
-    <div class="hero-top"><span class="hero-brand">SPENDWISE</span><span class="card-chip"></span></div>
-    <div class="label">Total balance</div>
+    <div class="hero-top"><span class="label">Total balance</span><span class="card-chip"></span></div>
     <div class="balance num"><span class="cur">{{ cur }}</span><span data-countup>{{ m.money(d.balance) }}</span></div>
     <div class="hero-row">
       <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ cur }}{{ m.money_k(d.total_income) }}</div></div>
@@ -200,9 +199,9 @@
   {# Insights #}
   {% if d.insights %}
   <div class="section-h"><h2>Insights</h2></div>
-  <div class="stack">
+  <div class="card reveal stack" style="gap:0">
     {% for line in d.insights[:4] %}
-    <div class="insight"><span class="ii" style="color:var(--primary-2)">{{ m.icon('sparkles') }}</span><p>{{ line }}</p></div>
+    <div class="insight-row"><span class="dot" aria-hidden="true"></span><p>{{ line }}</p></div>
     {% endfor %}
   </div>
   {% endif %}
@@ -264,8 +263,9 @@
       </div>
     </div>
     {% else %}
-    <div class="empty"><div class="ei">{{ m.icon('grid') }}</div><p>No categorised spending yet.</p>
-      <a class="btn btn-sm" href="/categories" style="margin-top:12px">Set up categories</a></div>
+    <div class="empty-inline">
+      <p>Nothing categorised yet.</p>
+      <a class="btn-soft btn-sm" href="/categories">Set up categories</a></div>
     {% endif %}
   </div>
   {% endif %}
@@ -278,9 +278,17 @@
     {% for mch in d.top_merchants[:5] %}
     <a class="tx" href="/merchant?n={{ mch.name|urlencode }}" style="text-decoration:none; color:inherit">
       {{ m.avatar(mch.name) }}
+      {# The share used to be a bar sitting directly under the name, where it
+         read as an underline rather than as a proportion — and it made this
+         the only row in the app shaped differently from every other one.
+         The same number as text, in the standard meta line. #}
       <div class="tx-main">
-        <div class="tx-name">{{ mch.name }}</div>
-        <div class="cat-bar" style="margin-top:7px"><i style="width:{{ (mch.value/mmax*100)|round|int if mmax else 0 }}%; background:{{ mch.name|avatar_color }}"></i></div>
+        <div class="tx-name">{{ mch.name|merchant }}</div>
+        {# Share of ALL spending, not of the biggest merchant: measured against
+           the biggest merchant the top row always reads "100%", which is a
+           tautology dressed up as an insight. #}
+        <div class="tx-meta">{{ (mch.value / d.total_expense * 100)|round|int
+                                if d.total_expense else 0 }}% of all spending</div>
       </div>
       <div class="tx-amt num">{{ cur }}{{ m.money_k(mch.value) }}</div>
     </a>

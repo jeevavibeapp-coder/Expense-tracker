@@ -377,6 +377,20 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
         s = sum(ord(ch) for ch in (name or "?"))
         return _AVATAR_COLORS[s % len(_AVATAR_COLORS)]
 
+    def _avatar_tint(name):
+        """The same identifying hue, at 16% — a tint, not a colour block.
+
+        A list of ten merchants was ten fully saturated squares, so ten
+        things competed for attention before a single amount was read. The
+        hue still tells one merchant from another; it just stops shouting.
+
+        Returned as rgba() from Python rather than done in CSS with
+        color-mix(), which the Android 7 WebView does not support.
+        """
+        hexv = _avatar_color(name).lstrip("#")
+        r, gg, b = (int(hexv[i:i + 2], 16) for i in (0, 2, 4))
+        return f"rgba({r},{gg},{b},.16)"
+
     # ── Money presentation ───────────────────────────────────────────────
     # A finance app that renders "INR 73103.00" does not look like one. Indian
     # users read amounts in the lakh/crore grouping (1,23,456), not the western
@@ -490,6 +504,7 @@ def create_app(db_path: Optional[str] = None, single_user: bool = False,
 
     app.jinja_env.filters["initials"] = _initials
     app.jinja_env.filters["avatar_color"] = _avatar_color
+    app.jinja_env.filters["avatar_tint"] = _avatar_tint
     app.jinja_env.filters["symbol"] = _symbol
     app.jinja_env.filters["money"] = _money
     app.jinja_env.filters["money_compact"] = _money_compact

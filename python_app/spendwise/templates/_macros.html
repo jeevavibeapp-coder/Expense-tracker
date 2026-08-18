@@ -69,5 +69,5 @@
 {%- endmacro %}
 
 {% macro avatar(name, size='') -%}
-<span class="tx-ava{{ ' ' ~ size if size }}" style="background: {{ name|avatar_color }}">{{ name|initials }}</span>
+<span class="tx-ava{{ ' ' ~ size if size }}" style="background: {{ name|avatar_tint }}">{{ name|initials }}</span>
 {%- endmacro %}
