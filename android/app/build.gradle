@@ -18,10 +18,14 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
 
-        // Chaquopy: ship a native Python runtime for all common ABIs so the
-        // embedded Flask server runs on any device/emulator.
+        // Chaquopy ships a full CPython runtime PER ABI, so every entry here
+        // is another copy of the interpreter and stdlib inside the APK. x86
+        // and x86_64 are emulator and Chromebook targets — no phone runs
+        // them — so carrying all four meant roughly half the native payload
+        // could never execute on the device it was installed on. Add them
+        // back if you need to run this in an emulator.
         ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            abiFilters "armeabi-v7a", "arm64-v8a"
         }
 
         // Chaquopy: pure-Python runtime dependency (Flask pulls Werkzeug,
