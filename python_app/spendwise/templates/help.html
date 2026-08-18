@@ -54,9 +54,22 @@
           Developer options.</p>
         <p>From a computer, <code>adb install app-release.apk</code> avoids
           the prompt entirely.</p>
-        <p>Install the <b>release</b> build, not the debug one. A debug build
-          is marked debuggable, and a debuggable app asking to read SMS is
-          what these checks block hardest.</p>
+        <p>In India, Singapore, Thailand and Brazil this is Google's
+          <b>enhanced fraud protection</b>, which refuses any sideloaded app
+          declaring SMS, notification-listener or accessibility permissions —
+          usually with no “install anyway”. Turning Play Protect off does not
+          always help there.</p>
+        <p>Two things that do work:</p>
+        <ol>
+          <li><b>adb install</b> from a computer. The ADB route is not subject
+            to this check.</li>
+          <li>Install the <b>no-SMS build</b>. It never asks for the
+            permission, so there is nothing to block. You add transactions
+            yourself or paste bank messages into
+            <a href="/import">Import</a>.</li>
+        </ol>
+        <p>Apps like this one on the Play Store are not built differently —
+          they arrive by a route that is not scanned.</p>
         <p><b>INSTALL_PARSE_FAILED_NO_CERTIFICATES</b> is a different thing:
           that APK was never signed and no setting will let it install. Use a
           signed build.</p>

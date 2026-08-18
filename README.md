@@ -172,17 +172,50 @@ The no-SMS build reports its state to the app as `unavailable` rather than
 `denied`, so it explains itself instead of asking you to grant a permission
 it never requests.
 
-### This app cannot go on the Play Store as built
+### Why Play Store expense trackers install fine and this one does not
 
-Google restricts `READ_SMS` / `RECEIVE_SMS` to apps whose core function is SMS
-— default SMS handlers and similar. A finance app that reads bank messages is
-the category Google removed en masse in 2019, so a Play listing would be
-rejected. The alternatives are sideloading (this repo), F-Droid, or replacing
-SMS reading with a `NotificationListenerService` that reads bank
-notifications, which falls outside that policy. That last one is an
-architecture change, not a configuration switch.
+Two separate mechanisms, and conflating them wastes days.
 
-Python tests run in `python-app-ci.yml` (`pytest`, 457 tests).
+**1. The block is a *sideloading* check, not a verdict on the app.** Google's
+enhanced fraud protection (India, Singapore, Thailand, Brazil) inspects apps
+arriving from "Internet-sideloading sources" and refuses any that declare
+`RECEIVE_SMS`, `READ_SMS`, notification-listener binding, or accessibility
+services. Apps installed *from the Play Store* never go through it. Money
+View, Axio and the rest are not built differently — they arrive by a route
+that is not scanned.
+
+Note the four permissions: **swapping SMS reading for a
+`NotificationListenerService` is blocked by exactly the same check.** It is
+not a way out of sideloading, only out of the Play Store policy below.
+
+**2. Getting onto the Play Store with `READ_SMS` is the hard part.** SMS and
+Call Log permissions are limited to a fixed list of use cases — default SMS
+handler, default phone handler, and similar. Reading bank SMS for expense
+tracking is not on it, and developers report rejection on the grounds that
+manual entry is an available alternative. The established Indian apps predate
+the 2019 policy or hold negotiated approvals; a new tracker submitting today
+should expect rejection.
+
+So the realistic options are, in order of how well they work:
+
+| Route | Auto-capture | Works in India |
+|---|---|---|
+| `adb install` from a computer | yes | yes — ADB is not subject to the block |
+| Shizuku + an ADB-privileged installer | yes | yes, without a computer each time |
+| `app-NOSMS-installs-anywhere` | no | yes |
+| F-Droid | yes | still a sideload, so still blocked |
+| Play Store | no | requires dropping SMS entirely |
+
+F-Droid is where comparable open-source trackers live (Cashiro, PennyWise AI)
+— it solves the *policy* problem, not the Play Protect one.
+
+The `SMS User Consent API` needs no permission at all and is therefore never
+blocked, but it asks the user to approve **one message at a time** and only
+while the app is actively listening. For continuous capture that is worse
+than pasting into the Import screen.
+
+Python tests run in `python-app-ci.yml` (`pytest`, 460 tests), plus
+`tests/use_cases.py` (14 end-to-end journeys) and `tests/browser_qa.py`.
 
 ### Local development
 
