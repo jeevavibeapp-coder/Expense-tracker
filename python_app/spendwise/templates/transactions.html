@@ -150,10 +150,26 @@
   {% endfor %}
   </div>
   {% else %}
+  {# Two different situations were sharing one message. Searching for
+     something with no matches printed "No transactions yet — your bank SMS
+     are captured automatically" to someone with a full ledger: it claims
+     their data is gone, hides the fact that a filter is applied, and offers
+     to add a transaction when what they want is to clear the search. #}
+  {% if q or f %}
+  <div class="empty"><div class="ei">{{ m.icon('search') }}</div>
+    <h2 class="empty-h">No matches</h2>
+    <p>Nothing here matches
+      {%- if q %} “{{ q }}”{% endif %}
+      {%- if q and f %} in{% endif %}
+      {%- if f %} {{ f|replace('_', ' ') }}{% endif %}. Your other
+      transactions are still there.</p>
+    <a class="btn btn-sm" href="/transactions" style="margin-top:14px">Clear search</a></div>
+  {% else %}
   <div class="empty"><div class="ei">{{ m.icon('activity') }}</div><h2 class="empty-h">No transactions yet</h2>
     <p>Your bank SMS are captured automatically — or add one yourself.</p>
     <a class="btn btn-sm" href="#add" style="margin-top:14px">Add a transaction</a>
     <a class="btn-ghost btn-sm" href="/import" style="margin-top:8px">Import from SMS</a></div>
+  {% endif %}
   {% endif %}
 </div>
 

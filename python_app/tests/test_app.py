@@ -916,3 +916,25 @@ def test_ingest_rate_limited(tmp_path):
             f"Rs.{10 + i}.00 debited from a/c XX12 to SHOP{i} on 01-07-26 Ref {i:012d}"})
         codes.add(r.status_code)
     assert 429 in codes, "rate limit never engaged"
+
+
+def test_a_search_with_no_matches_does_not_claim_the_ledger_is_empty(auth_client):
+    """Activity had one empty state for two different situations. Searching
+    for something with no matches told a user with a full ledger "No
+    transactions yet — your bank SMS are captured automatically": it claims
+    their data is gone, hides that a filter is applied, and offers to add a
+    transaction when what they want is to clear the search.
+    """
+    _add(auth_client, amount="300.00", merchant="Swiggy")
+    _add(auth_client, amount="400.00", merchant="Zomato")
+
+    miss = auth_client.get("/transactions?q=zzzznothing").data
+    assert b"No matches" in miss
+    assert b"No transactions yet" not in miss, \
+        "a filtered-to-nothing view claimed the ledger was empty"
+    assert b"still there" in miss, "it did not reassure that the data remains"
+    assert b"Clear search" in miss, "no way back from an empty result"
+
+    # A genuinely empty ledger must still get the onboarding message.
+    empty = auth_client.get("/transactions?q=Swiggy").data
+    assert b"Swiggy" in empty

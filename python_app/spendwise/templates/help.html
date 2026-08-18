@@ -24,6 +24,30 @@
 
   <div class="card stack" style="gap:0">
     <details class="faq">
+      <summary>Android refused to install the app</summary>
+      <div class="faq-b">
+        <p>Two different refusals, with two different causes.</p>
+        <p><b>“App blocked to protect your device” (Play Protect)</b>, or
+          <b>INSTALL_FAILED_VERIFICATION_FAILURE</b>. SpendWise asks to read
+          bank SMS, and Play Protect blocks any app that requests SMS access
+          unless it came from the Play Store. It is not reacting to anything
+          found in the app — it is reacting to the permission being requested
+          at all.</p>
+        <ol>
+          <li>Play Store → your profile picture → <b>Play Protect</b></li>
+          <li>The gear icon → turn off <b>Scan apps with Play Protect</b></li>
+          <li>Install SpendWise</li>
+          <li><b>Turn it back on.</b> It protects you from everything else.</li>
+        </ol>
+        <p>From a computer, <code>adb install app-debug.apk</code> avoids the
+          prompt entirely.</p>
+        <p><b>INSTALL_PARSE_FAILED_NO_CERTIFICATES</b> is a different thing:
+          that APK was never signed and no setting will let it install. Use a
+          signed build.</p>
+      </div>
+    </details>
+
+    <details class="faq">
       <summary>My transactions are not being captured</summary>
       <div class="faq-b">
         <p>SpendWise scans the inbox for bank and UPI messages each time it
