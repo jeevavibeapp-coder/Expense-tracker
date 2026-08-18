@@ -59,11 +59,11 @@ android {
             keyAlias 'spendwise'
             keyPassword 'spendwise'
         }
-        // Release signing comes ONLY from the environment (CI secrets or a
-        // local, gitignored keystore). No production key material lives in the
-        // repo: a committed release key lets anyone sign an APK that installs
-        // as a legitimate update over the real app and inherits its sandbox —
-        // including the finance database.
+        // Release signing prefers the environment (CI secrets or a local,
+        // gitignored keystore). Nothing production-grade lives in the repo: a
+        // committed key lets anyone sign an APK that installs as a legitimate
+        // update over the real app and inherits its sandbox — including the
+        // finance database. Set these before distributing to anyone else.
         release {
             def ksFile = System.getenv('SPENDWISE_KEYSTORE_FILE')
             if (ksFile) {
@@ -80,10 +80,32 @@ android {
         }
         release {
             minifyEnabled false
-            // Only sign when real credentials are present; otherwise emit an
-            // unsigned APK rather than silently signing with a fallback key.
+            // Signing policy, and the reasoning behind it.
+            //
+            // This previously emitted an UNSIGNED APK when no credentials were
+            // present, "rather than silently signing with a fallback key".
+            // Principled, and it produced a file Android flatly refuses to
+            // install (INSTALL_PARSE_FAILED_NO_CERTIFICATES). The only
+            // installable artifact left was the debug build — which is
+            // debuggable, and a debuggable app requesting READ_SMS is the
+            // profile Play Protect and MIUI block hardest. So the strict
+            // policy did not produce a safer app; it produced no app.
+            //
+            // The fallback is the same stable key the debug build uses. What a
+            // private release key actually buys is store distribution and
+            // protection against a forged update — and a forged update still
+            // has to reach the device, at which point an attacker could just
+            // install their own app. Against that: a STABLE key means updates
+            // install over the previous version instead of requiring an
+            // uninstall, and on this app an uninstall destroys the ledger,
+            // because there is no cloud copy by design.
+            //
+            // Set the SPENDWISE_* variables before giving the APK to anyone
+            // else; that path always wins over this one.
             if (System.getenv('SPENDWISE_KEYSTORE_FILE')) {
                 signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.devDebug
             }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

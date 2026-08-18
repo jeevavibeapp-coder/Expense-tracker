@@ -62,50 +62,45 @@ jobs:
           SPENDWISE_KEY_ALIAS: ${{ secrets.SPENDWISE_KEY_ALIAS }}
           SPENDWISE_KEY_PASSWORD: ${{ secrets.SPENDWISE_KEY_PASSWORD }}
 
-      # The debug APK is signed with the committed, stable dev keystore, so it
-      # installs on any phone and updates over a previous install. For
-      # sideloading, this is the one you want.
-      - name: Upload Debug APK (installable)
+      # The release APK is now always signed (repo secrets if present, the
+      # stable committed key otherwise), and release builds are not
+      # debuggable. That combination is what gets past Play Protect and MIUI:
+      # a debuggable app requesting READ_SMS is blocked hardest, which is why
+      # the debug build was refused with INSTALL_FAILED_VERIFICATION_FAILURE.
+      - name: Upload Release APK (install this one)
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-INSTALL-THIS
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      # Release is signed ONLY when the signing secrets are present. Without
-      # them Gradle emits app-release-unsigned.apk, which Android refuses with
-      # INSTALL_PARSE_FAILED_NO_CERTIFICATES.
-      #
-      # These used to be one upload step named "app-release", so an unsigned
-      # APK was published under the name that reads like the one to install.
-      # Someone downloaded it, sideloaded it, and got a parse failure with
-      # nothing in the artifact name to explain why. Two steps now, and the
-      # unsigned one says what it is.
-      - name: Upload Release APK (signed)
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          if-no-files-found: ignore
+          name: app-release-INSTALL-THIS
+          if-no-files-found: error
           path: android/app/build/outputs/apk/release/app-release.apk
 
-      - name: Upload Release APK (UNSIGNED — cannot be installed)
+      # Kept for debugging on a machine with adb attached. Do not sideload it:
+      # it is debuggable and Play Protect blocks it.
+      - name: Upload Debug APK (for adb debugging only)
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-UNSIGNED-cannot-be-installed
-          if-no-files-found: ignore
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          name: app-debug-for-adb-only
+          path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Explain which APK to install
+      - name: Report what was built
         if: always()
         run: |
           out=android/app/build/outputs/apk/release
-          if [ -f "$out/app-release.apk" ]; then
-            echo "::notice::Signed release built. Install 'app-release'."
-          else
-            echo "::warning::No signing secrets are configured, so the release"\
-                 "APK is UNSIGNED and Android will refuse it with"\
-                 "INSTALL_PARSE_FAILED_NO_CERTIFICATES."
-            echo "::warning::To sideload, download 'app-debug-INSTALL-THIS'."
-            echo "::warning::To get a signed release, add the repository"\
-                 "secrets SPENDWISE_KEYSTORE_FILE, SPENDWISE_KEYSTORE_PASSWORD,"\
-                 "SPENDWISE_KEY_ALIAS and SPENDWISE_KEY_PASSWORD."
+          if [ -f "$out/app-release-unsigned.apk" ]; then
+            echo "::error::The release APK came out UNSIGNED. It cannot be"\
+                 "installed. This should not happen — build.gradle falls back"\
+                 "to the committed key when no secrets are set."
+            exit 1
           fi
+          if [ -n "${SPENDWISE_KEYSTORE_FILE}" ]; then
+            echo "::notice::Release signed with your repository secrets."
+          else
+            echo "::notice::Release signed with the committed stable key."\
+                 "Fine for your own phone. Set the SPENDWISE_* secrets before"\
+                 "distributing to anyone else."
+          fi
+          echo "::notice::Install 'app-release-INSTALL-THIS'. Play Protect may"\
+               "still warn because the app reads bank SMS — that warning is"\
+               "about the permission, not about the app."
+        env:
+          SPENDWISE_KEYSTORE_FILE: ${{ secrets.SPENDWISE_KEYSTORE_FILE }}

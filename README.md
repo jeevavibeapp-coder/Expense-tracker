@@ -125,24 +125,51 @@ Android SDK 36 → Python 3.11 for Chaquopy → `npx cap sync android &&
 
 ### Which APK to install
 
-**Sideloading? Download `app-debug-INSTALL-THIS`.**
+**Download `app-release-INSTALL-THIS`.**
 
-| Artifact | Signed with | Installs? |
-|---|---|---|
-| `app-debug-INSTALL-THIS` | the committed dev keystore | yes, and updates over an existing install |
-| `app-release` | your CI signing secrets | yes — only produced when those secrets exist |
-| `app-release-UNSIGNED-cannot-be-installed` | nothing | **no** |
+| Artifact | Signed | Debuggable | Sideload it? |
+|---|---|---|---|
+| `app-release-INSTALL-THIS` | yes | no | **yes** |
+| `app-debug-for-adb-only` | yes | **yes** | no — see below |
 
-Without the four `SPENDWISE_*` repository secrets, Gradle emits
-`app-release-unsigned.apk`. Android refuses an unsigned APK with:
+The release APK is always signed: with the `SPENDWISE_*` repository secrets
+when they exist, and with the committed stable key otherwise. It is never
+emitted unsigned, and CI fails the build if it ever is.
+
+Do not sideload the debug APK. It is built `debuggable="true"`, and a
+debuggable app that requests `READ_SMS` is the profile Play Protect and MIUI
+block hardest:
 
 ```
-INSTALL_PARSE_FAILED_NO_CERTIFICATES: Failed to collect certificates
-from /data/app/.../0.apk: Attempt to get length of null array
+INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed for file:///data/app/...
 ```
 
-That message means exactly one thing — the APK has no signature block. It is
-not a problem with the phone, the installer app, or the download.
+It is kept only for `adb install` during development.
+
+### If Play Protect blocks the install
+
+SpendWise reads bank SMS, and Play Protect warns about **any** sideloaded app
+requesting SMS access — "This app can request access to sensitive data." It is
+reacting to the permission being requested, not to anything found in the app.
+
+Play Store → your profile picture → Play Protect → gear icon → turn off
+**Scan apps with Play Protect** → install → **turn it back on**.
+
+On Xiaomi/Redmi/POCO, also turn off Settings → Privacy protection → **Special
+permissions** → Install unknown apps → scan restrictions, and disable **MIUI
+optimization** in Developer options if the install still fails.
+
+From a computer, `adb install app-release.apk` skips the prompt entirely.
+
+### This app cannot go on the Play Store as built
+
+Google restricts `READ_SMS` / `RECEIVE_SMS` to apps whose core function is SMS
+— default SMS handlers and similar. A finance app that reads bank messages is
+the category Google removed en masse in 2019, so a Play listing would be
+rejected. The alternatives are sideloading (this repo), F-Droid, or replacing
+SMS reading with a `NotificationListenerService` that reads bank
+notifications, which falls outside that policy. That last one is an
+architecture change, not a configuration switch.
 
 Python tests run in `python-app-ci.yml` (`pytest`, 457 tests).
 

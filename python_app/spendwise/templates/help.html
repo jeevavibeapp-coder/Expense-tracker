@@ -39,8 +39,15 @@
           <li>Install SpendWise</li>
           <li><b>Turn it back on.</b> It protects you from everything else.</li>
         </ol>
-        <p>From a computer, <code>adb install app-debug.apk</code> avoids the
-          prompt entirely.</p>
+        <p>On Xiaomi, Redmi and POCO there is a second gate: Settings →
+          Privacy protection → Special permissions → Install unknown apps,
+          and if it still refuses, turn off <b>MIUI optimization</b> in
+          Developer options.</p>
+        <p>From a computer, <code>adb install app-release.apk</code> avoids
+          the prompt entirely.</p>
+        <p>Install the <b>release</b> build, not the debug one. A debug build
+          is marked debuggable, and a debuggable app asking to read SMS is
+          what these checks block hardest.</p>
         <p><b>INSTALL_PARSE_FAILED_NO_CERTIFICATES</b> is a different thing:
           that APK was never signed and no setting will let it install. Use a
           signed build.</p>
