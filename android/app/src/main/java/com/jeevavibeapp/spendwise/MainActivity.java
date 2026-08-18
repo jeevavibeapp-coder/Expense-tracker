@@ -38,7 +38,14 @@ import java.net.URL;
 public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "SpendWise";
-    private static final String SERVER_URL = "http://127.0.0.1:8765";
+    // Preferred, not guaranteed. Python picks the port and tells us which one
+    // it got: the process outlives the activity, so a launch can easily find
+    // 8765 still held by the previous one, and insisting on it produced
+    // "Address already in use" and no app at all. Any loopback port works —
+    // nothing outside this phone ever connects here.
+    private static final String DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
+    private static final String PREF_SERVER_PORT = "server_port";
+    private volatile String serverUrl = DEFAULT_SERVER_URL;
     // A COLD first launch has to do a lot before /healthz can answer: Chaquopy
     // unpacks Python and the stdlib, Flask and waitress import, then ten schema
     // migrations run against a database that does not exist yet. Twenty seconds
@@ -200,7 +207,7 @@ public class MainActivity extends BridgeActivity {
                 int prev = list.getCurrentIndex() - 1;
                 if (prev >= 0) {
                     String url = list.getItemAtIndex(prev).getUrl();
-                    if (url != null && url.startsWith(SERVER_URL)) {
+                    if (url != null && url.startsWith(serverUrl)) {
                         wv.goBack();
                         return;
                     }
@@ -364,7 +371,7 @@ public class MainActivity extends BridgeActivity {
                               String token) {
         HttpURLConnection conn = null;
         try {
-            URL url = new URL(SERVER_URL + "/device/state");
+            URL url = new URL(serverUrl + "/device/state");
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);
@@ -394,9 +401,19 @@ public class MainActivity extends BridgeActivity {
 
     private void startServerAndLoad(String filesDir, final String token, String secret) {
         try {
-            Python.getInstance()
+            // start_server returns the URL it actually bound, which may not be
+            // the preferred port. Believing the return value instead of a
+            // constant is what makes a port conflict survivable.
+            Object url = Python.getInstance()
                     .getModule("spendwise.android_entry")
                     .callAttr("start_server", filesDir, token, secret);
+            if (url != null) {
+                String reported = url.toString();
+                if (reported.startsWith("http://")) {
+                    serverUrl = reported;
+                    rememberServerPort(reported);
+                }
+            }
         } catch (Throwable t) {
             Log.e(TAG, "Failed to start embedded Python server", t);
             showStartupError(t.getClass().getSimpleName() + ": " + t.getMessage());
@@ -416,7 +433,7 @@ public class MainActivity extends BridgeActivity {
                         // does not persist in the page URL. Without it every
                         // page returns 403 — which is the point: a co-installed
                         // app reaching 127.0.0.1 cannot supply this token.
-                        wv.loadUrl(SERVER_URL + "/?k=" + Uri.encode(token));
+                        wv.loadUrl(serverUrl + "/?k=" + Uri.encode(token));
                         // Drop the bundled loading shell from history once the
                         // real app is up, so Back can never return to it.
                         // Only clears while the shell is still the OLDEST entry,
@@ -427,7 +444,7 @@ public class MainActivity extends BridgeActivity {
                             public void run() {
                                 try {
                                     String cur = wv.getUrl();
-                                    if (cur == null || !cur.startsWith(SERVER_URL)) {
+                                    if (cur == null || !cur.startsWith(serverUrl)) {
                                         return;
                                     }
                                     android.webkit.WebBackForwardList list =
@@ -435,7 +452,7 @@ public class MainActivity extends BridgeActivity {
                                     if (list.getSize() > 0) {
                                         String first = list.getItemAtIndex(0).getUrl();
                                         boolean shellStillFirst =
-                                                first == null || !first.startsWith(SERVER_URL);
+                                                first == null || !first.startsWith(serverUrl);
                                         if (shellStillFirst) {
                                             wv.clearHistory();
                                         }
@@ -464,6 +481,22 @@ public class MainActivity extends BridgeActivity {
             Log.e(TAG, "Embedded server not ready within " + SERVER_TIMEOUT_MS
                     + "ms" + (reason.isEmpty() ? "" : "; python said: " + reason));
             showStartupError(reason);
+        }
+    }
+
+    /** Persist the port so SmsReceiver, which runs with no activity around,
+     *  can still reach the server after it moved off the default. */
+    private void rememberServerPort(String url) {
+        try {
+            int colon = url.lastIndexOf(':');
+            if (colon < 0) {
+                return;
+            }
+            int port = Integer.parseInt(url.substring(colon + 1).replaceAll("/.*$", ""));
+            getApplicationContext()
+                    .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit().putInt(PREF_SERVER_PORT, port).apply();
+        } catch (Throwable ignored) {
         }
     }
 
@@ -571,7 +604,7 @@ public class MainActivity extends BridgeActivity {
         while (System.currentTimeMillis() < deadline) {
             HttpURLConnection conn = null;
             try {
-                URL url = new URL(SERVER_URL + "/healthz");
+                URL url = new URL(serverUrl + "/healthz");
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(1000);
                 conn.setReadTimeout(1000);

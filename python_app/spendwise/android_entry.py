@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import threading
 import time
 import urllib.parse
@@ -25,6 +26,9 @@ _startup_error: "str | None" = None
 # and "stuck at opening the database" point at completely different bugs, and
 # an unchanging "Starting your money engine…" points at neither.
 _stage: str = "not started"
+# The port actually in use. Java asks for it rather than assuming 8765, so a
+# device that cannot give us the preferred port still gets a working app.
+_server_port: int = 8765
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -46,6 +50,39 @@ def _watch_until_serving(host: str, port: int) -> None:
 
     threading.Thread(target=_watch, daemon=True,
                      name="spendwise-stage-watch").start()
+
+
+def _choose_port(host: str, preferred: int) -> "tuple[int, bool]":
+    """Pick a port to serve on. Returns (port, reusing_existing_server).
+
+    A single hard-coded port is not safe on Android. The process outlives the
+    activity, the OS may start a new one before the old has released its
+    socket, and there is no guarantee some other app has not taken 8765 in the
+    meantime. Insisting on it produced "Address already in use" and no app at
+    all — when any free port would have worked just as well, because nothing
+    outside this phone ever connects here.
+
+    Preferred port first, so the common case keeps a stable origin (and with
+    it the session cookie). Anything free will do after that.
+    """
+    if _healthz_ok(host, preferred):
+        return preferred, True                       # our own server, already up
+
+    for candidate in (preferred, 0, 0, 0):
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind((host, candidate))
+            chosen = probe.getsockname()[1]
+            return chosen, False
+        except OSError:
+            continue
+        finally:
+            try:
+                probe.close()
+            except OSError:
+                pass
+    raise OSError("no free port on the loopback interface")
 
 
 def _log_traceback() -> None:
@@ -227,7 +264,7 @@ def start_server(files_dir: str = None, token: str = None, secret: str = None,
     Called from Java via Chaquopy: ``getModule("spendwise.android_entry")
     .callAttr("start_server", filesDir, token)``.
     """
-    global _server_thread, _device_token, _session_secret
+    global _server_thread, _device_token, _session_secret, _server_port, _stage
     base = files_dir or os.getcwd()
     db_path = os.path.join(base, "spendwise.db")
     with _lock:
@@ -238,10 +275,19 @@ def start_server(files_dir: str = None, token: str = None, secret: str = None,
         tok = _device_token
         sec = _session_secret
         if _server_thread is None or not _server_thread.is_alive():
-            _server_thread = threading.Thread(
-                target=_run, args=(db_path, host, port, tok, sec), daemon=True,
-                name="spendwise-server")
-            _server_thread.start()
+            # Chosen HERE, not on the server thread, so this call can return
+            # the real URL to Java. Java used to assume 8765 and had no way to
+            # learn otherwise.
+            chosen, reusing = _choose_port(host, port)
+            _server_port = chosen
+            if reusing:
+                _stage = "serving"
+            else:
+                _server_thread = threading.Thread(
+                    target=_run, args=(db_path, host, chosen, tok, sec),
+                    daemon=True, name="spendwise-server")
+                _server_thread.start()
+        port = _server_port
     # Replay queued SMS once the server is ready (off the main thread). Runs on
     # every call so messages queued within a warm process still drain.
     threading.Thread(target=_drain_inbox, args=(base, host, port, tok),
@@ -251,6 +297,11 @@ def start_server(files_dir: str = None, token: str = None, secret: str = None,
 
 def is_running() -> bool:
     return _server_thread is not None and _server_thread.is_alive()
+
+
+def server_port() -> int:
+    """The port the app is actually served on."""
+    return _server_port
 
 
 def startup_stage() -> str:

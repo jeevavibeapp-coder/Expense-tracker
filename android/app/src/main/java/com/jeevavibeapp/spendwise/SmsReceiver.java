@@ -31,7 +31,26 @@ import java.net.URLEncoder;
 public class SmsReceiver extends BroadcastReceiver {
 
     private static final String TAG = "SpendWiseSms";
-    private static final String INGEST_URL = "http://127.0.0.1:8765/sms/ingest";
+    // The server no longer always sits on 8765 — it takes any free loopback
+    // port when the preferred one is held, and records which. A receiver that
+    // kept posting to a hard-coded 8765 would silently queue every message
+    // instead of ingesting it, which looks exactly like auto-capture being
+    // broken. The queue file means nothing is lost either way, but the
+    // messages would not appear until something else drained them.
+    private static final String PREFS = "spendwise";
+    private static final String PREF_SERVER_PORT = "server_port";
+    private static final int DEFAULT_PORT = 8765;
+
+    private static String ingestUrl(Context context) {
+        int port = DEFAULT_PORT;
+        try {
+            port = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getInt(PREF_SERVER_PORT, DEFAULT_PORT);
+        } catch (Throwable ignored) {
+        }
+        return "http://127.0.0.1:" + port + "/sms/ingest";
+    }
+
     private static final String INBOX_FILE = "sms_inbox.jsonl";
     // Serializes appends to the queue file across the per-message worker threads
     // and the launch-time inbox scanner.
@@ -99,7 +118,7 @@ public class SmsReceiver extends BroadcastReceiver {
             @Override
             public void run() {
                 try {
-                    if (!postToServer(fSender, body, token)) {
+                    if (!postToServer(appContext, fSender, body, token)) {
                         queue(appContext, fSender, body);
                     }
                 } catch (Throwable t) {
@@ -155,10 +174,11 @@ public class SmsReceiver extends BroadcastReceiver {
     }
 
     /** POST to the running embedded server. Returns true on a 2xx response. */
-    private static boolean postToServer(String sender, String body, String token) {
+    private static boolean postToServer(Context context, String sender, String body,
+                                        String token) {
         HttpURLConnection conn = null;
         try {
-            URL url = new URL(INGEST_URL);
+            URL url = new URL(ingestUrl(context));
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);

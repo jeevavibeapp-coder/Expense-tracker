@@ -383,30 +383,86 @@ def test_relaunching_onto_our_own_port_is_not_a_failure(tmp_path):
     assert ae.startup_stage() == "serving"
 
 
-def test_a_port_held_by_something_else_says_so(tmp_path, monkeypatch):
-    """The opposite case must still be reported, and must name the port —
-    'Address already in use' alone gives the user nothing to act on."""
+def test_a_port_conflict_is_survived_rather_than_reported(tmp_path):
+    """This test used to assert the opposite, and the change is the point.
+
+    While the port was fixed at 8765, the best available behaviour was a clear
+    error naming it. Now that the server takes any free loopback port, a
+    conflict is not something the user needs to hear about at all — it is
+    handled. An error here would be a regression to the build that showed
+    "Address already in use" instead of an app.
+    """
     import socket
     import time
     from spendwise import android_entry as ae
 
-    blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    blocker.bind(("127.0.0.1", 0))
-    port = blocker.getsockname()[1]
-    blocker.listen(1)
+    squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    squatter.bind(("127.0.0.1", 0))
+    taken = squatter.getsockname()[1]
+    squatter.listen(1)
     try:
         ae._server_thread = None
         ae._startup_error = None
         ae._stage = "not started"
-        ae.start_server(str(tmp_path), "tok", "secret", port=port)
+        ae.start_server(str(tmp_path), "tok", "secret", port=taken)
         for _ in range(200):
-            if ae.startup_error():
+            if ae.startup_stage() == "serving" or ae.startup_error():
                 break
             time.sleep(0.05)
-        err = ae.startup_error()
-        assert err, "a genuine port conflict was swallowed"
-        assert str(port) in err, "the message does not name the port"
-        assert "not SpendWise" in err
+        assert ae.startup_error() == "", \
+            f"a port conflict was surfaced to the user: {ae.startup_error()}"
+        assert ae.startup_stage() == "serving"
+        assert ae.server_port() != taken, "did not move off the taken port"
     finally:
-        blocker.close()
+        squatter.close()
+
+
+def test_start_server_returns_the_url_it_actually_bound(tmp_path):
+    """Java believes this return value now, so it has to be true."""
+    import socket
+    import time
+    import urllib.request
+    from spendwise import android_entry as ae
+
+    squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    squatter.bind(("127.0.0.1", 0))
+    taken = squatter.getsockname()[1]
+    squatter.listen(1)
+    try:
+        ae._server_thread = None
+        ae._startup_error = None
+        ae._stage = "not started"
+        url = ae.start_server(str(tmp_path), "tok", "secret", port=taken)
+        for _ in range(200):
+            if ae.startup_stage() == "serving":
+                break
+            time.sleep(0.05)
+        assert url.endswith(str(ae.server_port())), \
+            f"returned {url} but serving on {ae.server_port()}"
+        with urllib.request.urlopen(url + "/healthz", timeout=3) as r:
+            assert r.status == 200, "the reported URL does not answer"
+    finally:
+        squatter.close()
+
+
+def test_the_activity_uses_the_port_python_reports():
+    """Python choosing a port is useless if Java keeps assuming 8765."""
+    import pathlib
+    import re
+    base = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise")
+
+    activity = (base / "MainActivity.java").read_text()
+    assert "serverUrl" in activity
+    assert "rememberServerPort" in activity, \
+        "the chosen port is never persisted for the SMS receiver"
+    for call in re.findall(r"new URL\(([^)]*)\)", activity):
+        assert "DEFAULT_SERVER_URL" not in call, \
+            f"{call} targets the preferred port instead of the live one"
+
+    receiver = (base / "SmsReceiver.java").read_text()
+    assert "ingestUrl(context)" in receiver, \
+        "the SMS receiver still posts to a hard-coded port"
+    assert "PREF_SERVER_PORT" in receiver
