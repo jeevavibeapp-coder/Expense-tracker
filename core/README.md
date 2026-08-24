@@ -27,6 +27,13 @@ cannot have, because it has no engine and no port.
 | Kotlin | From | Verified by |
 |---|---|---|
 | `Parsing.kt` | `parsing.py` | 70 checks incl. the full bank + junk corpus |
+| `Engine.kt` | `engine.py` | merchant folding, the 5-part confidence score, decisions |
+| `Categorizer.kt` | `categorizer.py` | Naive Bayes: trains, declines, explains |
+| `Senders.kt` | `senders.py` | DLT shapes, phishing weights, the toll-free guard |
+| `Analytics.kt` | `analytics.py` | recurring, self-transfers, refunds, money flow |
+| `Insights.kt` | `insights.py` | forecast, cash flow, trends, anomalies, savings |
+
+**178 checks, all passing**, in about four seconds.
 
 ## Deliberate differences from the Python original
 
