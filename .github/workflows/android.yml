@@ -53,7 +53,13 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew assembleSmsRelease assembleNosmsRelease assembleSmsDebug
+          # :app is the shipping Capacitor + Chaquopy build. :nativeapp is
+          # the Kotlin rewrite, built separately so a compile error there
+          # costs a red job rather than the only installable APK. || true
+          # keeps the native build non-blocking until it is proven green.
+          ./gradlew :app:assembleSmsRelease :app:assembleNosmsRelease :app:assembleSmsDebug
+          ./gradlew :nativeapp:assembleSmsRelease :nativeapp:assembleNosmsRelease || \
+            echo "::warning::nativeapp did not build; :app artifacts are unaffected"
         env:
           # Empty unless configured as repository secrets; the build then
           # produces an unsigned release rather than signing with a repo key.
@@ -89,6 +95,15 @@ jobs:
           name: app-debug-for-adb-only
           if-no-files-found: warn
           path: android/app/build/outputs/apk/sms/debug/app-sms-debug.apk
+
+      - name: Upload native rewrite (preview)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nativeapp-PREVIEW-kotlin-rewrite
+          if-no-files-found: ignore
+          path: |
+            android/nativeapp/build/outputs/apk/nosms/release/nativeapp-nosms-release.apk
+            android/nativeapp/build/outputs/apk/sms/release/nativeapp-sms-release.apk
 
       - name: Report what was built
         if: always()
