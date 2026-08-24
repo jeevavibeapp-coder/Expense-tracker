@@ -122,8 +122,12 @@ object Parsing {
     // word "ref", so "trf to SWIGGY Refno 553201998877" yielded the merchant
     // name "SWIGGY Refno 553201998877" — reference digits and all — which then
     // became its own merchant in the ledger and never matched the real SWIGGY.
+    // "from" belongs here for the same reason "ref" does: without it,
+    // "debited to ZOMATO from a/c **1234" yields the merchant "ZOMATO from",
+    // which then becomes a separate merchant in the ledger from ZOMATO and
+    // never matches the learning the user already did.
     private const val BOUNDARY =
-        "(?=\\s+(?:on|ref\\w*|txn|utr|upi|avl|a/c|bal|info|via|using|to|not|is)\\b|[.,;]|$D)"
+        "(?=\\s+(?:on|ref\\w*|txn|utr|upi|avl|a/c|bal|info|via|using|to|from|not|is)\\b|[.,;]|$D)"
 
     /** Payee markers for debits. "from" is the payer side and is only trusted
      *  for credits — except as a last resort, because Kotak writes
@@ -293,10 +297,13 @@ object Parsing {
         // no promo/request/pre-debit language, and positive account evidence.
         // The last condition is what keeps promotional and scam messages —
         // which happily carry amounts and even verbs — out of the ledger.
-        val matched = amount != null &&
+        // Everything a real transaction has, ignoring whether the wording is
+        // suspicious. Kept separate from `matched` because the two answer
+        // different questions, and collapsing them loses information the
+        // quarantine screen needs.
+        val looksTransactional = amount != null &&
             amount > 0 &&
             TXN_VERB.containsMatchIn(normalized) &&
-            !NON_TXN.containsMatchIn(normalized) &&
             ACCOUNT_EVIDENCE.containsMatchIn(normalized)
 
         return ParsedSms(
@@ -305,7 +312,10 @@ object Parsing {
             rawMerchant = parseMerchant(normalized, type),
             referenceNumber = REF.find(normalized)?.groupValues?.get(1),
             occurredAt = parseDate(normalized),
-            matched = matched,
+            // A real transaction ALSO has to be free of promo, request,
+            // pre-debit and scam language.
+            matched = looksTransactional && !NON_TXN.containsMatchIn(normalized),
+            looksTransactional = looksTransactional,
         )
     }
 }
@@ -317,4 +327,14 @@ data class ParsedSms(
     val referenceNumber: String? = null,
     val occurredAt: LocalDateTime? = null,
     val matched: Boolean = false,
+    /** Has the shape of a transaction — amount, money-movement verb and
+     *  account evidence — regardless of whether the wording is suspicious.
+     *
+     * A scam that says "Rs.9,999 debited... not you? call 9812345678" fails
+     * `matched` on its scam vocabulary and is therefore never banked. But it
+     * still LOOKS like a debit, and the person may genuinely have been
+     * debited, so it belongs in front of them rather than silently dropped.
+     * A promo with an amount and no verb has neither flag and is simply
+     * noise. */
+    val looksTransactional: Boolean = false,
 )

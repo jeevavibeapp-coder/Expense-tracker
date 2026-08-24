@@ -32,8 +32,15 @@ cannot have, because it has no engine and no port.
 | `Senders.kt` | `senders.py` | DLT shapes, phishing weights, the toll-free guard |
 | `Analytics.kt` | `analytics.py` | recurring, self-transfers, refunds, money flow |
 | `Insights.kt` | `insights.py` | forecast, cash flow, trends, anomalies, savings |
+| `Pipeline.kt` | the SMS flow in `app.py` | the whole capture/hold/drop decision |
 
-**178 checks, all passing**, in about four seconds.
+**202 checks, all passing**, in about four seconds.
+
+`Pipeline.kt` is the most consequential file: it decides what lands in
+someone's ledger and what is held back. Lookups are injected rather than a
+database being reached into, so cases that are awkward to reproduce on a
+device — a spoofed header, a blocked sender, two rails describing one
+payment — are ordinary unit tests.
 
 ## Deliberate differences from the Python original
 
@@ -48,3 +55,15 @@ worth reproducing:
 2. **`on date 08Jul26` now yields a date.** The old pattern required the
    digits to follow `on` immediately, so those messages silently lost their
    date and were filed under the day they happened to be received.
+3. **`from` ends a merchant name.** `debited to ZOMATO from a/c **1234`
+   produced the merchant *"ZOMATO from"* — a second, separate merchant that
+   never matched the learning done on the real ZOMATO. Same class of bug as
+   (1), found by the same kind of test.
+4. **A scam that looks like a debit is now HELD, not dropped.** The parser
+   refuses to bank `Rs.9,999 debited... not you? call 9812345678` because of
+   its scam wording — correctly. But it was then discarded silently, which
+   contradicts what the app tells the user the quarantine screen is for, and
+   they may genuinely have been debited. `matched` and `looksTransactional`
+   are now separate answers to separate questions: nothing scam-worded is
+   ever banked, but if it has the shape of a debit the user gets to see it.
+   A promo or a pre-debit notice has no such shape and is still just noise.
