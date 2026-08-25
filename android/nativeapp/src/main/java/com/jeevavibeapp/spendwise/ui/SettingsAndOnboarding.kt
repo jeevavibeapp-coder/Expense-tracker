@@ -618,7 +618,7 @@ fun HelpScreen(
             SmsAccess.GRANTED -> Unit
         }
 
-        items@ for (topic in HELP_TOPICS) {
+        for (topic in HELP_TOPICS) {
             item(key = topic.question) {
                 PageCard {
                     HelpEntry(
