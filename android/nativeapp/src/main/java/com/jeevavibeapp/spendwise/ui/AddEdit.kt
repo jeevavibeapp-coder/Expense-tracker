@@ -48,8 +48,9 @@ private val DateLabel: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yy
 /**
  * @param categories offered by the picker; only id, name and type are read.
  * @param resolveMerchant what the engine would call this payee — normally
- *   `{ repo.resolveMerchant(it, null, null).merchantName }`. Called on a
- *   background-friendly coroutine and cancelled on every keystroke.
+ *   `{ repo.resolveMerchant(it, null, null).merchantName }`. Runs on the
+ *   composition's own coroutine, debounced and cancelled on every keystroke,
+ *   so it must suspend rather than block.
  * @param onSave persist the row. The sheet calls [onDismiss] straight after,
  *   so the host needs only one closing path.
  * @param onDelete soft-delete the row. The host must NOT close the sheet from
@@ -124,7 +125,12 @@ fun AddEditSheet(
         resolution = payee to resolveMerchant(payee)
     }
     val resolvedName = resolution?.takeIf { it.first == payee }?.second
-        ?.takeIf { it.isNotBlank() && !it.equals(payee, ignoreCase = true) }
+        ?.takeIf { it.isNotBlank() }
+
+    // "Saved as Swiggy" above a field already reading "swiggy" is noise, but
+    // the engine's spelling is still the one worth storing — so the hint is
+    // suppressed for a case-only difference while the name itself is kept.
+    val hintName = resolvedName?.takeIf { !it.equals(payee, ignoreCase = true) }
 
     LaunchedEffect(pendingUndo) {
         if (pendingUndo == null) return@LaunchedEffect
@@ -178,7 +184,7 @@ fun AddEditSheet(
 
             Spacer(Modifier.height(14.dp))
             // Says exactly what will be stored, before it is stored.
-            val merchantHint: (@Composable () -> Unit)? = resolvedName?.let { name ->
+            val merchantHint: (@Composable () -> Unit)? = hintName?.let { name ->
                 { Text("Saved as $name") }
             }
             OutlinedTextField(
@@ -301,7 +307,6 @@ fun AddEditSheet(
  * one: it is a real answer, and a picker with no way back out of it teaches
  * people to pick something wrong instead.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoryPicker(
     categories: List<CategoryEntity>,
@@ -365,7 +370,6 @@ private fun AmountField(value: String, onValue: (String) -> Unit, error: String?
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TypeToggle(type: String, onType: (String) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

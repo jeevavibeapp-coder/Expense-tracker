@@ -1,6 +1,8 @@
 package com.jeevavibeapp.spendwise.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,11 +13,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jeevavibeapp.spendwise.core.*
+import com.jeevavibeapp.spendwise.data.QuarantineEntity
 import com.jeevavibeapp.spendwise.data.TransactionEntity
-import java.time.YearMonth
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * The screens. Composed straight from Room Flows — no HTTP, no server, no
@@ -24,8 +30,10 @@ import java.time.YearMonth
  * instantly instead of showing a splash while an engine boots.
  */
 
+/** Not material3's `Card`: this one is flat, takes the theme's own radius and
+ *  has no elevation. Named apart so the star import cannot be mistaken for it. */
 @Composable
-private fun Card(content: @Composable ColumnScope.() -> Unit) {
+private fun ScreenCard(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(Tokens.cardRadius),
@@ -65,11 +73,17 @@ fun DashboardScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text("₹", fontSize = androidx.compose.ui.unit.TextUnit.Unspecified,
-                            style = MoneyMedium,
+                        Text("₹", style = MoneyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(4.dp))
-                        Text(Insights.money(balance).removePrefix("₹"), style = MoneyLarge)
+                        // money() puts the sign ahead of the symbol ("-₹40"), so the
+                        // symbol has to be split off rather than trimmed — and the
+                        // sign belongs with the digits, at the digits' size.
+                        val amount = Insights.money(balance)
+                        Text(
+                            (if (balance < 0) "−" else "") + amount.substringAfter('₹'),
+                            style = MoneyLarge,
+                        )
                     }
                     Spacer(Modifier.height(18.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -80,12 +94,36 @@ fun DashboardScreen(
             }
         }
 
+        // A zero balance with nothing under it looks like a broken screen
+        // rather than a new one, and the only manual entry point is a "+" the
+        // first-run user has no reason to have found yet.
+        if (income == 0.0 && expense == 0.0 && recurring.isEmpty()) {
+            item {
+                ScreenCard {
+                    Text("Nothing recorded yet",
+                        style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Bank messages are read on this device and filed here as " +
+                        "they arrive. You can also enter one yourself.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onAdd,
+                        modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                    ) { Text("Add a transaction") }
+                }
+            }
+        }
+
         if (insights.isNotEmpty()) {
             item { SectionHeader("Insights") }
             item {
                 // One card of hairline rows, not one card per sentence. A
                 // repeated icon beside each line carries no information.
-                Card {
+                ScreenCard {
                     insights.forEachIndexed { i, line ->
                         if (i > 0) HorizontalDivider(
                             color = MaterialTheme.colorScheme.outline,
@@ -105,7 +143,7 @@ fun DashboardScreen(
         if (recurring.isNotEmpty()) {
             item { SectionHeader("Upcoming bills") }
             items(recurring) { r ->
-                Card {
+                ScreenCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(r.name, style = MaterialTheme.typography.titleMedium)
@@ -126,8 +164,7 @@ private fun StatPill(label: String, value: String, modifier: Modifier = Modifier
     Surface(
         color = Color.Transparent,
         shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp, MaterialTheme.colorScheme.outline),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = modifier,
     ) {
         Column(Modifier.padding(11.dp, 10.dp)) {
@@ -177,39 +214,90 @@ fun TransactionsScreen(
     }
 }
 
+private val DayMonthLabel: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+private val DayMonthYearLabel: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)
+
+/** The year is only shown when it is not this one: "12 Mar" on a row from two
+ *  years ago reads as this March. */
+private fun rowDate(epochMillis: Long): String {
+    val date = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    return date.format(
+        if (date.year == LocalDate.now().year) DayMonthLabel else DayMonthYearLabel)
+}
+
+private fun sourceLabel(source: String): String = when (source) {
+    "sms" -> "From SMS"
+    "import" -> "Imported"
+    "restore" -> "Restored"
+    else -> "Added by you"
+}
+
 @Composable
 private fun TransactionRow(t: TransactionEntity, onDelete: (String) -> Unit) {
+    // Reference, note and delete are per-row detail: hanging them off every
+    // row permanently would turn the ledger into a wall, and a delete icon
+    // repeated down the list is decoration until the moment it is needed.
+    var open by remember(t.id) { mutableStateOf(false) }
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(Tokens.rowRadius),
-        modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier.padding(16.dp, 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(t.merchantName ?: t.rawMerchant ?: "Unknown",
-                    style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                val sub = buildString {
-                    if (t.status != "confirmed") append("Needs review · ")
-                    append(if (t.source == "sms") "From SMS" else "Added by you")
+        Column(Modifier.clickable { open = !open }) {
+            Row(
+                Modifier.heightIn(min = Tokens.minTouchTarget).padding(16.dp, 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(t.merchantName ?: t.rawMerchant ?: "Unknown",
+                        style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    val sub = buildString {
+                        if (t.status != "confirmed") append("Needs review · ")
+                        append(rowDate(t.occurredAt))
+                        append(" · ")
+                        append(sourceLabel(t.source))
+                    }
+                    Text(sub, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(sub, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    (if (t.type == "income") "+" else "−") + Insights.money(t.amount),
+                    style = MoneyRow,
+                    color = if (t.type == "income") Income
+                            else MaterialTheme.colorScheme.onSurface,
+                )
             }
-            Text(
-                (if (t.type == "income") "+" else "−") + Insights.money(t.amount),
-                style = MoneyRow,
-                color = if (t.type == "income") Income else MaterialTheme.colorScheme.onSurface,
-            )
+            if (open) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                Column(Modifier.padding(16.dp, 12.dp)) {
+                    t.referenceNumber?.let { DetailLine("Reference", it) }
+                    t.notes?.let { DetailLine("Note", it) }
+                    TextButton(
+                        onClick = { onDelete(t.id) },
+                        modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                    ) { Text("Delete", color = Expense) }
+                }
+            }
         }
     }
 }
 
 @Composable
+private fun DetailLine(label: String, value: String) {
+    Row(Modifier.padding(bottom = 10.dp)) {
+        Text(label.uppercase(), style = MicroLabel,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(92.dp))
+        Text(value, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
 fun HeldMessagesScreen(
-    held: List<com.jeevavibeapp.spendwise.data.QuarantineEntity>,
+    held: List<QuarantineEntity>,
     onApprove: (String) -> Unit,
     onReject: (String) -> Unit,
 ) {
@@ -223,10 +311,11 @@ fun HeldMessagesScreen(
         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
     ) {
         items(held, key = { it.id }) { q ->
-            Card {
+            ScreenCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(q.sender ?: "Unknown sender",
-                        style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f))
                     Text("RISK ${q.risk}", style = MicroLabel, color = Expense)
                 }
                 q.reason?.let {
@@ -242,14 +331,18 @@ fun HeldMessagesScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Approving files a transaction, so there has to be an
+                    // amount to file. Without one, discard is the only move.
                     if (q.amount != null) {
                         Button(onClick = { onApprove(q.id) },
-                            modifier = Modifier.weight(1f).heightIn(min = Tokens.minTouchTarget)) {
+                            modifier = Modifier.weight(1f)
+                                .heightIn(min = Tokens.minTouchTarget)) {
                             Text("It's real")
                         }
                     }
                     OutlinedButton(onClick = { onReject(q.id) },
-                        modifier = Modifier.weight(1f).heightIn(min = Tokens.minTouchTarget)) {
+                        modifier = Modifier.weight(1f)
+                            .heightIn(min = Tokens.minTouchTarget)) {
                         Text("Discard")
                     }
                 }
