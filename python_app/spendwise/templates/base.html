@@ -1,42 +1,213 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ (s.theme if s is defined and s else 'system') }}">
+<html lang="en" data-theme="{{ theme | default('system') }}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  {% if theme == 'light' %}<meta name="theme-color" content="#eef0f6">
+  {% elif theme == 'dark' %}<meta name="theme-color" content="#0a0a0f">
+  {% else %}<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef0f6">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0f">{% endif %}
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  {# Inline brand favicon (data URI) — avoids a /favicon.ico 404 on every load. #}
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c5cff'/%3E%3Cpath d='M16 7l2 5 5 2-5 2-2 5-2-5-5-2 5-2z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ asset_v }}">
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ asset_v }}" defer></script>
 </head>
 <body>
+{% import "_macros.html" as m %}
 {% if user %}
-<div class="app-shell">
-  <aside class="sidebar">
-    <div class="brand">💸 {{ app_name }}</div>
-    <nav>
-      {% set nav = [
-        ('dashboard', '/dashboard', 'Dashboard'),
-        ('transactions', '/transactions', 'Transactions'),
-        ('import', '/import', 'SMS Import'),
-        ('categories', '/categories', 'Categories'),
-        ('fraud', '/fraud', 'Fraud Alerts'),
-        ('settings', '/settings', 'Settings')] %}
-      {% for key, href, label in nav %}
-        <a href="{{ href }}" class="nav-link {{ 'active' if active == key else '' }}">{{ label }}</a>
-      {% endfor %}
-    </nav>
-    <div class="sidebar-foot">
-      <div class="who">{{ user['full_name'] }}<small>{{ user['email'] }}</small></div>
-      {% if not single_user %}
-      <form method="post" action="/logout"><button class="btn-ghost" type="submit">Sign out</button></form>
-      {% endif %}
+<div class="app">
+  <header class="appbar">
+    {% if back_href is defined and back_href %}
+    <a class="icon-btn" href="{{ back_href }}" aria-label="Back"
+       style="transform:rotate(180deg)">{{ m.icon('chevron') }}</a>
+    {% else %}
+    <span class="avatar">{{ user['full_name'] | initials }}</span>
+    {% endif %}
+    <div style="flex:1">
+      <h1>{% block heading %}{{ app_name }}{% endblock %}</h1>
+      {% block subhead %}{% endblock %}
     </div>
-  </aside>
-  <main class="content">
-    <header class="topbar">
-      <button class="hamburger" onclick="document.body.classList.toggle('nav-open')" aria-label="Menu">☰</button>
-      <h1>{% block heading %}{% endblock %}</h1>
-    </header>
-    {% block content %}{% endblock %}
-  </main>
+    <div class="appbar-actions">
+      <a class="icon-btn" href="/settings" aria-label="Settings">{{ m.icon('gear') }}</a>
+    </div>
+  </header>
+
+  {% if sms_denied %}
+  <div class="perm-banner" role="alert">
+    <span class="pb-ic">{{ m.icon('sms') }}</span>
+    <div class="pb-txt">
+      <b>Auto-capture is paused</b>
+      <span>Allow SMS access so SpendWise can log bank transactions automatically.</span>
+    </div>
+    <button class="pb-btn" type="button"
+            onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}else{location.reload();}">
+      Allow
+    </button>
+  </div>
+  {% endif %}
+
+  {% if nav_held and active != 'quarantine' %}
+  {# Held messages are an exceptional state, so they get a banner rather than a
+     permanent tab — a fifth tab would crowd the bar for something most users
+     never see. Nothing is ever deleted, so this is the only route back to it. #}
+  <a class="perm-banner" role="alert" href="/sms/quarantine"
+     aria-label="{{ nav_held }} message{{ '' if nav_held == 1 else 's' }} held for review. Open held messages."
+     style="text-decoration:none; color:inherit">
+    <span class="pb-ic">{{ m.icon('shield') }}</span>
+    <div class="pb-txt">
+      <b>{{ nav_held }} message{{ '' if nav_held == 1 else 's' }} held</b>
+      <span>We couldn't verify the sender. Check them before they're counted.</span>
+    </div>
+    <span class="pb-btn">Review</span>
+  </a>
+  {% endif %}
+
+  {% if cat_prompts %}
+  {# One calm, dismissible line — not a blocking decision. Tapping it opens
+     the categoriser; ignoring it costs the user nothing. #}
+  <a class="nudge" href="#categorize"
+     aria-label="{{ cat_prompts|length }} new transaction{{ '' if cat_prompts|length == 1 else 's' }} need a category. Open the categoriser.">
+    <span class="nudge-ic">{{ m.icon('sparkles') }}</span>
+    <span class="nudge-txt">
+      <b>{{ cat_prompts|length }} new {{ 'transaction' if cat_prompts|length == 1 else 'transactions' }}</b>
+      <span>Add a category so your spending adds up</span>
+    </span>
+    <span class="nudge-go">Sort</span>
+  </a>
+  {% endif %}
+
+  <main>{% block content %}{% endblock %}</main>
+
+  {# ── Bottom navigation ── #}
+  {# aria-current tells a screen reader WHICH tab you are on — without it
+     TalkBack reads five identical-sounding links. Badge counts are folded
+     into the label because a bare "10" announced after "Activity" is
+     meaningless out of context, and the badge itself is hidden from the
+     reader to avoid announcing the number twice. #}
+  {# Onboarding hides the chrome: a first-run screen with a tab bar invites
+     the user to skip past the one explanation of what the app will read. #}
+  {% if not hide_nav %}
+  <nav class="tabbar" role="navigation" aria-label="Main">
+    <a class="tab {{ 'active' if active == 'dashboard' }}" href="/dashboard"
+       {% if active == 'dashboard' %}aria-current="page"{% endif %}>
+      {{ m.icon('home') }}<span>Home</span></a>
+    <a class="tab {{ 'active' if active == 'transactions' }}" href="/transactions"
+       {% if active == 'transactions' %}aria-current="page"{% endif %}
+       aria-label="Activity{% if nav_review %}, {{ nav_review }} to review{% endif %}">
+      {{ m.icon('activity') }}<span>Activity</span>
+      {% if nav_review %}<span class="nbadge" aria-hidden="true">{{ nav_review }}</span>{% endif %}</a>
+    <span class="tab-spacer" aria-hidden="true"></span>
+    <a class="tab {{ 'active' if active == 'categories' }}" href="/categories"
+       {% if active == 'categories' %}aria-current="page"{% endif %}>
+      {{ m.icon('grid') }}<span>Budgets</span></a>
+    <a class="tab {{ 'active' if active == 'fraud' }}" href="/fraud"
+       {% if active == 'fraud' %}aria-current="page"{% endif %}
+       aria-label="Alerts{% if nav_fraud %}, {{ nav_fraud }} needing attention{% endif %}">
+      {{ m.icon('shield') }}<span>Alerts</span>
+      {% if nav_fraud %}<span class="nbadge" aria-hidden="true">{{ nav_fraud }}</span>{% endif %}</a>
+  </nav>
+  <a class="fab" href="#add" aria-label="Add transaction">{{ m.icon('plus') }}</a>
+  {% endif %}
+
+  {# ── Add transaction (app-wide, FAB opens it directly — no chooser hop) ──
+     Not rendered during onboarding: there is no FAB to open it there, so it
+     would be an unreachable #add target and a form the introduction never
+     mentions. #}
+  {% if not hide_nav %}
+  <span id="add" class="sheet-target"></span>
+  <a class="scrim" href="#!" aria-label="Close"></a>
+  <div class="sheet" role="dialog" aria-label="Add transaction">
+    <div class="grip"></div>
+    <h2 class="sheet-h">Add transaction</h2>
+    <form method="post" action="/transactions">
+      <div class="seg exp" style="margin-bottom:14px">
+        <label><input type="radio" name="type" value="expense" checked><span>Expense</span></label>
+        <label><input type="radio" name="type" value="income"><span>Income</span></label>
+      </div>
+      <div class="field"><label class="lbl">Amount</label>
+        <input id="amt" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0.00" required></div>
+      <div class="field"><label class="lbl">Merchant / payee</label>
+        <input id="merchant" name="merchant" autocomplete="off" placeholder="e.g. Swiggy">
+        <div id="resolve-preview"></div></div>
+      <div class="row">
+        <div class="field"><label class="lbl">Category</label>
+          <select name="category_id" aria-label="Category"><option value="">None</option>
+            {% for c in nav_categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl">Date</label><input name="occurred_at" type="date" aria-label="Date"></div>
+      </div>
+      <div class="field"><label class="lbl">Notes</label><input name="notes" placeholder="Optional"></div>
+      <button class="btn" type="submit">Add transaction</button>
+      <a class="btn-ghost btn-sm" href="/import" style="display:block; text-align:center; margin-top:10px">
+        {{ m.icon('sms') }} Import a bank / UPI SMS instead</a>
+    </form>
+  </div>
+
+  {% endif %}
+
+  {# Merchant resolve-preview is handled by a delegated 'input' listener in
+     app.js (keyed on #merchant), so it survives instant-nav swaps without
+     re-attaching. No inline script needed here. #}
+
+  {# ── Auto-captured SMS → "which category?" sheet ──
+     Opened BY THE USER from the nudge above, never automatically. It used to
+     render over the dashboard on load: the first thing a new user saw was a
+     modal demanding a decision about a transaction they had not yet been
+     shown. Pure CSS :target, so it survives instant-nav with no JS. #}
+  {% if cat_prompts %}
+  {% set cp = cat_prompts[0] %}
+  <div class="cat-modal" id="categorize" role="dialog" aria-modal="true"
+       aria-label="Choose a category">
+    <a class="cat-scrim-close" href="#" aria-label="Close"></a>
+    <div class="cat-card reveal">
+      <div class="cat-head">
+        <span class="cat-spark">{{ m.icon('sms') }}</span>
+        <div style="flex:1">
+          <div class="cat-title">New transaction from SMS</div>
+          <div class="cat-sub">Captured automatically · choose a category</div>
+        </div>
+        {% if cat_prompts|length > 1 %}<span class="badge badge-mid">1 / {{ cat_prompts|length }}</span>{% endif %}
+        <a class="sheet-x" href="#" aria-label="Close">&times;</a>
+      </div>
+      <div class="cat-tx">
+        {{ m.avatar((cp['merchant_name'] or cp['raw_merchant'])|merchant or '?') }}
+        <div style="flex:1; min-width:0">
+          <div class="cat-merch">{{ (cp['merchant_name'] or cp['raw_merchant'])|merchant or 'Unknown merchant' }}</div>
+          <div class="cat-raw">
+            {{ cp['occurred_at'][:10] }}{% if cp['sms_sender'] %} · {{ cp['sms_sender'] }}{% endif %}
+          </div>
+        </div>
+        <div class="cat-amt num {{ cp['type'] }}">{{ '+' if cp['type']=='income' else '–' }}{{ m.money(cp['amount']) }}</div>
+      </div>
+      {# The original message — without it you cannot identify a month-old capture. #}
+      {% if cp['sms_body'] %}
+      <div class="cat-sms">{{ cp['sms_body'] }}</div>
+      {% endif %}
+      <form method="post" action="/transactions/{{ cp['id'] }}/categorize">
+        <div class="cat-chips">
+          {# Only categories matching the transaction's direction. #}
+          {% for c in prompt_categories if c['type'] == cp['type'] %}
+          <button class="cat-chip" type="submit" name="category_id" value="{{ c['id'] }}">{{ c['name'] }}</button>
+          {% endfor %}
+        </div>
+        <div style="display:flex; gap:8px; margin-top:10px">
+          <input name="new_category" placeholder="Or type a new category…" maxlength="40"
+                 style="flex:1; padding:9px 11px; font-size: 0.8125rem">
+          <button class="btn-soft btn-sm" type="submit">Create</button>
+        </div>
+        <div class="cat-foot">
+          <button class="btn-ghost btn-sm" type="submit" name="new_category" value="">Skip</button>
+          {% if cat_prompts|length > 3 %}
+          <a class="btn-ghost btn-sm" href="/review">Sort all {{ cat_prompts|length }} at once →</a>
+          {% endif %}
+        </div>
+      </form>
+      <form method="post" action="/sms/prompts/dismiss">
+        <button class="cat-dismiss btn-ghost btn-sm" type="submit">Dismiss all</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% else %}
   {% block auth %}{% endblock %}

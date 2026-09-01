@@ -42,4 +42,7 @@ def signup(client, email="alice@example.com"):
 def auth_client(client):
     resp = signup(client)
     assert resp.status_code == 200
+    # Skip the first-run introduction. Every test using this fixture is about
+    # the app after setup; onboarding has its own tests, which do not use it.
+    client.post("/welcome/done")
     return client

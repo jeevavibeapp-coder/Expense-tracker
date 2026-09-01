@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The "nosms" flavour: SpendWise with the SMS permissions taken back out.
+
+  Google Play Protect blocks the sideload of any app that requests READ_SMS
+  or RECEIVE_SMS, and in India, Singapore, Thailand and Brazil its enhanced
+  fraud protection does so with no "install anyway" override. That block is
+  about the permission being present in the manifest — it is not affected by
+  how the APK is signed, whether it is debuggable, or what the app does with
+  the permission. So the only build that installs on those devices is one
+  that does not ask for it.
+
+  What is lost: automatic capture of bank messages.
+  What still works: everything else — manual entry, pasting a bank SMS into
+  the Import screen, categories, budgets, the report, backup and restore.
+
+  Merged over src/main/AndroidManifest.xml, so the two stay in step: this
+  file removes nodes rather than restating the manifest.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.RECEIVE_SMS"
+                     tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_SMS"
+                     tools:node="remove" />
+
+    <application>
+        <!-- Without the permissions this receiver could never fire; leaving it
+             declared would still show "SMS" in the app's permission list on
+             some launchers and defeat the point of the flavour. -->
+        <receiver android:name=".SmsReceiver" tools:node="remove" />
+    </application>
+</manifest>
