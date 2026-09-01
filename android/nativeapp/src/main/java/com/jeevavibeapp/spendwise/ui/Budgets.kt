@@ -1,6 +1,7 @@
 package com.jeevavibeapp.spendwise.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,8 +45,8 @@ fun BudgetsScreen(
     if (categories.isEmpty() && incomeCategories.isEmpty()) {
         EmptyState(
             "No categories yet",
-            "Categories are created as your spending is filed. Once there is " +
-            "one here, you can give it a monthly budget.",
+            "SpendWise sets up a starting list the first time it opens. If this " +
+            "stays empty, add one with Categories at the top of the screen.",
         )
         return
     }
@@ -59,7 +60,20 @@ fun BudgetsScreen(
         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 96.dp),
         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
     ) {
-        item { SectionLabel("Spending · ${monthLabel(month)}") }
+        item {
+            Column {
+                SectionLabel("Spending · ${monthLabel(month)}")
+                // Said once for the whole screen. The same sentence as a
+                // button on every card is the loudest colour the theme has,
+                // repeated down the page until nothing on it leads.
+                Text(
+                    "Tap a category to set or change its monthly budget.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 2.dp),
+                )
+            }
+        }
 
         items(rows, key = { it.categoryId }) { row ->
             BudgetRow(
@@ -108,7 +122,10 @@ private fun BudgetRow(
     var rejected by remember(row.categoryId) { mutableStateOf(false) }
     val accent = statusColor(row)
 
-    CardSurface {
+    CardSurface(
+        onClick = if (editing) null else onEdit,
+        onClickLabel = if (row.budget != null) "Change this budget" else "Set a budget",
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // The dot stays the category's own colour even when the bar has
             // gone red: it is how the row is recognised, not how it is doing.
@@ -193,12 +210,6 @@ private fun BudgetRow(
                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
                 ) { Text("Remove budget") }
             }
-        } else {
-            Spacer(Modifier.height(4.dp))
-            TextButton(
-                onClick = onEdit,
-                modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
-            ) { Text(if (row.budget != null) "Change budget" else "Set a budget") }
         }
     }
 }
@@ -241,13 +252,23 @@ private fun Dot(color: Color) {
     Box(Modifier.size(10.dp).clip(RoundedCornerShape(5.dp)).background(color))
 }
 
+/** The card is the control on this screen, so the tap belongs to the whole of
+ *  it rather than to a button repeated inside every one. */
 @Composable
-private fun CardSurface(content: @Composable ColumnScope.() -> Unit) {
+private fun CardSurface(
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(Tokens.cardRadius),
         modifier = Modifier.fillMaxWidth(),
-    ) { Column(Modifier.padding(18.dp), content = content) }
+    ) {
+        val tap = if (onClick == null) Modifier
+                  else Modifier.clickable(onClickLabel = onClickLabel, onClick = onClick)
+        Column(tap.heightIn(min = Tokens.minTouchTarget).padding(18.dp), content = content)
+    }
 }
 
 @Composable

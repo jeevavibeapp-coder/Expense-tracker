@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
@@ -62,18 +63,22 @@ data class SmsStatus(
 )
 
 data class AppPrefs(
+    /** Stored and backed up, never edited: no screen offers a currency,
+     *  because nothing in the app can render one. */
     val currency: String = "INR",
     val theme: String = THEME_SYSTEM,
-    val autoSaveThreshold: Int = 85,
-    val confirmThreshold: Int = 55,
+    // 80 and 50 because Pipeline.ingest defaults to exactly those, and the
+    // JVM tests describe an untouched install in terms of them. A different
+    // number here would only ever be reached by a caller that forgot to pass
+    // the stored row, and would silently ingest on a gate nothing tests.
+    val autoSaveThreshold: Int = 80,
+    val confirmThreshold: Int = 50,
     val highValueAmount: Double? = null,
 )
 
 const val THEME_SYSTEM = "system"
 const val THEME_LIGHT = "light"
 const val THEME_DARK = "dark"
-
-// ── Welcome ─────────────────────────────────────────────────────────────
 
 /**
  * One scrollable screen rather than a swipeable carousel. A carousel lets
@@ -189,8 +194,6 @@ fun WelcomeScreen(
     }
 }
 
-// ── Settings ────────────────────────────────────────────────────────────
-
 @Composable
 fun SettingsScreen(
     prefs: AppPrefs,
@@ -227,17 +230,11 @@ fun SettingsScreen(
         item { GroupHeader("Preferences") }
         item {
             PageCard {
-                Text("Currency", style = MicroLabel,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = draft.currency,
-                    onValueChange = { draft = draft.copy(currency = it.take(8)) },
-                    singleLine = true,
-                    placeholder = { Text("INR") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
-                )
-                Spacer(Modifier.height(16.dp))
+                // No currency field. Every amount in the app is written by
+                // Insights.money, which is rupees, and the parser only reads
+                // rupee amounts out of a bank message — so a currency the
+                // user could type would change nothing on any screen, which
+                // is the one thing a setting must never do.
                 Text("Appearance", style = MicroLabel,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
@@ -454,8 +451,6 @@ fun SettingsScreen(
     }
 }
 
-// ── Privacy ─────────────────────────────────────────────────────────────
-
 /**
  * Written in the second person and in plain sentences on purpose. A privacy
  * policy nobody reads protects the author, not the user.
@@ -492,7 +487,7 @@ fun PrivacyScreen(onBackup: () -> Unit, onExportCsv: () -> Unit) {
                     "Sender reputations" to
                         "Which sender IDs your bank actually uses, learned from the " +
                         "messages you have received, so a lookalike can be spotted.",
-                    "Your settings" to "Currency, theme, thresholds.",
+                    "Your settings" to "Theme, and the two engine thresholds.",
                 )
             }
         }
@@ -553,8 +548,6 @@ fun PrivacyScreen(onBackup: () -> Unit, onExportCsv: () -> Unit) {
         item { Footnote("SpendWise · offline by design") }
     }
 }
-
-// ── Help ────────────────────────────────────────────────────────────────
 
 /**
  * Ordered by how often each problem happens, not by topic. The first item is
@@ -671,8 +664,11 @@ private fun HelpEntry(topic: HelpTopic, expanded: Boolean, onToggle: () -> Unit)
             Text(topic.question, style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f))
             Spacer(Modifier.width(12.dp))
+            // The row already announces expanded or collapsed, so a screen
+            // reader saying "plus sign" after it is the same state told worse.
             Text(if (expanded) "−" else "+", style = MoneyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clearAndSetSemantics {})
         }
         if (expanded) {
             Spacer(Modifier.height(4.dp))
@@ -809,8 +805,6 @@ private val HELP_TOPICS: List<HelpTopic> = listOf(
     )),
 )
 
-// ── Shared pieces ───────────────────────────────────────────────────────
-
 @Composable
 private fun PageCard(content: @Composable ColumnScope.() -> Unit) {
     Surface(
@@ -887,7 +881,8 @@ private fun NavRow(title: String, detail: String, onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(12.dp))
-        Text("›", style = MoneyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("›", style = MoneyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.clearAndSetSemantics {})
     }
 }
 

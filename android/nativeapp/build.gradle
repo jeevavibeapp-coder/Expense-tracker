@@ -21,10 +21,6 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "2.0"
-        // Room writes its schema here so migrations can be diffed in review.
-        // A finance app with no cloud copy cannot afford a destructive
-        // fallback, so every schema change has to ship a real migration.
-        ksp { arg("room.schemaLocation", "$projectDir/schemas") }
     }
 
     // Same two flavours as :app, and for the same reason: Play Protect
@@ -49,6 +45,17 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = '17' }
+}
+
+// Room writes its schema here so migrations can be diffed in review. A finance
+// app with no cloud copy cannot afford a destructive fallback, so every schema
+// change has to ship a real migration.
+//
+// Top level, not inside defaultConfig: `ksp` is an extension the KSP plugin
+// adds to the PROJECT, and nesting it in defaultConfig only ever resolved by
+// Groovy falling back up the owner chain — it is not a DefaultConfig method.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

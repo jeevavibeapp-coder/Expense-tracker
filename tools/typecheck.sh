@@ -47,6 +47,7 @@ trap 'rm -rf "$OUT"' EXIT
 $KOTLINC -cp "$KH/kotlin-stdlib.jar:$KH/coroutines.jar:$CORE_CLASSES" \
     -nowarn -d "$OUT/classes" "${STUB_SOURCES[@]}" "${SOURCES[@]}" \
     > "$OUT/raw" 2>&1
+status=$?
 grep -v JAVA_TOOL "$OUT/raw" | grep 'error:' > "$OUT/errors" || true
 
 # A stub error means the harness is wrong, not the app. Reported separately
@@ -56,6 +57,18 @@ grep -v "^$STUBS/" "$OUT/errors" > "$OUT/app"     || true
 
 total=$(wc -l < "$OUT/app")
 harness=$(wc -l < "$OUT/harness")
+
+# A compiler that never ran prints no "error:" line, and every count above is
+# then zero — which reads exactly like success. Anything that stops kotlinc
+# from starting (missing binary, bad classpath, OOM) would otherwise be
+# reported as "no errors", so a non-zero exit with nothing parsed is fatal.
+if [ "$status" -ne 0 ] && [ "$total" -eq 0 ] && [ "$harness" -eq 0 ]; then
+  echo "!! the compiler exited $status but printed no 'error:' line."
+  echo "   The check did NOT run. This is a broken harness, not clean code."
+  echo
+  grep -v JAVA_TOOL "$OUT/raw" | head -20 | sed 's|^|   |'
+  exit 2
+fi
 
 echo "── type-check: $(printf '%s\n' "${SOURCES[@]}" | wc -l) source files, ${#STUB_SOURCES[@]} stub files"
 echo

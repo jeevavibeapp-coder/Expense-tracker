@@ -171,8 +171,6 @@ private fun LazyListScope.section(heading: String, body: @Composable () -> Unit)
     item { body() }
 }
 
-// ── chrome ────────────────────────────────────────────────────────────────
-
 @Composable
 private fun MonthNav(report: MonthReport, canGoForward: Boolean, onMonth: (YearMonth) -> Unit) {
     Surface(
@@ -232,8 +230,6 @@ private fun ReportCard(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     ) { Column(Modifier.padding(18.dp), content = content) }
 }
-
-// ── hero ──────────────────────────────────────────────────────────────────
 
 @Composable
 private fun Hero(report: MonthReport) {
@@ -307,7 +303,7 @@ private fun VersusLastMonth(report: MonthReport, isCurrent: Boolean) {
     val delta = report.expenseDelta
     val line = when {
         delta > 0 -> "You spent ${Insights.money(delta)} more than last month$span ($prev)."
-        delta < 0 -> "Nice — ${Insights.money(-delta)} less than last month$span ($prev)."
+        delta < 0 -> "You spent ${Insights.money(-delta)} less than last month$span ($prev)."
         else -> "Same as last month$span ($prev)."
     }
     val tint = when {
@@ -346,8 +342,6 @@ private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
         Text(value, style = MoneyRow, maxLines = 1)
     }
 }
-
-// ── this month's own numbers ──────────────────────────────────────────────
 
 @Composable
 private fun DailyBars(daily: List<DaySpend>) {
@@ -401,8 +395,6 @@ private fun CategoryBreakdown(categories: List<CategoryLine>) {
         }
     }
 }
-
-// ── forecast ──────────────────────────────────────────────────────────────
 
 @Composable
 private fun ForecastCard(f: Forecast) {
@@ -473,8 +465,6 @@ private fun UpcomingRow(r: Recurring) {
     }
 }
 
-// ── anomalies and savings ─────────────────────────────────────────────────
-
 @Composable
 private fun AnomalyList(anomalies: List<Anomaly>, onTransaction: ((String) -> Unit)?) {
     ReportCard {
@@ -532,8 +522,6 @@ private fun SavingsList(savings: List<Opportunity>) {
         }
     }
 }
-
-// ── cash flow ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun CashFlowChart(flow: List<CashFlowMonth>) {
@@ -596,8 +584,6 @@ private fun LegendKey(label: String, color: Color) {
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
-
-// ── trends and merchants ──────────────────────────────────────────────────
 
 @Composable
 private fun TrendList(trends: List<CategoryTrend>) {
@@ -665,6 +651,14 @@ private fun merchantSubtitle(m: MerchantInsight): String = buildString {
     m.baseline?.let { append(" · usually ${Insights.money(it)}/mo") }
 }
 
+/** One decimal at most. :core rounds the ratio to two, and "3.47× on coffee"
+ *  is a precision the underlying number does not carry. */
+private fun multipleLabel(x: Double): String {
+    val rounded = Math.round(x * 10.0) / 10.0
+    return if (rounded % 1.0 == 0.0) rounded.toLong().toString()
+           else String.format(Locale.US, "%.1f", rounded)
+}
+
 /**
  * The change against that baseline, and whether it is a rise.
  *
@@ -674,12 +668,10 @@ private fun merchantSubtitle(m: MerchantInsight): String = buildString {
  */
 private fun merchantChange(m: MerchantInsight): Pair<String, Boolean>? {
     val pct = m.changePct ?: return null
-    m.multiple?.let { return Pair("▲ ${it}×", true) }
+    m.multiple?.let { return Pair("▲ ${multipleLabel(it)}×", true) }
     if (abs(pct) < MERCHANT_CHANGE_FLOOR) return null
     return Pair((if (pct > 0) "▲ " else "▼ ") + "${abs(pct)}%", pct > 0)
 }
-
-// ── drawing primitives ────────────────────────────────────────────────────
 
 /**
  * One bar of a chart, sized by weight so any number of them divides the

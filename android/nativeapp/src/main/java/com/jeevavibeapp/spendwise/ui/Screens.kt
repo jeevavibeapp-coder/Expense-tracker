@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jeevavibeapp.spendwise.core.*
 import com.jeevavibeapp.spendwise.data.QuarantineEntity
@@ -142,21 +144,55 @@ fun DashboardScreen(
 
         if (recurring.isNotEmpty()) {
             item { SectionHeader("Upcoming bills") }
-            items(recurring) { r ->
+            item {
+                // One card for the same reason the insights get one: a card
+                // each turns four bills into four things competing with the
+                // balance for the eye.
                 ScreenCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(r.name, style = MaterialTheme.typography.titleMedium)
-                            Text("${r.cadence} · in ${r.daysLeft}d",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    recurring.forEachIndexed { i, r ->
+                        if (i > 0) HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.padding(vertical = 12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(r.name, style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(dueLabel(r), style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(Insights.money(r.amount), style = MoneyRow)
                         }
-                        Text(Insights.money(r.amount), style = MoneyRow)
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * When the bill is due, in words.
+ *
+ * `daysLeft` is negative for up to a full period before :core gives up on a
+ * bill, so the obvious "in ${daysLeft}d" prints "in -12d" on a subscription
+ * that has not been charged on time — and an overdue bill is the one on this
+ * list worth reading.
+ */
+private fun dueLabel(r: Recurring): String {
+    val cadence = when (r.cadence) {
+        "weekly" -> "Weekly"
+        "monthly" -> "Monthly"
+        "quarterly" -> "Quarterly"
+        else -> r.cadence
+    }
+    val due = when {
+        r.daysLeft < -1 -> "was due ${-r.daysLeft} days ago"
+        r.daysLeft == -1L -> "was due yesterday"
+        r.daysLeft == 0L -> "due today"
+        r.daysLeft == 1L -> "due tomorrow"
+        else -> "due in ${r.daysLeft} days"
+    }
+    return "$cadence · $due"
 }
 
 @Composable
@@ -184,14 +220,20 @@ fun TransactionsScreen(
     onDelete: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = query, onValueChange = onQuery,
-            placeholder = { Text("Search merchant, notes, reference") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-                .padding(Tokens.screenPadding, 8.dp)
-                .heightIn(min = Tokens.minTouchTarget),
-        )
+        // Nothing to search until there is something in the ledger, and a
+        // search box over an empty screen is a control that cannot do
+        // anything. It stays once a query is typed, or clearing the last
+        // non-matching search would take the field away with it.
+        if (transactions.isNotEmpty() || query.isNotBlank()) {
+            OutlinedTextField(
+                value = query, onValueChange = onQuery,
+                placeholder = { Text("Search merchant, notes, reference") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+                    .padding(Tokens.screenPadding, 8.dp)
+                    .heightIn(min = Tokens.minTouchTarget),
+            )
+        }
         if (transactions.isEmpty()) {
             // Two different situations, two different messages. Telling
             // someone with a full ledger "no transactions yet" because their
@@ -295,6 +337,12 @@ private fun DetailLine(label: String, value: String) {
     }
 }
 
+/** The score at which :core's own sender rules treat content as a scam.
+ *  Below it a message can still be held — an unfamiliar sender, or one the
+ *  user blocked — so this decides how loudly the card speaks, not whether
+ *  the message is on it. */
+private const val HIGH_RISK = 70
+
 @Composable
 fun HeldMessagesScreen(
     held: List<QuarantineEntity>,
@@ -302,50 +350,105 @@ fun HeldMessagesScreen(
     onReject: (String) -> Unit,
 ) {
     if (held.isEmpty()) {
-        EmptyState("Nothing held",
-            "Every message we've seen came from a sender we could verify.")
+        // What this screen actually knows is that nothing is waiting. It does
+        // not know that every message was checked — SMS access may never have
+        // been granted, or not be in this build at all — so it does not say so.
+        EmptyState(
+            "Nothing held",
+            "Bank messages that look wrong are kept here until you say what " +
+            "they are. None are waiting.",
+        )
         return
     }
     LazyColumn(
         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 96.dp),
         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
     ) {
-        items(held, key = { it.id }) { q ->
-            ScreenCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(q.sender ?: "Unknown sender",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f))
-                    Text("RISK ${q.risk}", style = MicroLabel, color = Expense)
+        items(held, key = { it.id }) { q -> HeldCard(q, onApprove, onReject) }
+    }
+}
+
+@Composable
+private fun HeldCard(
+    q: QuarantineEntity,
+    onApprove: (String) -> Unit,
+    onReject: (String) -> Unit,
+) {
+    // The message is the evidence, and judging it without reading it is
+    // guessing — but a full SMS above the buttons pushes them off the screen,
+    // so it opens on demand the way a ledger row does.
+    var open by remember(q.id) { mutableStateOf(false) }
+    ScreenCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(q.sender ?: "Unknown sender",
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f))
+            q.amount?.let {
+                Spacer(Modifier.width(8.dp))
+                // The amount "It's real" would file, on the card where that
+                // decision is made.
+                Text(Insights.money(it), style = MoneyRow)
+            }
+        }
+        q.reason?.let { reason ->
+            Spacer(Modifier.height(6.dp))
+            // :core already writes the specific sentence — "This message asks
+            // for an OTP, PIN or card detail" — so the sentence is the
+            // warning and its weight follows the score. The score itself
+            // never reaches the screen: a sender the user blocked is held at
+            // risk 0, which printed literally put "RISK 0" in alarm red.
+            val severe = q.risk >= HIGH_RISK
+            Text(
+                reason,
+                style = if (severe) MaterialTheme.typography.bodyMedium
+                        else MaterialTheme.typography.bodySmall,
+                color = if (severe) Expense else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (q.seenCount > 1) {
+            Spacer(Modifier.height(4.dp))
+            // Seeing the same scam repeatedly is itself information.
+            Text("Seen ${q.seenCount} times", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(Tokens.rowRadius),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = Tokens.minTouchTarget)
+                .clickable(
+                    onClickLabel = if (open) "Shorten the message" else "Read the whole message",
+                ) { open = !open },
+        ) {
+            Text(
+                q.body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = if (open) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Approving files a transaction, so there has to be an amount to
+            // file. Without one, discard is the only move.
+            if (q.amount != null) {
+                Button(onClick = { onApprove(q.id) },
+                    modifier = Modifier.weight(1f)
+                        .heightIn(min = Tokens.minTouchTarget)) {
+                    Text("It's real")
                 }
-                q.reason?.let {
-                    Spacer(Modifier.height(6.dp))
-                    Text(it, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (q.seenCount > 1) {
-                    Spacer(Modifier.height(4.dp))
-                    // Seeing the same scam repeatedly is itself information.
-                    Text("Seen ${q.seenCount} times", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Approving files a transaction, so there has to be an
-                    // amount to file. Without one, discard is the only move.
-                    if (q.amount != null) {
-                        Button(onClick = { onApprove(q.id) },
-                            modifier = Modifier.weight(1f)
-                                .heightIn(min = Tokens.minTouchTarget)) {
-                            Text("It's real")
-                        }
-                    }
-                    OutlinedButton(onClick = { onReject(q.id) },
-                        modifier = Modifier.weight(1f)
-                            .heightIn(min = Tokens.minTouchTarget)) {
-                        Text("Discard")
-                    }
-                }
+            }
+            OutlinedButton(onClick = { onReject(q.id) },
+                modifier = Modifier.weight(1f)
+                    .heightIn(min = Tokens.minTouchTarget)) {
+                Text("Discard")
             }
         }
     }
@@ -358,9 +461,13 @@ fun EmptyState(title: String, body: String) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(title, style = MaterialTheme.typography.headlineLarge)
+        Text(title, style = MaterialTheme.typography.headlineLarge,
+            textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
+        // Centred with the title. Left-aligned lines under a centred heading
+        // read as a layout that gave up halfway.
         Text(body, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center)
     }
 }

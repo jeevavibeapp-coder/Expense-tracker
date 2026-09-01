@@ -486,8 +486,6 @@ class Repo(private val dao: SpendDao) {
         }
     }
 
-    // ── Categories and budgets ───────────────────────────────────────────
-
     /**
      * Named outcomes rather than a boolean, because the two failures need
      * different sentences: a blank name is something the user can fix by
@@ -549,8 +547,6 @@ class Repo(private val dao: SpendDao) {
     suspend fun setBudget(categoryId: String, amount: Double?) =
         dao.setBudget(categoryId, amount)
 
-    // ── Settings ─────────────────────────────────────────────────────────
-
     /** Read-modify-write of the one settings row, serialised against the
      *  restore path so neither can lose the other's change. */
     suspend fun updateSettings(mutate: (SettingsEntity) -> SettingsEntity) =
@@ -566,8 +562,6 @@ class Repo(private val dao: SpendDao) {
     suspend fun clearUnreviewedCaptures(): Int = withContext(Dispatchers.IO) {
         dao.clearUnreviewedCaptures()
     }
-
-    // ── Backup, restore and exports ──────────────────────────────────────
 
     /**
      * The whole ledger as a backup file.

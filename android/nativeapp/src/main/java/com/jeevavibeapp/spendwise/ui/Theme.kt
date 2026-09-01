@@ -60,14 +60,21 @@ private val LightScheme = lightColorScheme(
     outline = Color(0x120C0C14), error = Expense,
 )
 
-/** Money is always tabular. A column of amounts whose digits do not line up
- *  is the fastest way for an app to look unfinished. */
+/** Money is always tabular — `tnum`, not a promise in a comment. Roboto's
+ *  default figures are proportional, so a column of amounts whose digits do
+ *  not line up is the fastest way for an app to look unfinished, and the
+ *  ledger is a column of amounts. */
+private const val TABULAR = "tnum"
+
 val MoneyLarge = TextStyle(
-    fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.4).sp)
+    fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.4).sp,
+    fontFeatureSettings = TABULAR)
 val MoneyMedium = TextStyle(
-    fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp)
+    fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp,
+    fontFeatureSettings = TABULAR)
 val MoneyRow = TextStyle(
-    fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.15).sp)
+    fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.15).sp,
+    fontFeatureSettings = TABULAR)
 
 /** Uppercase micro-type with wide tracking. This is what turns a small label
  *  into a considered one, and it is half the reason the screens read as

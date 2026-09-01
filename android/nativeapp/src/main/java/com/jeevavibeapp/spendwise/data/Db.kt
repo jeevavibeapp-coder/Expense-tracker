@@ -13,6 +13,14 @@ import kotlinx.coroutines.flow.Flow
  * cost a socket round-trip and a WSGI dispatch, and the server not starting
  * was a class of failure that could take the entire app down. A DAO call is
  * a function call.
+ *
+ * No foreign keys, deliberately. Three tables carry a `categoryId` pointing
+ * at [CategoryEntity], and declaring the constraint would mean a restore that
+ * empties `categories` while rows still reference them aborts the whole
+ * transaction — losing the ledger to protect a reference. Backup.plan in
+ * :core already rewrites any categoryId it cannot resolve to null, so a
+ * dangling reference cannot enter the database in the first place, and the
+ * screens treat an unknown category as uncategorised rather than an error.
  */
 
 @Entity(
@@ -162,7 +170,6 @@ data class QuarantineEntity(
 @Dao
 abstract class SpendDao {
 
-    // ── Transactions ─────────────────────────────────────────────────────
     // Flows, so a screen re-renders when the data changes rather than when
     // something remembers to refresh it.
 
@@ -234,7 +241,6 @@ abstract class SpendDao {
     @Query("SELECT COUNT(*) FROM transactions WHERE isDeleted = 0")
     abstract fun count(): Flow<Int>
 
-    // ── Categories ───────────────────────────────────────────────────────
     @Query("SELECT * FROM categories WHERE isArchived = 0 ORDER BY name")
     abstract fun categories(): Flow<List<CategoryEntity>>
 
@@ -258,7 +264,6 @@ abstract class SpendDao {
     @Query("UPDATE categories SET budgetAmount = :amount WHERE id = :id")
     abstract suspend fun setBudget(id: String, amount: Double?)
 
-    // ── Merchants and learning ───────────────────────────────────────────
     @Query("SELECT * FROM merchants WHERE canonicalName = :name LIMIT 1")
     abstract suspend fun merchantByName(name: String): MerchantEntity?
 
@@ -283,7 +288,6 @@ abstract class SpendDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertLearning(items: List<LearningEntity>)
 
-    // ── Senders and quarantine ───────────────────────────────────────────
     @Query("SELECT * FROM sms_senders WHERE sender = :sender LIMIT 1")
     abstract suspend fun senderByName(sender: String): SenderEntity?
 
@@ -341,7 +345,6 @@ abstract class SpendDao {
         return inserted
     }
 
-    // ── Settings ─────────────────────────────────────────────────────────
     // Returned as a list rather than a nullable row because a table with no
     // row yet is the ordinary first-launch state, and the caller substitutes
     // the defaults.
@@ -354,8 +357,6 @@ abstract class SpendDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun putSettings(s: SettingsEntity)
-
-    // ── Restoring a backup ───────────────────────────────────────────────
 
     @Query("DELETE FROM transactions") abstract suspend fun deleteAllTransactions()
     @Query("DELETE FROM categories") abstract suspend fun deleteAllCategories()

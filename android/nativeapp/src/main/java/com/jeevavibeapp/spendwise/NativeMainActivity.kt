@@ -117,8 +117,6 @@ class NativeMainActivity : ComponentActivity() {
         smsAccess.value = readSmsAccess()
     }
 
-    // ── Theme and the first-run gate ─────────────────────────────────────
-
     @Composable
     private fun Root(repo: Repo) {
         val stored by remember(repo) { repo.settings() }.collectAsState(initial = null)
@@ -138,8 +136,6 @@ class NativeMainActivity : ComponentActivity() {
             else App(repo, settings)
         }
     }
-
-    // ── The app ──────────────────────────────────────────────────────────
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -206,7 +202,7 @@ class NativeMainActivity : ComponentActivity() {
             }
         }
 
-        // ── Files. No INTERNET permission: everything in and out of this app
+        // No INTERNET permission: everything in and out of this app
         // goes through a picker the user drove, and lands where they chose.
 
         val saveBackup = rememberLauncherForActivityResult(
@@ -584,7 +580,6 @@ class NativeMainActivity : ComponentActivity() {
         }
     }
 
-    // ── Dialogs ──────────────────────────────────────────────────────────
     // Here rather than in ui/ because each one exists to reach a repository
     // call that no screen in that package has a parameter for.
 
@@ -818,7 +813,6 @@ class NativeMainActivity : ComponentActivity() {
         )
     }
 
-    // ── Storage ──────────────────────────────────────────────────────────
     // Through the system picker, both ways. The app has no INTERNET
     // permission and no folder of its own that anything else can reach, so a
     // file only exists where the user put it.
@@ -836,8 +830,6 @@ class NativeMainActivity : ComponentActivity() {
     } catch (t: Throwable) {
         null
     }
-
-    // ── SMS permission ───────────────────────────────────────────────────
 
     /** Three states, not two: the no-SMS flavour declares neither permission,
      *  and asking for one the manifest does not carry is denied instantly by
@@ -889,8 +881,6 @@ private fun SelectionDot(selected: Boolean) {
     )
 }
 
-// ── Destinations ─────────────────────────────────────────────────────────
-
 private enum class Tab(val label: String) {
     HOME("Home"), ACTIVITY("Activity"), BUDGETS("Budgets"), ALERTS("Alerts")
 }
@@ -909,8 +899,6 @@ private sealed interface Sheet {
     data object New : Sheet
     data class Edit(val tx: TransactionEntity) : Sheet
 }
-
-// ── Derivations ──────────────────────────────────────────────────────────
 
 private val CaptureDate: DateTimeFormatter =
     DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
@@ -976,8 +964,6 @@ private fun headlines(
         ?.let { out += it.detail }
     return out
 }
-
-// ── Wording ──────────────────────────────────────────────────────────────
 
 private fun backupFilename(): String = "spendwise-backup-${LocalDate.now()}.json"
 
