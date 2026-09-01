@@ -11,6 +11,7 @@ import com.jeevavibeapp.spendwise.data.Repo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 
 /**
  * Live capture and launch-time catch-up.
@@ -65,8 +66,14 @@ class SmsIntakeReceiver : BroadcastReceiver() {
  * A manifest receiver does not fire on MIUI, ColorOS or EMUI without
  * Autostart, and never fires at all while the process is dead — so without
  * this, auto-capture silently does nothing on a large share of Indian
- * phones. Rescanning is safe because the dedup key makes re-ingesting the
- * same message a no-op.
+ * phones.
+ *
+ * Rescanning is safe AND cheap: every message is offered as history rather
+ * than as an arrival, so anything already banked or already held is
+ * recognised by one indexed lookup and skipped before the expensive part —
+ * merchant resolution retrains the categoriser over the whole ledger, and
+ * paying that once per known message on every launch is a stall the user
+ * would feel.
  */
 class InboxScanner(private val context: Context, private val repo: Repo) {
 
@@ -88,12 +95,26 @@ class InboxScanner(private val context: Context, private val repo: Repo) {
             )?.use { cur ->
                 val iAddr = cur.getColumnIndex("address")
                 val iBody = cur.getColumnIndex("body")
+                val iDate = cur.getColumnIndex("date")
                 while (cur.moveToNext() && seen < MAX_MESSAGES) {
                     seen++
                     val body = if (iBody >= 0) cur.getString(iBody) else null
                     if (body.isNullOrEmpty()) continue
                     val addr = if (iAddr >= 0) cur.getString(iAddr) else null
-                    val result = repo.ingestSms(addr, body)
+                    // When the bank did not put a date in the message, the
+                    // time it was delivered is the transaction's time — and,
+                    // because the dedup key falls back to it, the only thing
+                    // that keeps that key the same on the next rescan.
+                    // Reading the clock instead would file the same purchase
+                    // again every day the app was opened.
+                    val at = if (iDate >= 0) cur.getLong(iDate) else 0L
+                    val result = repo.ingestSms(
+                        sender = addr,
+                        body = body,
+                        // History being walked past again, not a new arrival.
+                        live = false,
+                        receivedAt = if (at > 0) Repo.localTime(at) else LocalDateTime.now(),
+                    )
                     if (result is Repo.Ingest.Captured) captured++
                 }
             }

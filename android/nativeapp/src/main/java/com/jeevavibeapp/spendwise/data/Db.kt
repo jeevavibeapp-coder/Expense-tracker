@@ -149,8 +149,18 @@ data class QuarantineEntity(
     val createdAt: Long,
 )
 
+/**
+ * An abstract class rather than an interface, because of [applyBackup].
+ *
+ * A `@Transaction` method with a body has to be one Room can override. On an
+ * abstract class Room subclasses it and calls `super`; on a Kotlin interface
+ * it has to reach for the `DefaultImpls` the compiler may or may not emit
+ * depending on the `-Xjvm-default` mode in force. The restore is the one
+ * place in this app where losing the transaction wrapper would be
+ * unrecoverable, so it does not get to depend on a compiler flag.
+ */
 @Dao
-interface SpendDao {
+abstract class SpendDao {
 
     // ── Transactions ─────────────────────────────────────────────────────
     // Flows, so a screen re-renders when the data changes rather than when
@@ -161,20 +171,26 @@ interface SpendDao {
      *  here would not shorten a list — it would silently change the
      *  arithmetic on every screen that aggregates. */
     @Query("SELECT * FROM transactions WHERE isDeleted = 0 ORDER BY occurredAt DESC")
-    fun stream(): Flow<List<TransactionEntity>>
+    abstract fun stream(): Flow<List<TransactionEntity>>
 
     @Query("SELECT * FROM transactions WHERE isDeleted = 0 ORDER BY occurredAt DESC")
-    suspend fun all(): List<TransactionEntity>
+    abstract suspend fun all(): List<TransactionEntity>
 
     /** Soft-deleted rows included. A backup that dropped them would turn the
      *  undo behind every delete into a one-way door the moment the ledger
      *  was restored, and their ids are what stops a re-import resurrecting
      *  something the user threw away. */
     @Query("SELECT * FROM transactions ORDER BY occurredAt DESC")
-    suspend fun everyTransaction(): List<TransactionEntity>
+    abstract suspend fun everyTransaction(): List<TransactionEntity>
 
     @Query("SELECT * FROM transactions WHERE id = :id")
-    suspend fun byId(id: String): TransactionEntity?
+    abstract suspend fun byId(id: String): TransactionEntity?
+
+    /** One indexed lookup against the unique dedup key. Insert already
+     *  refuses a collision, but knowing BEFORE the work is what makes
+     *  rescanning an inbox cheap instead of merely harmless. */
+    @Query("SELECT id FROM transactions WHERE dedupKey = :key LIMIT 1")
+    abstract suspend fun idByDedupKey(key: String): String?
 
     /** Search across merchant, notes and reference in one pass. */
     @Query("""
@@ -185,24 +201,24 @@ interface SpendDao {
             notes        LIKE '%' || :q || '%' OR
             referenceNumber LIKE '%' || :q || '%')
         ORDER BY occurredAt DESC LIMIT 200""")
-    fun search(q: String): Flow<List<TransactionEntity>>
+    abstract fun search(q: String): Flow<List<TransactionEntity>>
 
     @Query("SELECT * FROM transactions WHERE isDeleted = 0 AND status != 'confirmed' ORDER BY occurredAt DESC")
-    fun needingReview(): Flow<List<TransactionEntity>>
+    abstract fun needingReview(): Flow<List<TransactionEntity>>
 
     /** IGNORE, not REPLACE: the unique dedupKey is what makes re-ingesting
      *  the same bank message harmless, and REPLACE would overwrite a row the
      *  user had already corrected. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insert(tx: TransactionEntity): Long
+    abstract suspend fun insert(tx: TransactionEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertTransactions(items: List<TransactionEntity>)
+    abstract suspend fun insertTransactions(items: List<TransactionEntity>)
 
-    @Update suspend fun update(tx: TransactionEntity)
+    @Update abstract suspend fun update(tx: TransactionEntity)
 
     @Query("UPDATE transactions SET isDeleted = :deleted WHERE id = :id")
-    suspend fun setDeleted(id: String, deleted: Boolean)
+    abstract suspend fun setDeleted(id: String, deleted: Boolean)
 
     /** Junk captured before the filtering improved. Soft, like every other
      *  delete here, and confirmed rows are left alone: the offer the user
@@ -210,96 +226,120 @@ interface SpendDao {
     @Query("""
         UPDATE transactions SET isDeleted = 1
         WHERE isDeleted = 0 AND source = 'sms' AND status != 'confirmed'""")
-    suspend fun clearUnreviewedCaptures(): Int
+    abstract suspend fun clearUnreviewedCaptures(): Int
 
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE isDeleted = 0 AND type = :type AND occurredAt >= :from AND occurredAt < :to")
-    fun totalBetween(type: String, from: Long, to: Long): Flow<Double>
+    abstract fun totalBetween(type: String, from: Long, to: Long): Flow<Double>
 
     @Query("SELECT COUNT(*) FROM transactions WHERE isDeleted = 0")
-    fun count(): Flow<Int>
+    abstract fun count(): Flow<Int>
 
     // ── Categories ───────────────────────────────────────────────────────
     @Query("SELECT * FROM categories WHERE isArchived = 0 ORDER BY name")
-    fun categories(): Flow<List<CategoryEntity>>
+    abstract fun categories(): Flow<List<CategoryEntity>>
 
     @Query("SELECT * FROM categories")
-    suspend fun allCategories(): List<CategoryEntity>
+    abstract suspend fun allCategories(): List<CategoryEntity>
 
     @Query("SELECT * FROM categories WHERE name = :name LIMIT 1")
-    suspend fun categoryByName(name: String): CategoryEntity?
+    abstract suspend fun categoryByName(name: String): CategoryEntity?
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertCategories(items: List<CategoryEntity>)
+    abstract suspend fun insertCategories(items: List<CategoryEntity>)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertCategory(c: CategoryEntity): Long
+    abstract suspend fun insertCategory(c: CategoryEntity): Long
 
-    @Update suspend fun updateCategory(c: CategoryEntity)
+    @Update abstract suspend fun updateCategory(c: CategoryEntity)
 
     /** Null clears the budget. That is a different state from zero — see
      *  Budget.amount in :core — so the column is nullable and this query
      *  writes the null rather than a 0.0 nobody could ever be under. */
     @Query("UPDATE categories SET budgetAmount = :amount WHERE id = :id")
-    suspend fun setBudget(id: String, amount: Double?)
+    abstract suspend fun setBudget(id: String, amount: Double?)
 
     // ── Merchants and learning ───────────────────────────────────────────
     @Query("SELECT * FROM merchants WHERE canonicalName = :name LIMIT 1")
-    suspend fun merchantByName(name: String): MerchantEntity?
+    abstract suspend fun merchantByName(name: String): MerchantEntity?
 
     @Query("SELECT * FROM merchants")
-    suspend fun allMerchants(): List<MerchantEntity>
+    abstract suspend fun allMerchants(): List<MerchantEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertMerchant(m: MerchantEntity)
+    abstract suspend fun insertMerchant(m: MerchantEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertMerchants(items: List<MerchantEntity>)
+    abstract suspend fun insertMerchants(items: List<MerchantEntity>)
 
     @Query("SELECT * FROM learning WHERE rawName = :rawName LIMIT 1")
-    suspend fun learningFor(rawName: String): LearningEntity?
+    abstract suspend fun learningFor(rawName: String): LearningEntity?
 
     @Query("SELECT * FROM learning")
-    suspend fun allLearning(): List<LearningEntity>
+    abstract suspend fun allLearning(): List<LearningEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertLearning(l: LearningEntity)
+    abstract suspend fun upsertLearning(l: LearningEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertLearning(items: List<LearningEntity>)
+    abstract suspend fun insertLearning(items: List<LearningEntity>)
 
     // ── Senders and quarantine ───────────────────────────────────────────
     @Query("SELECT * FROM sms_senders WHERE sender = :sender LIMIT 1")
-    suspend fun senderByName(sender: String): SenderEntity?
+    abstract suspend fun senderByName(sender: String): SenderEntity?
 
     @Query("SELECT * FROM sms_senders ORDER BY lastSeenAt DESC")
-    fun senders(): Flow<List<SenderEntity>>
+    abstract fun senders(): Flow<List<SenderEntity>>
 
     @Query("SELECT * FROM sms_senders")
-    suspend fun allSenders(): List<SenderEntity>
+    abstract suspend fun allSenders(): List<SenderEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertSender(s: SenderEntity)
+    abstract suspend fun upsertSender(s: SenderEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertSenders(items: List<SenderEntity>)
+    abstract suspend fun insertSenders(items: List<SenderEntity>)
+
+    /** The user said a message from this sender was real. Senders.assess
+     *  reads that count back as evidence, so this is the whole feedback loop
+     *  between the quarantine screen and the next message that arrives. */
+    @Query("UPDATE sms_senders SET confirmedCount = confirmedCount + 1 WHERE sender = :sender")
+    abstract suspend fun noteSenderConfirmed(sender: String)
 
     @Query("SELECT * FROM quarantine WHERE status = 'held' ORDER BY createdAt DESC")
-    fun held(): Flow<List<QuarantineEntity>>
+    abstract fun held(): Flow<List<QuarantineEntity>>
 
     @Query("SELECT * FROM quarantine WHERE status = 'held' ORDER BY createdAt DESC")
-    suspend fun allHeld(): List<QuarantineEntity>
+    abstract suspend fun allHeld(): List<QuarantineEntity>
 
     @Query("SELECT * FROM quarantine WHERE id = :id LIMIT 1")
-    suspend fun quarantineById(id: String): QuarantineEntity?
+    abstract suspend fun quarantineById(id: String): QuarantineEntity?
 
     @Query("SELECT * FROM quarantine WHERE bodyHash = :hash LIMIT 1")
-    suspend fun quarantineByHash(hash: String): QuarantineEntity?
+    abstract suspend fun quarantineByHash(hash: String): QuarantineEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertQuarantine(q: QuarantineEntity)
+    abstract suspend fun upsertQuarantine(q: QuarantineEntity)
 
     @Query("UPDATE quarantine SET status = :status WHERE id = :id")
-    suspend fun setQuarantineStatus(id: String, status: String)
+    abstract suspend fun setQuarantineStatus(id: String, status: String)
+
+    /**
+     * The user's "it's real" on a held message, banked.
+     *
+     * Both halves or neither: a row in the ledger with the message still
+     * sitting in the alert list invites a second approval and a duplicate,
+     * and a cleared alert with no transaction silently loses the purchase the
+     * user just vouched for.
+     *
+     * Returns false when the dedup key was already present — the purchase is
+     * in the ledger either way, so the message is still marked approved.
+     */
+    @Transaction
+    open suspend fun bankHeldMessage(tx: TransactionEntity, quarantineId: String): Boolean {
+        val inserted = insert(tx) != -1L
+        setQuarantineStatus(quarantineId, "approved")
+        return inserted
+    }
 
     // ── Settings ─────────────────────────────────────────────────────────
     // Returned as a list rather than a nullable row because a table with no
@@ -307,21 +347,21 @@ interface SpendDao {
     // the defaults.
 
     @Query("SELECT * FROM settings WHERE id = 1")
-    fun settingsStream(): Flow<List<SettingsEntity>>
+    abstract fun settingsStream(): Flow<List<SettingsEntity>>
 
     @Query("SELECT * FROM settings WHERE id = 1")
-    suspend fun settingsRow(): SettingsEntity?
+    abstract suspend fun settingsRow(): SettingsEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun putSettings(s: SettingsEntity)
+    abstract suspend fun putSettings(s: SettingsEntity)
 
     // ── Restoring a backup ───────────────────────────────────────────────
 
-    @Query("DELETE FROM transactions") suspend fun deleteAllTransactions()
-    @Query("DELETE FROM categories") suspend fun deleteAllCategories()
-    @Query("DELETE FROM merchants") suspend fun deleteAllMerchants()
-    @Query("DELETE FROM learning") suspend fun deleteAllLearning()
-    @Query("DELETE FROM sms_senders") suspend fun deleteAllSenders()
+    @Query("DELETE FROM transactions") abstract suspend fun deleteAllTransactions()
+    @Query("DELETE FROM categories") abstract suspend fun deleteAllCategories()
+    @Query("DELETE FROM merchants") abstract suspend fun deleteAllMerchants()
+    @Query("DELETE FROM learning") abstract suspend fun deleteAllLearning()
+    @Query("DELETE FROM sms_senders") abstract suspend fun deleteAllSenders()
 
     /**
      * A whole restore, or none of it.
@@ -340,9 +380,15 @@ interface SpendDao {
      * holds, so a collision here means the two disagree — and dropping the
      * incoming row is the only resolution that cannot destroy something the
      * user still has.
+     *
+     * Every statement below is a plain DAO call on this coroutine. Room
+     * carries the open transaction in the coroutine context, so anything that
+     * left it — a `runBlocking`, a hand-rolled thread — would run its writes
+     * OUTSIDE the transaction and quietly reintroduce the half-applied
+     * restore this method exists to prevent.
      */
     @Transaction
-    suspend fun applyBackup(
+    open suspend fun applyBackup(
         clearFirst: Boolean,
         categories: List<CategoryEntity>,
         merchants: List<MerchantEntity>,
