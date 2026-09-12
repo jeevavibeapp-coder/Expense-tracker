@@ -105,6 +105,39 @@ fun main() {
     check("and is flagged as needing a category",
         unknown is Pipeline.Outcome.Capture && unknown.needsCategory)
 
+    println("=== confirming closes the loop a pending capture opened ===")
+    // What the capture above left behind: a row the app filed but would not
+    // vouch for. Confirming is the only thing that clears it.
+    val pending = run("AD-HDFCBK", GENUINE,
+        resolution = Pipeline.Resolution("Zomatoo", null, 55)) as Pipeline.Outcome.Capture
+    val agreed = Pipeline.confirm(pending.merchantName, pending.categoryId, "Zomatoo")
+    check("a confirmed row is no longer pending",
+        agreed?.status == Pipeline.STATUS_CONFIRMED, "status=${agreed?.status}")
+    check("and carries the confidence of a person, not a guess",
+        agreed?.confidence == 100, "confidence=${agreed?.confidence}")
+    check("agreeing with the suggested payee is not a correction",
+        agreed?.isCorrection == false)
+    check("nor is agreeing in different case",
+        Pipeline.confirm("Zomato", null, "zomato")?.isCorrection == false)
+    check("renaming the payee IS a correction",
+        Pipeline.confirm("Zomatoo", null, "Zomato")?.isCorrection == true)
+    check("naming a payee the app could not name at all is not a correction",
+        Pipeline.confirm(null, null, "Zomato")?.isCorrection == false)
+    check("and neither is naming one it left blank",
+        Pipeline.confirm("   ", null, "Zomato")?.isCorrection == false)
+    check("the typed name is filed without its stray spacing",
+        Pipeline.confirm(null, null, "  Zomato  ")?.merchantName == "Zomato")
+    // A blank name must leave the row alone: overwriting the captured payee
+    // with nothing would delete the only evidence of who was paid.
+    check("a blank name confirms nothing", Pipeline.confirm("Zomato", "food", "") == null)
+    check("and neither does whitespace", Pipeline.confirm("Zomato", "food", "   ") == null)
+    check("a named category is what the row gets",
+        Pipeline.confirm("Zomato", "food", "Zomato", "dining")?.categoryId == "dining")
+    check("naming no category keeps the one the row had",
+        Pipeline.confirm("Zomato", "food", "Zomato")?.categoryId == "food")
+    check("a row with no category and no choice stays uncategorised",
+        Pipeline.confirm("Zomato", null, "Zomato")?.categoryId == null)
+
     println("=== dedup: one purchase, one row ===")
     val a = run("AD-HDFCBK", GENUINE)
     val b = run("AD-HDFCBK", GENUINE)

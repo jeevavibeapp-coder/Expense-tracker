@@ -26,6 +26,10 @@ import java.util.UUID
 class Repo(private val dao: SpendDao) {
 
     companion object {
+        /** Longer than a chip can show, and the review screen creates
+         *  categories from free text. */
+        const val MAX_CATEGORY_NAME = 40
+
         fun newId(): String = UUID.randomUUID().toString()
 
         fun millis(t: LocalDateTime): Long =
@@ -132,6 +136,48 @@ class Repo(private val dao: SpendDao) {
                     existing.categoryId != null && existing.categoryId != tx.categoryId,
             )
         }
+    }
+
+    /**
+     * The user naming the payee on a capture the app filed but would not
+     * vouch for, and the engine learning from it.
+     *
+     * [save] cannot do this job: it carries the stored status forward, which
+     * is right for an edit — correcting an amount is not a review — and
+     * leaves a low-confidence capture reading "Needs review" no matter how
+     * often it is edited. This is the one path that moves a stored row to
+     * confirmed.
+     *
+     * @return false when the row is gone or the name is blank, so the caller
+     *   can say nothing happened rather than claim a confirmation.
+     */
+    suspend fun confirm(id: String, merchantName: String,
+                        categoryId: String? = null): Boolean = withContext(Dispatchers.IO) {
+        val row = dao.byId(id) ?: return@withContext false
+        val decided = Pipeline.confirm(row.merchantName, row.categoryId, merchantName, categoryId)
+            ?: return@withContext false
+
+        dao.update(row.copy(
+            merchantName = decided.merchantName,
+            categoryId = decided.categoryId,
+            status = decided.status,
+            confidence = decided.confidence,
+        ))
+
+        // Teach from the RAW payee the bank sent, which is the string the
+        // next message will arrive with — learning under the display name
+        // would train a key no incoming SMS ever matches. A manually entered
+        // row has no raw payee, and there the confirmed name is that string,
+        // which is the same fallback [save] uses.
+        recordConfirmation(
+            rawMerchant = row.rawMerchant ?: decided.merchantName,
+            merchantName = decided.merchantName,
+            categoryId = decided.categoryId,
+            amount = row.amount,
+            occurredAt = localTime(row.occurredAt),
+            wasCorrection = decided.isCorrection,
+        )
+        true
     }
 
     /**
@@ -561,6 +607,96 @@ class Repo(private val dao: SpendDao) {
 
     suspend fun clearUnreviewedCaptures(): Int = withContext(Dispatchers.IO) {
         dao.clearUnreviewedCaptures()
+    }
+
+    /** How many captures are waiting, for the badge that leads to them. A
+     *  count query, so a screen that only shows the number does not load the
+     *  rows behind it. */
+    fun reviewCount(): Flow<Int> = dao.needingReviewCount()
+
+    /**
+     * The review queue as questions rather than rows.
+     *
+     * Grouping and the pre-filled suggestions are [Review] in :core, covered
+     * by its own JVM checks; this only supplies the rows and the model. It is
+     * a Flow so that answering one group removes it — the rows change, the
+     * queue re-emits, and the screen has one fewer question on it without
+     * anything having to remember to reload.
+     */
+    fun reviewQueue(): Flow<List<Review.Group>> = dao.needingReview().map { rows ->
+        withContext(Dispatchers.IO) {
+            val groups = Review.group(rows.map { r ->
+                Review.Item(r.id, r.amount, r.type, localTime(r.occurredAt),
+                    r.rawMerchant, r.merchantName, r.smsSender)
+            })
+            // Archived categories are excluded rather than merely unlikely:
+            // the model can still name one, and the picker below the
+            // suggestion cannot show it.
+            Review.suggest(groups, trainedModel(),
+                dao.allCategories().filterNot { it.isArchived }.map { it.id }.toSet())
+        }
+    }
+
+    /**
+     * One category for every capture from one payee, and the engine learns
+     * from it.
+     *
+     * The learning is the half that makes this worth more than a fast way to
+     * type the same thing twenty times: a confirmed group is that many
+     * pieces of evidence about the payee's amounts and hours, so the next
+     * message from them is filed without asking at all.
+     *
+     * @param newCategoryName used only when [categoryId] is null — the
+     *   category the user typed instead of picking, created if this is the
+     *   first time they have named it.
+     * @return rows actually written, which is what the user is told.
+     */
+    suspend fun categoriseReviewGroup(
+        group: Review.Group,
+        categoryId: String? = null,
+        newCategoryName: String? = null,
+    ): Int = withContext(Dispatchers.IO) {
+        val target = resolveCategory(categoryId, newCategoryName, group.type)
+            ?: return@withContext 0
+        // Blank means the captures resolved to no payee at all. Writing that
+        // as a name would replace "unknown" with "", which is the same
+        // absence spelled in a way the ledger cannot tell from a real name.
+        val name = group.key.ifBlank { null }
+        val written = dao.categoriseGroup(group.ids, target, name)
+        for (row in Review.teachFrom(group)) {
+            // teachFrom hands back only rows that carry one; the learning
+            // table is keyed on it.
+            val raw = row.rawMerchant ?: continue
+            recordConfirmation(
+                rawMerchant = raw,
+                merchantName = name ?: raw,
+                categoryId = target,
+                amount = row.amount,
+                occurredAt = row.occurredAt,
+                // Nobody had categorised these rows, so there is no earlier
+                // answer for this to be a correction of.
+                wasCorrection = false,
+            )
+        }
+        written
+    }
+
+    /** "Not a transaction", for a whole group of junk from one sender. Soft,
+     *  like every other delete here. */
+    suspend fun discardReviewGroup(group: Review.Group): Int = withContext(Dispatchers.IO) {
+        dao.discardGroup(group.ids)
+    }
+
+    /** The category a review decision lands in: the one tapped, or the one
+     *  typed — found if it already exists, created if it does not. */
+    private suspend fun resolveCategory(id: String?, typed: String?, type: String): String? {
+        if (id != null) return dao.allCategories().firstOrNull { it.id == id }?.id
+        // Capped at the length the picker can show. A category whose name
+        // does not fit on a chip is one the user cannot recognise later.
+        val clean = typed?.trim()?.take(MAX_CATEGORY_NAME).orEmpty()
+        if (clean.isEmpty()) return null
+        createCategory(clean, type)
+        return dao.categoryByName(clean)?.id
     }
 
     /**

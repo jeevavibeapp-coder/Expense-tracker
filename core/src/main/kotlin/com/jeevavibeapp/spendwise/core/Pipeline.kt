@@ -3,7 +3,8 @@ package com.jeevavibeapp.spendwise.core
 import java.time.LocalDateTime
 
 /**
- * What happens to an incoming SMS, as a pure decision.
+ * What happens to an incoming SMS, as a pure decision — and what happens
+ * when the user answers the question a low-confidence capture asked.
  *
  * This sequence is the most consequential code in the app: it decides what
  * lands in someone's ledger and what gets held back. Keeping it here — with
@@ -102,6 +103,61 @@ object Pipeline {
             status = status,
             dedupKey = dedupKey(parsed, at),
             needsCategory = resolution.categoryId == null,
+        )
+    }
+
+    /** A person said so, and no scored guess outranks that. Written onto the
+     *  row so the next thing to read it — a resolution, a report, an export —
+     *  cannot treat a settled payee as still doubtful. */
+    const val CONFIRMED_CONFIDENCE = 100
+
+    /** What confirming writes onto a capture, plus how the engine should
+     *  learn it. */
+    data class Confirmation(
+        val merchantName: String,
+        val categoryId: String?,
+        val status: String,
+        val confidence: Int,
+        /** The user renamed the payee rather than agreeing with it. Scoring
+         *  weighs corrections against confirmations, so recording a rename as
+         *  agreement would make the engine more confident about the very
+         *  guess it just got wrong. */
+        val isCorrection: Boolean,
+    )
+
+    /**
+     * The user naming the payee on a capture the app was not sure about —
+     * the half of the loop that closes it.
+     *
+     * A capture below [ingest]'s auto threshold lands as pending or
+     * needs_review and stays there until this runs; nothing else in the app
+     * moves a stored row to confirmed.
+     *
+     * @param storedName    the payee currently on the row, if any
+     * @param storedCategoryId kept when the caller names no category, so
+     *   confirming a name cannot quietly uncategorise the row
+     * @return null when there is no name to file. Blank is the caller's
+     *   signal to leave the row exactly as it is: writing an empty payee over
+     *   what the bank message said would destroy the only evidence there is.
+     */
+    fun confirm(
+        storedName: String?,
+        storedCategoryId: String?,
+        name: String,
+        categoryId: String? = null,
+    ): Confirmation? {
+        val clean = name.trim()
+        if (clean.isEmpty()) return null
+        return Confirmation(
+            merchantName = clean,
+            categoryId = categoryId ?: storedCategoryId,
+            status = STATUS_CONFIRMED,
+            confidence = CONFIRMED_CONFIDENCE,
+            // Case alone is not a correction: accepting "swiggy" against a
+            // stored "Swiggy" is the user agreeing, and counting it as a
+            // rename would penalise a mapping they just endorsed.
+            isCorrection = !storedName.isNullOrBlank() &&
+                !storedName.equals(clean, ignoreCase = true),
         )
     }
 

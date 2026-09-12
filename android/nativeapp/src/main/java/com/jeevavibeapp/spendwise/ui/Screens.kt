@@ -217,7 +217,9 @@ fun TransactionsScreen(
     transactions: List<TransactionEntity>,
     query: String,
     onQuery: (String) -> Unit,
+    onEdit: (TransactionEntity) -> Unit,
     onDelete: (String) -> Unit,
+    onConfirm: (String, String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         // Nothing to search until there is something in the ledger, and a
@@ -250,7 +252,9 @@ fun TransactionsScreen(
                     Tokens.screenPadding, 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(transactions, key = { it.id }) { t -> TransactionRow(t, onDelete) }
+                items(transactions, key = { it.id }) { t ->
+                    TransactionRow(t, onEdit, onDelete, onConfirm)
+                }
             }
         }
     }
@@ -277,10 +281,16 @@ private fun sourceLabel(source: String): String = when (source) {
 }
 
 @Composable
-private fun TransactionRow(t: TransactionEntity, onDelete: (String) -> Unit) {
-    // Reference, note and delete are per-row detail: hanging them off every
-    // row permanently would turn the ledger into a wall, and a delete icon
-    // repeated down the list is decoration until the moment it is needed.
+private fun TransactionRow(
+    t: TransactionEntity,
+    onEdit: (TransactionEntity) -> Unit,
+    onDelete: (String) -> Unit,
+    onConfirm: (String, String) -> Unit,
+) {
+    // Reference, note, edit and delete are per-row detail: hanging them off
+    // every row permanently would turn the ledger into a wall, and a delete
+    // icon repeated down the list is decoration until the moment it is
+    // needed.
     var open by remember(t.id) { mutableStateOf(false) }
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -316,14 +326,63 @@ private fun TransactionRow(t: TransactionEntity, onDelete: (String) -> Unit) {
                 Column(Modifier.padding(16.dp, 12.dp)) {
                     t.referenceNumber?.let { DetailLine("Reference", it) }
                     t.notes?.let { DetailLine("Note", it) }
-                    TextButton(
-                        onClick = { onDelete(t.id) },
-                        modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
-                    ) { Text("Delete", color = Expense) }
+                    // The row said "Needs review" in its subtitle; this is
+                    // where that review is done. Without it the only way to
+                    // clear the label is to delete the transaction.
+                    if (t.status != "confirmed") ConfirmPayee(t, onConfirm)
+                    // Any row can be corrected, not just the statistically
+                    // interesting ones: a misread amount or a payee the
+                    // engine named wrongly is ordinary, and without this the
+                    // only repair is delete-and-retype, which throws away the
+                    // SMS link and the dedup key that keep the message out.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = { onEdit(t) },
+                            modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                        ) { Text("Edit") }
+                        TextButton(
+                            onClick = { onDelete(t.id) },
+                            modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                        ) { Text("Delete", color = Expense) }
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * Naming the payee on a capture the app was unsure about.
+ *
+ * The field starts on the app's own guess rather than empty, so agreeing is
+ * one tap and disagreeing is a correction to a word or two — and the engine
+ * is told which of the two happened, because a rename it counted as
+ * agreement would make it more confident about the name it got wrong.
+ */
+@Composable
+private fun ConfirmPayee(t: TransactionEntity, onConfirm: (String, String) -> Unit) {
+    var name by remember(t.id) {
+        mutableStateOf(t.merchantName ?: t.rawMerchant ?: "")
+    }
+    Text("Who was this?", style = MicroLabel,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(8.dp))
+    OutlinedTextField(
+        value = name, onValueChange = { name = it },
+        placeholder = { Text("Payee") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+    )
+    Spacer(Modifier.height(8.dp))
+    Button(
+        // A blank name is refused here rather than silently ignored on the
+        // way to storage: the repository would decline it, and a button that
+        // appears to work but does nothing is worse than one that is off.
+        onClick = { onConfirm(t.id, name) },
+        enabled = name.isNotBlank(),
+        modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+    ) { Text("Confirm") }
+    Spacer(Modifier.height(14.dp))
 }
 
 @Composable

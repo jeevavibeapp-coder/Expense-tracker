@@ -167,6 +167,10 @@ data class QuarantineEntity(
  * place in this app where losing the transaction wrapper would be
  * unrecoverable, so it does not get to depend on a compiler flag.
  */
+/** Ids per statement in a bulk write. Comfortably under SQLite's 999-variable
+ *  ceiling on older Android, with room for the other bound arguments. */
+private const val BULK_IDS = 500
+
 @Dao
 abstract class SpendDao {
 
@@ -210,8 +214,65 @@ abstract class SpendDao {
         ORDER BY occurredAt DESC LIMIT 200""")
     abstract fun search(q: String): Flow<List<TransactionEntity>>
 
-    @Query("SELECT * FROM transactions WHERE isDeleted = 0 AND status != 'confirmed' ORDER BY occurredAt DESC")
+    /**
+     * The review queue: captures the app is not sure it got right.
+     *
+     * Uncategorised counts as unreviewed even when confidence was high enough
+     * to save the row without asking — a transaction filed under no category
+     * is missing from every budget and every report, which is the same
+     * unfinished state as one that is waiting to be confirmed.
+     *
+     * Captures only. A hand-entered row with no category is a choice the user
+     * made in the sheet, and putting it in a queue that asks them to fix it
+     * would be the app arguing with them.
+     */
+    @Query("""
+        SELECT * FROM transactions
+        WHERE isDeleted = 0 AND source = 'sms'
+          AND (categoryId IS NULL OR status != 'confirmed')
+        ORDER BY occurredAt DESC""")
     abstract fun needingReview(): Flow<List<TransactionEntity>>
+
+    /** The same set, counted. Read on every screen for the badge, so it does
+     *  not pay for loading the rows it is counting. */
+    @Query("""
+        SELECT COUNT(*) FROM transactions
+        WHERE isDeleted = 0 AND source = 'sms'
+          AND (categoryId IS NULL OR status != 'confirmed')""")
+    abstract fun needingReviewCount(): Flow<Int>
+
+    /**
+     * One decision, applied to every row of a reviewed group.
+     *
+     * `merchantName` names the whole group at once — rows that only ever had
+     * the bank's raw string get the payee's name here, which is what makes
+     * the group hold together the next time it is looked at.
+     *
+     * Chunked, because SQLite binds one host variable per id and the limit on
+     * older Android is 999: a payee with a thousand captures is exactly the
+     * user this screen exists for, and they must not be the one it fails on.
+     */
+    @Transaction
+    open suspend fun categoriseGroup(ids: List<String>, categoryId: String,
+                                     merchantName: String?): Int =
+        ids.chunked(BULK_IDS).sumOf { categoriseRows(it, categoryId, merchantName) }
+
+    @Query("""
+        UPDATE transactions
+        SET categoryId = :categoryId, categoryPrompted = 1, status = 'confirmed',
+            merchantName = COALESCE(:merchantName, merchantName)
+        WHERE id IN (:ids)""")
+    abstract suspend fun categoriseRows(ids: List<String>, categoryId: String,
+                                        merchantName: String?): Int
+
+    /** "Not a transaction", for a whole group. Soft, like every other delete
+     *  here, and chunked for the same reason as [categoriseGroup]. */
+    @Transaction
+    open suspend fun discardGroup(ids: List<String>): Int =
+        ids.chunked(BULK_IDS).sumOf { discardRows(it) }
+
+    @Query("UPDATE transactions SET isDeleted = 1 WHERE id IN (:ids)")
+    abstract suspend fun discardRows(ids: List<String>): Int
 
     /** IGNORE, not REPLACE: the unique dedupKey is what makes re-ingesting
      *  the same bank message harmless, and REPLACE would overwrite a row the

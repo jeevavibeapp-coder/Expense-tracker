@@ -154,6 +154,9 @@ class NativeMainActivity : ComponentActivity() {
         val categories by remember(repo) { repo.categories() }.collectAsState(initial = emptyList())
         val q by query.collectAsState()
         val access by smsAccess.collectAsState()
+        // A count, not the queue: the badge is on screen constantly, and
+        // building the grouped queue retrains the categoriser.
+        val waiting by remember(repo) { repo.reviewCount() }.collectAsState(initial = 0)
 
         // A key wherever it is used, not just an argument: the app can be
         // left open across midnight, and a cached figure computed against
@@ -315,6 +318,14 @@ class NativeMainActivity : ComponentActivity() {
                                 onClick = { stack = stack + Page.REPORT },
                                 modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
                             ) { Text("Report") }
+                            // Only when there is something to sort. The
+                            // ledger is where the "Needs review" rows are
+                            // read, so it is where the way to settle them all
+                            // at once belongs.
+                            if (tab == Tab.ACTIVITY && waiting > 0) TextButton(
+                                onClick = { stack = stack + Page.REVIEW },
+                                modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                            ) { Text("Review $waiting") }
                             TextButton(
                                 onClick = { stack = stack + Page.SETTINGS },
                                 modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
@@ -370,6 +381,7 @@ class NativeMainActivity : ComponentActivity() {
                                 transactions = matches,
                                 query = q,
                                 onQuery = { query.value = it },
+                                onEdit = { tx -> sheet = Sheet.Edit(tx) },
                                 onDelete = { id ->
                                     lifecycleScope.launch {
                                         repo.delete(id)
@@ -382,6 +394,18 @@ class NativeMainActivity : ComponentActivity() {
                                             duration = SnackbarDuration.Long)
                                         if (choice == SnackbarResult.ActionPerformed) {
                                             repo.undelete(id)
+                                        }
+                                    }
+                                },
+                                onConfirm = { id, name ->
+                                    lifecycleScope.launch {
+                                        // What the confirmation bought, not
+                                        // "done": the point of naming a payee
+                                        // is that the next message from it is
+                                        // filed without asking.
+                                        if (repo.confirm(id, name)) {
+                                            announce("Confirmed. The next one from " +
+                                                     "${name.trim()} will be filed for you.")
                                         }
                                     }
                                 },
@@ -458,6 +482,46 @@ class NativeMainActivity : ComponentActivity() {
                             onTransaction = { id ->
                                 transactions.firstOrNull { it.id == id }
                                     ?.let { sheet = Sheet.Edit(it) }
+                            },
+                        )
+                    }
+
+                    // One question per payee, answered for every capture
+                    // behind it. The grouping and the pre-filled suggestions
+                    // are Review in :core; nothing on the screen decides
+                    // anything the JVM checks do not cover.
+                    Page.REVIEW -> {
+                        // Collected inside the page rather than beside the
+                        // ledger above: building the queue retrains the
+                        // categoriser over every categorised row, which is
+                        // not work to repeat on each change to the ledger
+                        // while this screen is closed.
+                        val queue by remember(repo) { repo.reviewQueue() }
+                            .collectAsState(initial = emptyList())
+                        ReviewScreen(
+                            groups = queue,
+                            categories = categories,
+                            onCategorise = { group, categoryId ->
+                                lifecycleScope.launch {
+                                    announce(sorted(
+                                        repo.categoriseReviewGroup(group, categoryId = categoryId),
+                                        categoryNames[categoryId]))
+                                }
+                            },
+                            onCreateCategory = { group, name ->
+                                lifecycleScope.launch {
+                                    announce(sorted(
+                                        repo.categoriseReviewGroup(group, newCategoryName = name),
+                                        name.trim()))
+                                }
+                            },
+                            onDiscard = { group ->
+                                lifecycleScope.launch {
+                                    val n = repo.discardReviewGroup(group)
+                                    announce("Removed $n " +
+                                             (if (n == 1) "capture." else "captures.") +
+                                             " Nothing else was touched.")
+                                }
                             },
                         )
                     }
@@ -889,6 +953,7 @@ private enum class Tab(val label: String) {
  *  one covers the bars, and back returns to whatever it covered. */
 private enum class Page(val title: String) {
     REPORT("Report"),
+    REVIEW("Review"),
     SETTINGS("Settings"),
     PRIVACY("Privacy"),
     HELP("Help"),
@@ -976,6 +1041,15 @@ private fun describe(result: Repo.Ingest): String = when (result) {
     is Repo.Ingest.Duplicate -> "That one is already in your ledger."
     is Repo.Ingest.Held -> "Held for you to check: ${result.reason}"
     Repo.Ingest.NotFinancial -> "That doesn't read as a transaction, so nothing was added."
+}
+
+/** Rows written, not "done": the whole point of the screen is that one tap
+ *  settled more than one row, and a bare confirmation hides the number that
+ *  makes it worth using. */
+private fun sorted(rows: Int, category: String?): String = when {
+    rows == 0 -> "Nothing was sorted — those captures are no longer waiting."
+    category == null -> "Sorted $rows ${if (rows == 1) "capture" else "captures"}."
+    else -> "Sorted $rows ${if (rows == 1) "capture" else "captures"} into $category."
 }
 
 private fun describe(result: Repo.CategoryResult, name: String): String = when (result) {
