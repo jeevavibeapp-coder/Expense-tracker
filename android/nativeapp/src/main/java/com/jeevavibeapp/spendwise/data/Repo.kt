@@ -92,6 +92,44 @@ class Repo(private val dao: SpendDao) {
 
     fun heldMessages(): Flow<List<QuarantineEntity>> = dao.held()
 
+    /** Every sender that has ever sent something financial-looking. The DAO
+     *  orders by recency; the order the screen shows is SenderBook's. */
+    fun senders(): Flow<List<SenderEntity>> = dao.senders()
+
+    /**
+     * Record what the user decided about a sender.
+     *
+     * [Senders.assess] treats this as final — it outranks every heuristic the
+     * module owns — so the value is held to the three SenderBook permits. A
+     * caller passing `known` or `suspicious` would be writing a machine
+     * verdict into the column reserved for a person's, and the capture path
+     * would then stop revising it.
+     *
+     * @return false if nothing was stored.
+     */
+    suspend fun setSenderTrust(sender: String, trust: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val key = Senders.normalizeSender(sender)
+            if (key.isEmpty() || !SenderBook.isUserDecision(trust)) return@withContext false
+            dao.setSenderTrust(key, trust)
+            true
+        }
+
+    /** Open only. The alert list is a queue of things to look at, not a log
+     *  of things that were looked at. */
+    fun fraudAlerts(): Flow<List<FraudAlertEntity>> = dao.openAlerts()
+
+    /**
+     * The user has looked at an alert.
+     *
+     * One action, not the Python build's dismissed-or-resolved pair. This app
+     * cannot freeze a card or call a bank, so both of those buttons produced
+     * exactly the same outcome on screen — a choice with no consequence,
+     * asked of someone who has just been told they may have been charged
+     * twice.
+     */
+    suspend fun dismissAlert(id: String) = dao.dismissAlert(id)
+
     fun categories(): Flow<List<CategoryEntity>> = dao.categories()
 
     /** An install with no settings row yet is the ordinary first launch, not
@@ -117,7 +155,10 @@ class Repo(private val dao: SpendDao) {
      */
     suspend fun save(tx: TransactionEntity) = withContext(Dispatchers.IO) {
         val existing = dao.byId(tx.id)
-        if (existing == null) dao.insert(tx) else dao.update(tx)
+        if (existing == null) {
+            dao.insert(tx)
+            raiseFraudAlerts(tx)
+        } else dao.update(tx)
 
         // Saving a payee with a category is the user stating what that payee
         // is, which is the only thing that ever teaches the engine. A changed
@@ -233,6 +274,7 @@ class Repo(private val dao: SpendDao) {
             createdAt = System.currentTimeMillis(),
         )
         val banked = dao.bankHeldMessage(tx, id)
+        if (banked) raiseFraudAlerts(tx)
         // Senders.assess reads confirmedCount back as evidence, so vouching
         // for a message is what stops the next one from the same sender
         // being held too.
@@ -245,6 +287,24 @@ class Repo(private val dao: SpendDao) {
      *  mistaken reject stays recoverable and a repeat of the same scam is
      *  still recognised by its body hash. */
     suspend fun rejectHeld(id: String) = dao.setQuarantineStatus(id, "rejected")
+
+    /**
+     * Discard the message and block whoever sent it, in one decision.
+     *
+     * The sender list can do this too, but the moment a person is certain is
+     * the moment they are reading the scam — sending them off to find the
+     * same sender in a list afterwards is how a repeat offender keeps its
+     * welcome.
+     *
+     * @return the sender that was blocked, or null if the message carried no
+     *   usable sender; the message is discarded either way.
+     */
+    suspend fun rejectHeldAndBlock(id: String): String? = withContext(Dispatchers.IO) {
+        val row = dao.quarantineById(id)
+        dao.setQuarantineStatus(id, "rejected")
+        val key = row?.sender?.let { Senders.normalizeSender(it) }?.ifEmpty { null }
+        key?.takeIf { setSenderTrust(it, Senders.TRUST_BLOCKED) }
+    }
 
     /** What happened to an incoming message, for the caller to log or show. */
     sealed class Ingest {
@@ -373,10 +433,53 @@ class Repo(private val dao: SpendDao) {
                 // insert returns -1 when the unique dedupKey already exists,
                 // which is what makes rescanning the inbox harmless.
                 if (dao.insert(tx) == -1L) Ingest.Duplicate(tx.dedupKey!!)
-                else Ingest.Captured(tx.id, outcome.needsCategory)
+                else {
+                    raiseFraudAlerts(tx)
+                    Ingest.Captured(tx.id, outcome.needsCategory)
+                }
             }
         }
     }
+
+    /**
+     * Run the detectors over one newly filed expense and store what they say.
+     *
+     * Only where a row is INSERTED. An edit is the user restating a
+     * transaction they already have, and re-evaluating there would mean
+     * fixing a typo in a note raises a duplicate-charge alert against the
+     * charge's own earlier self.
+     *
+     * The whole ledger goes in because every detector measures this charge
+     * against the user's own distribution — a mean, a spread, a daily average
+     * — and there is no smaller slice those can be computed from. The write
+     * is an IGNORE on the alert's unique key, so reaching here twice for the
+     * same charge still leaves one alert rather than two.
+     */
+    private suspend fun raiseFraudAlerts(tx: TransactionEntity) {
+        if (tx.type != "expense" || tx.isDeleted) return
+        // The launch scan backfills ninety days of inbox at once, and a
+        // transaction can also be hand-entered from an old receipt. :core
+        // decides how old is too old to be worth saying anything about.
+        if (!Fraud.worthAlerting(localTime(tx.occurredAt), LocalDateTime.now())) return
+        // Read per transaction rather than cached: a limit typed on the
+        // settings screen has to apply to the next message that arrives, not
+        // the next launch.
+        val limit = (dao.settingsRow() ?: SettingsEntity()).highValueAmount
+        val alerts = Fraud.evaluate(fraudTx(tx), dao.all().map { fraudTx(it) }, limit)
+        if (alerts.isEmpty()) return
+        val now = System.currentTimeMillis()
+        dao.insertAlerts(alerts.map {
+            FraudAlertEntity(newId(), it.key, it.txId, it.kind, it.severity, it.message,
+                createdAt = now)
+        })
+    }
+
+    /** The resolved payee, never the bank's raw string. "First charge at this
+     *  payee" has to mean a payee: two spellings of one shop would each look
+     *  like a first visit, and every unresolved capture would look like a
+     *  payee nobody has ever paid. */
+    private fun fraudTx(t: TransactionEntity) =
+        Tx(t.id, t.amount, t.type, localTime(t.occurredAt), t.merchantName, t.categoryId)
 
     /**
      * The dedup key this message would be filed under, if the ledger already

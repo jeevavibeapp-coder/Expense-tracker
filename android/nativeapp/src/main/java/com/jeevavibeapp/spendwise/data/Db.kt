@@ -139,6 +139,36 @@ data class SettingsEntity(
     companion object { const val ROW = 1 }
 }
 
+/**
+ * A fraud signal [com.jeevavibeapp.spendwise.core.Fraud] raised about one
+ * transaction, and whether the user has looked at it.
+ *
+ * [alertKey] is the claim's identity, not the row's — "this transaction is a
+ * duplicate", "this day was heavy" — and it is unique. Inserting with IGNORE
+ * therefore makes raising the same signal twice a no-op, which is what keeps
+ * an inbox rescan, a restore or a fifth charge on an already-flagged day from
+ * filling the screen with copies of one sentence.
+ */
+@Entity(
+    tableName = "fraud_alerts",
+    indices = [
+        Index(value = ["alertKey"], unique = true),
+        Index(value = ["status"]),
+    ],
+)
+data class FraudAlertEntity(
+    @PrimaryKey val id: String,
+    val alertKey: String,
+    val transactionId: String,
+    val kind: String,
+    val severity: String,
+    val message: String,
+    /** open | dismissed. Dismissed rows are kept rather than deleted, so the
+     *  unique key still refuses to raise a signal the user already answered. */
+    val status: String = "open",
+    val createdAt: Long,
+)
+
 @Entity(tableName = "quarantine")
 data class QuarantineEntity(
     @PrimaryKey val id: String,
@@ -370,6 +400,25 @@ abstract class SpendDao {
     @Query("UPDATE sms_senders SET confirmedCount = confirmedCount + 1 WHERE sender = :sender")
     abstract suspend fun noteSenderConfirmed(sender: String)
 
+    /** The user's own verdict. Written only through [Repo.setSenderTrust],
+     *  which holds it to the three values SenderBook allows — the capture
+     *  path reads this column back and will not overwrite a decision. */
+    @Query("UPDATE sms_senders SET trust = :trust WHERE sender = :sender")
+    abstract suspend fun setSenderTrust(sender: String, trust: String)
+
+    @Query("SELECT * FROM fraud_alerts WHERE status = 'open' ORDER BY createdAt DESC")
+    abstract fun openAlerts(): Flow<List<FraudAlertEntity>>
+
+    /** IGNORE, so a signal already raised under the same key is dropped
+     *  rather than duplicated — see [FraudAlertEntity]. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertAlerts(items: List<FraudAlertEntity>)
+
+    @Query("UPDATE fraud_alerts SET status = 'dismissed' WHERE id = :id")
+    abstract suspend fun dismissAlert(id: String)
+
+    @Query("DELETE FROM fraud_alerts") abstract suspend fun deleteAllFraudAlerts()
+
     @Query("SELECT * FROM quarantine WHERE status = 'held' ORDER BY createdAt DESC")
     abstract fun held(): Flow<List<QuarantineEntity>>
 
@@ -463,6 +512,12 @@ abstract class SpendDao {
             // Quarantine is deliberately not cleared: a backup carries no
             // held messages, so emptying that table would delete the only
             // copy of something the file cannot put back.
+            //
+            // Fraud alerts are cleared, for the opposite reason. Every one of them is
+            // a claim about a transaction that is about to be deleted, and an
+            // alert left pointing at a row the restore replaced is a warning
+            // about a purchase that is no longer there.
+            deleteAllFraudAlerts()
             deleteAllSenders()
             deleteAllTransactions()
             deleteAllLearning()
@@ -481,8 +536,8 @@ abstract class SpendDao {
 @Database(
     entities = [TransactionEntity::class, CategoryEntity::class, MerchantEntity::class,
                 LearningEntity::class, SenderEntity::class, QuarantineEntity::class,
-                SettingsEntity::class],
-    version = 2,
+                SettingsEntity::class, FraudAlertEntity::class],
+    version = 3,
     exportSchema = true,
 )
 abstract class SpendDatabase : RoomDatabase() {
@@ -510,5 +565,36 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 "`confirmThreshold` INTEGER NOT NULL, " +
                 "`highValueAmount` REAL, " +
                 "PRIMARY KEY(`id`))")
+    }
+}
+
+/**
+ * v2 → v3: fraud alerts.
+ *
+ * Additive — a new table and its indexes, nothing touched — but still a real
+ * migration for the same reason [MIGRATION_1_2] is one: the destructive
+ * fallback answers "we added a table" by deleting the ledger. The statements
+ * have to match what Room generates for [FraudAlertEntity] exactly, indexes
+ * included, or Room refuses to open the database it just upgraded.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `fraud_alerts` (" +
+                "`id` TEXT NOT NULL, " +
+                "`alertKey` TEXT NOT NULL, " +
+                "`transactionId` TEXT NOT NULL, " +
+                "`kind` TEXT NOT NULL, " +
+                "`severity` TEXT NOT NULL, " +
+                "`message` TEXT NOT NULL, " +
+                "`status` TEXT NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_fraud_alerts_alertKey` " +
+                "ON `fraud_alerts` (`alertKey`)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_fraud_alerts_status` " +
+                "ON `fraud_alerts` (`status`)")
     }
 }

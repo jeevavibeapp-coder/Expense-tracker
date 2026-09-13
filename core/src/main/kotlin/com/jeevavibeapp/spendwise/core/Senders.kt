@@ -309,3 +309,127 @@ data class RiskAssessment(
     val confidenceDelta: Int,         // added to merchant confidence (<= 0)
     val reasons: List<String>,
 )
+
+/**
+ * The sender registry as a screen shows and edits it.
+ *
+ * Split from [Senders] because nothing here judges a message. It orders and
+ * labels rows the app has already stored, and decides what a tap on "Block"
+ * or "Always trust" writes back — which is the verdict [Senders.assess] then
+ * honours over every heuristic it owns. Without this the registry is
+ * write-only: the app records who keeps messaging and the user can never
+ * answer.
+ */
+object SenderBook {
+
+    /** A registry row, as stored. */
+    data class Row(
+        val sender: String,
+        val display: String? = null,
+        val kind: String = "other",
+        val bank: String? = null,
+        val trust: String = Senders.TRUST_UNKNOWN,
+        val messageCount: Int = 0,
+        val quarantinedCount: Int = 0,
+    )
+
+    /** A control on a sender row, and the trust a tap on it stores. */
+    data class Choice(val label: String, val trust: String)
+
+    /** One row, finished. Nothing below this is decided on screen. */
+    data class Entry(
+        val sender: String,
+        val title: String,
+        val detail: String,
+        val status: String,
+        val trust: String,
+        val choices: List<Choice>,
+    )
+
+    /**
+     * The three verdicts a person may store.
+     *
+     * [Senders.TRUST_KNOWN] and [Senders.TRUST_SUSPICIOUS] are conclusions the
+     * heuristics reached, and writing one through this path would put a
+     * machine verdict where [Senders.assess] looks for a human one — which it
+     * treats as final and refuses to revise.
+     */
+    fun isUserDecision(trust: String?): Boolean =
+        trust == Senders.TRUST_TRUSTED ||
+        trust == Senders.TRUST_BLOCKED ||
+        trust == Senders.TRUST_UNKNOWN
+
+    /** The sender's shape in words. "personal mobile" is the one that earns
+     *  its place: a bank cannot legally send a transactional SMS from one, so
+     *  naming the shape lets the user see the forgery for themselves rather
+     *  than taking the app's word for it. */
+    fun kindLabel(kind: String): String = when (kind) {
+        "dlt" -> "bank header"
+        "header" -> "short header"
+        "mobile" -> "personal mobile"
+        "shortcode" -> "short number"
+        "missing" -> "no sender"
+        else -> "unrecognised"
+    }
+
+    fun statusLabel(trust: String?): String = when (trust) {
+        Senders.TRUST_TRUSTED -> "Trusted"
+        Senders.TRUST_BLOCKED -> "Blocked"
+        Senders.TRUST_KNOWN -> "Recognised"
+        Senders.TRUST_SUSPICIOUS -> "Looks unsafe"
+        else -> "Unverified"
+    }
+
+    /**
+     * What a row offers.
+     *
+     * A blocked sender offers only "Unblock". One tap turning the sender a
+     * user distrusts most into the one that waves messages through is too
+     * much authority for a mis-tap on a scrolling list, so that journey is
+     * deliberately two taps by way of the unjudged state.
+     */
+    fun choices(trust: String?): List<Choice> = when (trust) {
+        Senders.TRUST_BLOCKED -> listOf(
+            Choice("Unblock", Senders.TRUST_UNKNOWN))
+        Senders.TRUST_TRUSTED -> listOf(
+            Choice("Stop trusting", Senders.TRUST_UNKNOWN),
+            Choice("Block", Senders.TRUST_BLOCKED))
+        else -> listOf(
+            Choice("Always trust", Senders.TRUST_TRUSTED),
+            Choice("Block", Senders.TRUST_BLOCKED))
+    }
+
+    /**
+     * Blocked first, then whoever messages most.
+     *
+     * Blocked at the top because it is the decision a user returns to undo,
+     * and the only one with no other route back: a blocked sender is held
+     * silently from then on, so nothing else in the app will ever mention it
+     * again. The name breaks ties so two senders on the same count cannot
+     * swap places between redraws.
+     */
+    fun list(rows: List<Row>): List<Entry> = rows
+        .filter { it.sender.isNotEmpty() }
+        .sortedWith(
+            compareByDescending<Row> { it.trust == Senders.TRUST_BLOCKED }
+                .thenByDescending { it.messageCount }
+                .thenBy { it.sender })
+        .map { row ->
+            val title = row.bank?.trim()?.ifEmpty { null }
+                ?: row.display?.trim()?.ifEmpty { null }
+                ?: row.sender
+            Entry(row.sender, title, detail(row, title),
+                statusLabel(row.trust), row.trust, choices(row.trust))
+        }
+
+    private fun detail(row: Row, title: String): String {
+        val parts = mutableListOf<String>()
+        // The raw key is worth a line only when the title is not already it.
+        // "HDFCBK · HDFCBK · 4 messages" reads as a rendering fault.
+        if (title != row.sender) parts += row.sender
+        parts += kindLabel(row.kind)
+        parts += if (row.messageCount == 1) "1 message" else "${row.messageCount} messages"
+        if (row.quarantinedCount > 0) parts += "${row.quarantinedCount} held"
+        return parts.joinToString(" · ")
+    }
+}

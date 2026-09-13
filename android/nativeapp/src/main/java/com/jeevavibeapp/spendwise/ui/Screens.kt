@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jeevavibeapp.spendwise.core.*
+import com.jeevavibeapp.spendwise.data.FraudAlertEntity
 import com.jeevavibeapp.spendwise.data.QuarantineEntity
 import com.jeevavibeapp.spendwise.data.TransactionEntity
 import java.time.Instant
@@ -403,19 +404,24 @@ private fun DetailLine(label: String, value: String) {
 private const val HIGH_RISK = 70
 
 @Composable
-fun HeldMessagesScreen(
+fun AlertsScreen(
+    alerts: List<FraudAlertEntity>,
     held: List<QuarantineEntity>,
+    senders: List<SenderBook.Entry>,
     onApprove: (String) -> Unit,
     onReject: (String) -> Unit,
+    onBlock: (String) -> Unit,
+    onDismiss: (String) -> Unit,
+    onTrust: (String, String) -> Unit,
 ) {
-    if (held.isEmpty()) {
+    if (alerts.isEmpty() && held.isEmpty() && senders.isEmpty()) {
         // What this screen actually knows is that nothing is waiting. It does
         // not know that every message was checked — SMS access may never have
         // been granted, or not be in this build at all — so it does not say so.
         EmptyState(
-            "Nothing held",
-            "Bank messages that look wrong are kept here until you say what " +
-            "they are. None are waiting.",
+            "Nothing waiting",
+            "Charges at or above your alert amount, and bank messages that " +
+            "look wrong, are collected here. None are waiting.",
         )
         return
     }
@@ -423,7 +429,161 @@ fun HeldMessagesScreen(
         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 96.dp),
         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
     ) {
-        items(held, key = { it.id }) { q -> HeldCard(q, onApprove, onReject) }
+        // Headers only when more than one kind is present. A lone header over
+        // the only thing on the screen is a label for something already obvious.
+        val mixed = listOf(alerts, held, senders).count { it.isNotEmpty() } > 1
+        // Three tables feed one list, so the keys are namespaced. Ids collide
+        // across them only by accident, and the accident is a recycled card
+        // showing the wrong alert.
+        if (alerts.isNotEmpty()) {
+            if (mixed) item { SectionHeader("Worth a look") }
+            // Severity first, then newest — the DAO can only order by time,
+            // and a high-severity alert scrolled under three low ones by an
+            // accident of arrival order is the failure this screen exists to
+            // prevent. Fraud.rank exists because the string cannot be sorted.
+            val ordered = alerts.sortedWith(
+                compareByDescending<FraudAlertEntity> { Fraud.rank(it.severity) }
+                    .thenByDescending { it.createdAt })
+            items(ordered, key = { "alert-${it.id}" }) { FraudCard(it, onDismiss) }
+        }
+        if (held.isNotEmpty()) {
+            if (mixed) item { SectionHeader("Held messages") }
+            items(held, key = { "held-${it.id}" }) { q ->
+                HeldCard(q, onApprove, onReject, onBlock)
+            }
+        }
+        if (alerts.isEmpty() && held.isEmpty()) {
+            // The register below is not a queue, and without this line a
+            // screen listing six senders reads as six things demanding an
+            // answer.
+            item { NothingWaitingCard() }
+        }
+        if (senders.isNotEmpty()) {
+            if (mixed) item { SectionHeader("Senders") }
+            item {
+                // Said before the buttons, because "Always trust" sounds like
+                // a blanket bypass and is not one: Senders.assess still holds
+                // a trusted sender's message when the wording itself is a
+                // scam, and the JVM checks pin that.
+                Text(
+                    "Block a sender to hold everything it sends. Trust one to stop " +
+                    "holding its messages — though anything that reads like a scam " +
+                    "is still held.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+            items(senders, key = { "sender-${it.sender}" }) { SenderRow(it, onTrust) }
+        }
+    }
+}
+
+@Composable
+private fun NothingWaitingCard() {
+    ScreenCard {
+        Text("Nothing waiting", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Charges at or above your alert amount, and bank messages that " +
+            "look wrong, are collected here. None are waiting.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * One sender in the register, with what the user may decide about it.
+ *
+ * Lighter than the cards above it on purpose: these are not things waiting
+ * for an answer, they are a record of who has been messaging that the user
+ * can correct whenever they like.
+ */
+@Composable
+private fun SenderRow(entry: SenderBook.Entry, onTrust: (String, String) -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(Tokens.rowRadius),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp, 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(entry.title, style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Text(entry.status.uppercase(), style = MicroLabel,
+                    color = trustTint(entry.trust))
+            }
+            Spacer(Modifier.height(4.dp))
+            // The shape of the sender in words — "personal mobile" is the
+            // line that lets someone recognise a forgery without trusting us
+            // about it.
+            Text(entry.detail, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // :core decides which choices exist and what each one stores,
+                // so this screen cannot offer a state the register refuses —
+                // and a blocked sender cannot be trusted in a single mis-tap.
+                entry.choices.forEach { choice ->
+                    OutlinedButton(
+                        onClick = { onTrust(entry.sender, choice.trust) },
+                        modifier = Modifier.weight(1f)
+                            .heightIn(min = Tokens.minTouchTarget),
+                        colors = if (choice.trust == Senders.TRUST_BLOCKED)
+                            ButtonDefaults.outlinedButtonColors(contentColor = Expense)
+                        else ButtonDefaults.outlinedButtonColors(),
+                    ) { Text(choice.label, maxLines = 1) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun trustTint(trust: String): Color = when (trust) {
+    Senders.TRUST_BLOCKED -> Expense
+    Senders.TRUST_TRUSTED -> Income
+    Senders.TRUST_SUSPICIOUS -> Warn
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+/** A signal the detectors raised about a transaction already in the ledger.
+ *
+ * The only action is to dismiss it. This is a second view of a charge, not a
+ * second decision about it — a delete button here would let someone erase the
+ * evidence of the charge they are alarmed about from the one screen designed
+ * to alarm them, and the ledger is a tap away for anyone who means to. */
+@Composable
+private fun FraudCard(alert: FraudAlertEntity, onDismiss: (String) -> Unit) {
+    ScreenCard {
+        // :core writes the whole sentence, with every number that produced
+        // the claim in it, so the alert can be checked against a statement
+        // rather than merely felt.
+        Text(
+            alert.message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = when (alert.severity) {
+                Fraud.HIGH -> Expense
+                Fraud.MEDIUM -> Warn
+                else -> MaterialTheme.colorScheme.onSurface
+            },
+        )
+        Spacer(Modifier.height(6.dp))
+        Text("${rowDate(alert.createdAt)} · already in your ledger",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(14.dp))
+        // "I've seen this", not "resolved": the app cannot freeze a card or
+        // call a bank, and a button that claimed to settle the matter would
+        // be promising something it has no way to do.
+        OutlinedButton(
+            onClick = { onDismiss(alert.id) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+        ) { Text("I've checked this") }
     }
 }
 
@@ -432,6 +592,7 @@ private fun HeldCard(
     q: QuarantineEntity,
     onApprove: (String) -> Unit,
     onReject: (String) -> Unit,
+    onBlock: (String) -> Unit,
 ) {
     // The message is the evidence, and judging it without reading it is
     // guessing — but a full SMS above the buttons pushes them off the screen,
@@ -509,6 +670,18 @@ private fun HeldCard(
                     .heightIn(min = Tokens.minTouchTarget)) {
                 Text("Discard")
             }
+        }
+        // Offered here as well as in the register below, because the moment
+        // someone is certain a sender is worth blocking is the moment they
+        // are reading what it sent. Making them go and find the sender in a
+        // list afterwards is how a repeat offender keeps its welcome.
+        if (!q.sender.isNullOrBlank()) {
+            TextButton(
+                onClick = { onBlock(q.id) },
+                modifier = Modifier.fillMaxWidth()
+                    .heightIn(min = Tokens.minTouchTarget),
+                colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+            ) { Text("Discard and block this sender") }
         }
     }
 }

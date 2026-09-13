@@ -42,6 +42,8 @@ import com.jeevavibeapp.spendwise.core.Budget
 import com.jeevavibeapp.spendwise.core.Budgets
 import com.jeevavibeapp.spendwise.core.Insights
 import com.jeevavibeapp.spendwise.core.Recurring
+import com.jeevavibeapp.spendwise.core.SenderBook
+import com.jeevavibeapp.spendwise.core.Senders
 import com.jeevavibeapp.spendwise.core.Tx
 import com.jeevavibeapp.spendwise.data.AppGraph
 import com.jeevavibeapp.spendwise.data.CategoryEntity
@@ -151,6 +153,15 @@ class NativeMainActivity : ComponentActivity() {
 
         val transactions by remember(repo) { repo.stream() }.collectAsState(initial = emptyList())
         val held by remember(repo) { repo.heldMessages() }.collectAsState(initial = emptyList())
+        // The Fraud protection card promises that a charge at or above the
+        // high-value amount raises an alert. Repo.raiseFraudAlerts writes
+        // them as transactions are filed; this is the read that finally puts
+        // them in front of the person who asked to be told.
+        val alerts by remember(repo) { repo.fraudAlerts() }.collectAsState(initial = emptyList())
+        // Who has been messaging, so a sender that keeps being quarantined
+        // can be trusted once and one that keeps bothering the user can be
+        // blocked. Without this read the register is write-only.
+        val senderRows by remember(repo) { repo.senders() }.collectAsState(initial = emptyList())
         val categories by remember(repo) { repo.categories() }.collectAsState(initial = emptyList())
         val q by query.collectAsState()
         val access by smsAccess.collectAsState()
@@ -336,6 +347,13 @@ class NativeMainActivity : ComponentActivity() {
             },
             bottomBar = {
                 if (page == null) NavigationBar {
+                    // An alert on a tab nobody opens has not alerted anyone.
+                    // The number is in the label because there is no icon set
+                    // in this app to hang a badge off — and a screen reader
+                    // reads it either way. It counts BOTH kinds the tab
+                    // holds: "Alerts (2)" over two flagged charges and five
+                    // held messages is a worse lie than no number at all.
+                    val waitingAlerts = alerts.size + held.size
                     Tab.entries.forEach { entry ->
                         NavigationBarItem(
                             selected = tab == entry,
@@ -345,7 +363,13 @@ class NativeMainActivity : ComponentActivity() {
                             // behind — an empty icon slot leaves it drawing an
                             // empty pill over the label.
                             icon = { SelectionDot(selected = tab == entry) },
-                            label = { Text(entry.label) },
+                            label = {
+                                Text(
+                                    if (entry == Tab.ALERTS && waitingAlerts > 0)
+                                        "${entry.label} ($waitingAlerts)"
+                                    else entry.label
+                                )
+                            },
                         )
                     }
                 }
@@ -428,8 +452,22 @@ class NativeMainActivity : ComponentActivity() {
                             )
                         }
 
-                        Tab.ALERTS -> HeldMessagesScreen(
+                        Tab.ALERTS -> AlertsScreen(
+                            alerts = alerts,
                             held = held,
+                            // Ordered and labelled by :core, so the row a
+                            // finger lands on is the one the JVM checks
+                            // describe.
+                            senders = remember(senderRows) {
+                                SenderBook.list(senderRows.map {
+                                    SenderBook.Row(
+                                        sender = it.sender, display = it.display,
+                                        kind = it.kind, bank = it.bank, trust = it.trust,
+                                        messageCount = it.messageCount,
+                                        quarantinedCount = it.quarantinedCount,
+                                    )
+                                })
+                            },
                             onApprove = { id ->
                                 lifecycleScope.launch { announce(describe(repo.approveHeld(id))) }
                             },
@@ -438,6 +476,36 @@ class NativeMainActivity : ComponentActivity() {
                                     repo.rejectHeld(id)
                                     announce("Discarded. It stays on your phone, out of " +
                                              "your ledger.")
+                                }
+                            },
+                            onBlock = { id ->
+                                lifecycleScope.launch {
+                                    val who = repo.rejectHeldAndBlock(id)
+                                    announce(if (who != null)
+                                        "Discarded, and $who is blocked. Anything else it " +
+                                        "sends is held without asking."
+                                    else "Discarded. It stays on your phone, out of " +
+                                         "your ledger.")
+                                }
+                            },
+                            onDismiss = { id ->
+                                lifecycleScope.launch { repo.dismissAlert(id) }
+                            },
+                            onTrust = { sender, trust ->
+                                lifecycleScope.launch {
+                                    if (repo.setSenderTrust(sender, trust)) {
+                                        announce(when (trust) {
+                                            Senders.TRUST_BLOCKED ->
+                                                "$sender is blocked. Anything else it sends " +
+                                                "is held without asking."
+                                            Senders.TRUST_TRUSTED ->
+                                                "$sender is trusted. Its messages are filed " +
+                                                "unless one reads like a scam."
+                                            else ->
+                                                "$sender is back to being checked like any " +
+                                                "other sender."
+                                        })
+                                    }
                                 }
                             },
                         )
