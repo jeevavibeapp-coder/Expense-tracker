@@ -1,4 +1,9 @@
 include ':app'
+include ':nativeapp'
+// The domain core lives outside android/ so it can be built and tested as a
+// plain JVM library, with no Android SDK involved.
+include ':core'
+project(':core').projectDir = new File('../core')
 include ':capacitor-cordova-android-plugins'
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 

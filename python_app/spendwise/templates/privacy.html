@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Privacy · {{ app_name }}{% endblock %}
+{% block heading %}Privacy{% endblock %}
+{% block subhead %}<div class="sub">What this app does with your data</div>{% endblock %}
+{% block content %}
+{# Written in the second person and in plain sentences on purpose. A privacy
+   policy nobody reads protects the author, not the user. #}
+<div class="screen stack">
+
+  <div class="card stack" style="gap:10px">
+    <div style="font-weight:800; font-size: var(--t-sm)">The short version</div>
+    <div style="font-size: var(--t-sm)">
+      Everything stays on this phone. SpendWise has no account, no server and
+      no analytics. It cannot send your spending anywhere because there is
+      nowhere for it to be sent.
+    </div>
+  </div>
+
+  <div class="section-h"><h2>What is stored</h2></div>
+  <div class="card stack" style="gap:12px; font-size: var(--t-xs)">
+    <div><b>Your transactions</b> — amount, merchant, category, date, and the
+      bank message a transaction came from. In a SQLite file in this app's
+      private storage, which other apps on the phone cannot read.</div>
+    <div><b>What you have corrected</b> — when you recategorise a merchant,
+      that correction is stored so the next one is right. It is used only to
+      categorise your own transactions.</div>
+    <div><b>Sender reputations</b> — which sender IDs your bank actually uses,
+      learned from the messages you have received, so a lookalike can be
+      spotted.</div>
+    <div><b>Your settings</b> — currency, theme, thresholds.</div>
+  </div>
+
+  <div class="section-h"><h2>What is never done</h2></div>
+  <div class="card stack" style="gap:10px; font-size: var(--t-xs)">
+    <div style="display:flex; gap:8px"><span style="color:var(--expense)">✗</span>
+      <span>No network requests carrying your data. The app runs a small
+        server on the phone itself and talks only to that.</span></div>
+    <div style="display:flex; gap:8px"><span style="color:var(--expense)">✗</span>
+      <span>No analytics, no crash reporting, no advertising identifiers, no
+        third-party SDKs.</span></div>
+    <div style="display:flex; gap:8px"><span style="color:var(--expense)">✗</span>
+      <span>No account, no email address, no phone number.</span></div>
+    <div style="display:flex; gap:8px"><span style="color:var(--expense)">✗</span>
+      <span>Nothing is read from messages that are not from a bank or UPI
+        sender — personal messages and OTPs are ignored.</span></div>
+  </div>
+
+  <div class="section-h"><h2>Your copy of everything</h2></div>
+  <div class="card stack" style="gap:10px">
+    <div class="mut" style="font-size: var(--t-xs)">
+      Because there is no cloud copy, keeping a backup is on you — and it
+      should be, but the app has to make it easy.
+    </div>
+    <a class="btn-soft btn-sm" href="/backup.json" download
+       style="display:block; text-align:center">Download a full backup</a>
+    <a class="btn-ghost btn-sm" href="/export.csv" download
+       style="display:block; text-align:center">Export transactions as CSV</a>
+  </div>
+
+  <div class="section-h"><h2>Deleting your data</h2></div>
+  <div class="card stack" style="gap:10px; font-size: var(--t-xs)">
+    <div>Uninstalling SpendWise deletes the database with it. There is no
+      copy anywhere else, so an uninstall is permanent — take a backup first
+      if you want to keep the history.</div>
+    <div>To clear only what SMS capture picked up, use
+      <b>Clear unreviewed captures</b> in Settings.</div>
+  </div>
+
+  <div class="faint" style="text-align:center; font-size: var(--t-micro); padding:8px 8px 20px">
+    SpendWise · offline by design
+  </div>
+</div>
+{% endblock %}

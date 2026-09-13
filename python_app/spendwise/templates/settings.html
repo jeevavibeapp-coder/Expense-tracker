@@ -1,29 +1,187 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block title %}Settings · {{ app_name }}{% endblock %}
 {% block heading %}Settings{% endblock %}
 {% block content %}
-<div class="card" style="max-width:560px">
+<div class="screen stack">
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
-  <form method="post" action="/settings">
-    <div class="row">
-      <div class="field"><label>Currency</label><input name="currency" value="{{ s['currency'] }}" maxlength="8"></div>
-      <div class="field"><label>Theme</label>
-        <select name="theme">
+
+  <div class="card" style="display:flex; align-items:center; gap:14px">
+    <span class="avatar" style="width:48px;height:48px;font-size: 1.125rem">{{ user['full_name']|initials }}</span>
+    <form method="post" action="/profile" style="flex:1; display:flex; gap:8px; align-items:center">
+      <div style="flex:1">
+        <input name="full_name" value="{{ user['full_name'] }}" maxlength="40" required
+               style="font-weight:700; font-size: 0.9375rem; padding:8px 10px" aria-label="Your name">
+        {% if not single_user %}<div class="mut" style="font-size: 0.75rem; margin-top:4px">{{ user['email'] }}</div>{% endif %}
+      </div>
+      <button class="btn-ghost btn-sm" type="submit">Save</button>
+    </form>
+  </div>
+
+  <div class="section-h"><h2>Preferences</h2></div>
+  <form method="post" action="/settings" class="stack">
+    <div class="card stack">
+      <div class="row">
+        <div class="field" style="margin:0"><label class="lbl">Currency</label>
+          <input name="currency" value="{{ s['currency'] }}" maxlength="8" aria-label="Currency code"></div>
+      </div>
+      <div class="field" style="margin:0"><label class="lbl">Appearance</label>
+        <div class="seg">
           {% for opt in ['system','light','dark'] %}
-          <option value="{{ opt }}" {{ 'selected' if s['theme'] == opt else '' }}>{{ opt|capitalize }}</option>{% endfor %}
-        </select></div>
+          <label><input type="radio" name="theme" value="{{ opt }}" {{ 'checked' if s['theme']==opt }}><span>{{ opt|title }}</span></label>{% endfor %}
+        </div>
+      </div>
     </div>
-    <div class="row">
-      <div class="field"><label>Auto-save threshold (≥ this confidence auto-saves)</label>
-        <input name="auto_save_threshold" type="number" min="0" max="100" value="{{ s['auto_save_threshold'] }}"></div>
-      <div class="field"><label>Confirm threshold (≥ this asks to confirm)</label>
-        <input name="confirm_threshold" type="number" min="0" max="100" value="{{ s['confirm_threshold'] }}"></div>
+
+    <div class="card stack">
+      <div style="font-weight:700">Smart engine</div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:-6px">How confident the engine must be to auto-save vs ask you.</div>
+      <div class="field" style="margin:0">
+        <label class="lbl">Auto-save at <b id="autoVal" class="num" style="color:var(--income)">{{ s['auto_save_threshold'] }}%</b> confidence</label>
+        <input type="range" name="auto_save_threshold" min="0" max="100" value="{{ s['auto_save_threshold'] }}"
+               oninput="document.getElementById('autoVal').textContent=this.value+'%'" aria-label="Auto-save confidence threshold"></div>
+      <div class="field" style="margin:0">
+        <label class="lbl">Ask to confirm above <b id="confVal" class="num" style="color:var(--warn)">{{ s['confirm_threshold'] }}%</b></label>
+        <input type="range" name="confirm_threshold" min="0" max="100" value="{{ s['confirm_threshold'] }}"
+               oninput="document.getElementById('confVal').textContent=this.value+'%'" aria-label="Ask-to-confirm threshold"></div>
     </div>
-    <div class="field"><label>High-value alert amount (optional)</label>
-      <input name="high_value_amount" type="number" step="0.01" min="0"
-             value="{{ '%.2f'|format(s['high_value_amount']) if s['high_value_amount'] is not none else '' }}" placeholder="e.g. 25000">
-      <small>Transactions at or above this amount raise a fraud alert.</small></div>
-    <button class="btn" type="submit">Save settings</button>
+
+    <div class="card stack">
+      <div style="font-weight:700">Fraud protection</div>
+      <div class="field" style="margin:0"><label class="lbl">High-value alert amount (optional)</label>
+        <input name="high_value_amount" type="number" step="0.01" min="0"
+               value="{{ '%.2f'|format(s['high_value_amount']) if s['high_value_amount'] is not none else '' }}" placeholder="e.g. 25000">
+        <div class="mut" style="font-size: 0.75rem; margin-top:6px">Transactions at or above this raise an alert.</div></div>
+    </div>
+
+    <button class="btn" type="submit">Save changes</button>
   </form>
+
+  {# ── Auto-capture diagnostics: is SMS capture actually working? ── #}
+  <div class="section-h"><h2>SMS auto-capture</h2></div>
+  <div class="card stack">
+    <div style="display:flex; align-items:center; gap:10px">
+      <span style="font-weight:700; flex:1">Status</span>
+      {% if sms.permission == 'unavailable' %}
+        <span class="pill">Not in this build</span>
+      {% elif sms.permission == 'denied' %}
+        <span class="pill pill-warn">Permission off</span>
+      {% elif sms.captured %}
+        <span class="pill pill-ok">Working</span>
+      {% else %}
+        <span class="pill">No captures yet</span>
+      {% endif %}
+    </div>
+    <div class="stat-strip" style="padding:12px 0">
+      <div class="stat"><div class="k">Captured</div><div class="v num">{{ sms.captured }}</div></div>
+      <div class="stat"><div class="k">In queue</div><div class="v num">{{ sms.queued }}</div></div>
+      <div class="stat"><div class="k">Last</div>
+        <div class="v num" style="font-size: 0.875rem">{{ sms.last[:10] if sms.last else '–' }}</div></div>
+    </div>
+    {% if sms.permission == 'unavailable' %}
+    {# The no-SMS build. Offering an "Allow" button here would ask the user to
+       grant something this APK never requests. #}
+    <div class="mut" style="font-size: 0.7812rem">
+      This copy of SpendWise was built without SMS access, so bank messages
+      can't be captured automatically. Everything else works — add a
+      transaction yourself, or paste a bank message into
+      <a href="/import">Import</a>.
+    </div>
+    {% elif sms.permission == 'denied' %}
+    <div class="mut" style="font-size: 0.7812rem">SpendWise can't read bank messages. Tap Allow to turn capture back on.</div>
+    <button class="btn btn-sm" type="button"
+            onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow SMS access</button>
+    {% elif not sms.captured %}
+    <div class="mut" style="font-size: 0.7812rem">
+      Nothing captured yet. SpendWise scans your inbox for bank &amp; UPI messages each
+      time it opens. If this stays at 0, your phone may be blocking background
+      messages — on Xiaomi/Redmi/POCO, Oppo, Vivo or Realme, enable
+      <b>Autostart</b> for SpendWise in Settings → Apps, then reopen the app.
+    </div>
+    {% else %}
+    <div class="mut" style="font-size: 0.7812rem">Bank &amp; UPI messages are captured automatically and parsed on this device — they never leave your phone.</div>
+    {% endif %}
+
+    {% if sms.miss_kinds %}
+    <div style="border-top:1px solid var(--hairline); padding-top:12px">
+      <div style="font-size: 0.8125rem; font-weight:700">{{ sms.miss_kinds }} message type(s) not understood</div>
+      <div class="mut" style="font-size: 0.75rem; margin-top:4px">
+        {{ sms.miss_total }} bank message(s) looked financial but could not be read —
+        usually a format this build doesn't know yet. They stay on your device.
+      </div>
+      <a class="btn-soft btn-sm" href="/sms/misses.csv" download
+         style="display:block; text-align:center; margin-top:8px">Export unreadable messages</a>
+    </div>
+    {% endif %}
+
+    {% if request.args.get('purged') %}
+    <div class="flash">Removed {{ request.args.get('purged') }} unreviewed capture(s).</div>
+    {% endif %}
+    {% if sms.unreviewed %}
+    <form method="post" action="/sms/purge"
+          onsubmit="return confirm('Remove {{ sms.unreviewed }} unreviewed SMS captures? Confirmed and categorised transactions are kept.')">
+      <button class="btn-soft btn-sm" type="submit" style="width:100%; color:var(--expense)">
+        Clear {{ sms.unreviewed }} unreviewed capture{{ '' if sms.unreviewed == 1 else 's' }}
+      </button>
+      <div class="faint" style="font-size: 0.7188rem; margin-top:6px">
+        Use this to wipe junk captured before filtering improved. Anything you
+        already confirmed or categorised is kept.
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  {# ── Data & privacy ──
+     Backup comes first because it is the one thing in this app that cannot
+     be undone by any other screen: there is no cloud copy, so a phone lost
+     without a backup is a ledger lost for good. #}
+  <div class="section-h"><h2>Your data</h2></div>
+  <div class="card stack">
+    <div class="mut" style="font-size: 0.7812rem">
+      Everything stays on this phone, which means the only copy is the one you
+      make.
+    </div>
+    <a class="btn-soft" href="/backup.json" download
+       style="display:block; text-align:center; text-decoration:none">Download a full backup</a>
+    <a class="settings-row" href="/restore">
+      <span class="sr-i">{{ m.icon('activity') }}</span>
+      <span class="sr-t"><b>Restore from a backup</b>
+        <span class="sr-d">Moving to a new phone, or undoing a mistake</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+    <a class="settings-row" href="/export.csv" download>
+      <span class="sr-i">{{ m.icon('grid') }}</span>
+      <span class="sr-t"><b>Export as CSV</b>
+        <span class="sr-d">A report for a spreadsheet — not a backup</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+  </div>
+
+  <div class="section-h"><h2>About</h2></div>
+  <div class="card stack" style="gap:0">
+    <a class="settings-row" href="/privacy">
+      <span class="sr-i">{{ m.icon('shield') }}</span>
+      <span class="sr-t"><b>Privacy</b>
+        <span class="sr-d">What is stored, and what is never done</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+    <a class="settings-row" href="/help">
+      <span class="sr-i">{{ m.icon('sms') }}</span>
+      <span class="sr-t"><b>Help &amp; troubleshooting</b>
+        <span class="sr-d">Captures not arriving, duplicates, new phone</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+    <a class="settings-row" href="/welcome">
+      <span class="sr-i">{{ m.icon('home') }}</span>
+      <span class="sr-t"><b>How SpendWise works</b>
+        <span class="sr-d">The introduction, again</span></span>
+      <span class="sr-c">{{ m.icon('chevron') }}</span>
+    </a>
+  </div>
+
+  {% if not single_user %}
+  <form method="post" action="/logout"><button class="btn-soft" type="submit" style="width:100%; color:var(--expense); margin-top:4px">Sign out</button></form>
+  {% endif %}
+  <div class="faint" style="text-align:center; font-size: 0.6875rem; padding:8px">SpendWise · on-device & offline</div>
 </div>
 {% endblock %}

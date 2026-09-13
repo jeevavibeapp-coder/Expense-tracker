@@ -1,0 +1,468 @@
+"""B4 regression: no expensive work on the Android UI thread.
+
+The defect: `MainActivity.onCreate` -> `bootstrap()` ran, synchronously and
+before spawning any worker, two AndroidKeyStore round trips (including
+first-run `KeyGenerator.generateKey()`, which costs hundreds of milliseconds
+on StrongBox), three synchronous SharedPreferences `commit()` disk writes,
+`getFilesDir()`, and `WorkManager.getInstance()` — which opens a Room
+database. `onResume` then called into the keystore again on EVERY return to
+the app.
+
+There is no device or emulator in this environment, so an ANR cannot be
+measured here. What CAN be verified — and what actually determines whether
+the work is on the UI thread — is the call graph: which expensive calls are
+reachable from a lifecycle callback without first crossing a thread boundary.
+This module parses MainActivity.java, strips comments and string literals,
+brace-matches every `new Thread(...)` body, removes it, and asserts that no
+expensive call survives in what remains.
+
+That is a real, checkable invariant. It is not a substitute for measuring
+cold start on hardware, which stays on the device test plan.
+"""
+from __future__ import annotations
+
+import os
+import re
+
+import pytest
+
+JAVA = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "android", "app", "src", "main", "java", "com", "jeevavibeapp", "spendwise",
+    "MainActivity.java")
+
+# Calls that block on disk, IPC to keystored, or database initialisation.
+EXPENSIVE = {
+    "SecretVault.migrate": "AndroidKeyStore + synchronous prefs commit()",
+    "SecretVault.getOrCreate": "AndroidKeyStore round trip / key generation",
+    "getDeviceToken()": "AndroidKeyStore round trip",
+    "getSessionSecret()": "AndroidKeyStore round trip",
+    "getSharedPreferences": "blocking disk read on first access",
+    "SmsCatchUpWorker.schedule": "WorkManager.getInstance() opens a Room DB",
+    "WorkManager.getInstance": "opens a Room database",
+    "Python.start": "unpacks the Python runtime on first launch",
+    "getFilesDir": "filesystem access",
+    "SmsInboxScanner.scan": "content-provider query over the SMS inbox",
+}
+
+# Lifecycle callbacks: anything reachable from these without crossing a thread
+# boundary runs on the UI thread.
+LIFECYCLE = ["public void onCreate", "public void onResume",
+             "public void onRequestPermissionsResult"]
+
+
+def _source() -> str:
+    with open(JAVA, encoding="utf-8") as f:
+        return f.read()
+
+
+def _strip_noise(src: str) -> str:
+    """Blank out comments and string literals with a single left-to-right scan.
+
+    Deliberately NOT two regex passes. Stripping comments first destroys the
+    file, because `//` appears inside the string literal
+    "http://127.0.0.1:8765" — the rest of that line vanishes including its
+    closing quote, and every subsequent string boundary is then wrong. A
+    scanner that tracks which construct it is inside is the only correct way
+    to do this.
+    """
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        ch = src[i]
+        if ch == '"':                       # string literal
+            out.append('""')
+            i += 1
+            while i < n and src[i] != '"':
+                i += 2 if src[i] == "\\" else 1
+            i += 1
+        elif ch == "'":                     # char literal
+            out.append("''")
+            i += 1
+            while i < n and src[i] != "'":
+                i += 2 if src[i] == "\\" else 1
+            i += 1
+        elif src.startswith("//", i):       # line comment
+            while i < n and src[i] != "\n":
+                i += 1
+        elif src.startswith("/*", i):       # block comment
+            end = src.find("*/", i)
+            i = n if end == -1 else end + 2
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _block_after(src: str, start: int) -> tuple[int, int]:
+    """Span of the brace-delimited block that follows `start`."""
+    i = src.index("{", start)
+    depth = 0
+    for j in range(i, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return i, j + 1
+    raise AssertionError("unbalanced braces")
+
+
+def _method_body(src: str, signature: str) -> str:
+    idx = src.index(signature)
+    a, b = _block_after(src, idx)
+    return src[a:b]
+
+
+def _without_worker_threads(body: str) -> str:
+    """Delete every `new Thread(...)` body — that code is off the UI thread.
+
+    Brace-matched rather than regex-matched, because these blocks contain
+    nested anonymous classes (runOnUiThread) that defeat a non-greedy regex.
+    """
+    while True:
+        m = re.search(r"new\s+Thread\s*\(", body)
+        if not m:
+            return body
+        try:
+            a, b = _block_after(body, m.start())
+        except (ValueError, AssertionError):
+            return body
+        # Consume the trailing `, "name").start();` too.
+        tail = body.find(";", b)
+        body = body[:m.start()] + body[(tail + 1 if tail != -1 else b):]
+
+
+def _ui_thread_calls(signature: str) -> list[str]:
+    src = _strip_noise(_source())
+    body = _method_body(src, signature)
+
+    # Inline the private helpers a lifecycle callback calls synchronously, so
+    # the check follows the call graph rather than stopping at one frame.
+    for helper in ("private void bootstrap", "private void requestSmsPermissions",
+                   "private void reportPermissionState"):
+        name = helper.split()[-1]
+        if re.search(rf"\b{name}\s*\(", body):
+            body += _method_body(src, helper)
+
+    remaining = _without_worker_threads(body)
+    return sorted({call for call in EXPENSIVE if call in remaining})
+
+
+# ── The invariant ─────────────────────────────────────────────────────────
+@pytest.mark.parametrize("signature", LIFECYCLE)
+def test_no_expensive_work_reachable_from_a_lifecycle_callback(signature):
+    found = _ui_thread_calls(signature)
+    detail = "; ".join(f"{c} ({EXPENSIVE[c]})" for c in found)
+    assert not found, f"{signature} still does this on the UI thread: {detail}"
+
+
+def test_the_checker_would_actually_catch_a_regression():
+    """A guard that cannot fail proves nothing. This feeds the checker the
+    pre-fix shape and asserts it is flagged."""
+    pre_fix = """
+    public void onCreate(Bundle b) {
+        super.onCreate(b);
+        SecretVault.migrate(appContext);
+        final String token = getDeviceToken();
+        SmsCatchUpWorker.schedule(getApplicationContext());
+        new Thread(new Runnable() {
+            public void run() { Python.start(x); }
+        }, "worker").start();
+    }
+    """
+    body = _without_worker_threads(_strip_noise(pre_fix))
+    flagged = sorted({c for c in EXPENSIVE if c in body})
+    assert "SecretVault.migrate" in flagged
+    assert "getDeviceToken()" in flagged
+    assert "SmsCatchUpWorker.schedule" in flagged
+    # And the work correctly moved into the thread is NOT flagged.
+    assert "Python.start" not in flagged
+
+
+def test_the_bootstrap_worker_still_does_the_work():
+    """Moving work off the UI thread must not mean dropping it."""
+    src = _strip_noise(_source())
+    body = _method_body(src, "private void bootstrap")
+    for required in ("SecretVault.migrate", "getDeviceToken()",
+                     "getSessionSecret()", "Python.start",
+                     "SmsCatchUpWorker.schedule"):
+        assert required in body, f"bootstrap no longer performs {required}"
+    # ...and all of it inside the thread, none before it.
+    assert not _ui_thread_calls("private void bootstrap")
+
+
+def test_onresume_uses_the_cached_token_not_the_keystore():
+    """onResume runs on every return to the app — the hottest main-thread
+    path. It must read the cached value, not call into keystored."""
+    src = _strip_noise(_source())
+    assert "volatile String cachedDeviceToken" in src
+    body = _method_body(src, "private void reportPermissionState")
+    assert "cachedDeviceToken" in body
+    assert not _ui_thread_calls("public void onResume")
+
+
+def test_bootstrap_is_still_guarded_against_concurrent_starts():
+    """Retry taps must not stack bootstraps now that more work is on the
+    worker — a second thread would race on the keystore and the server."""
+    src = _strip_noise(_source())
+    body = _method_body(src, "private void bootstrap")
+    assert "bootstrapping" in body
+    assert "volatile boolean bootstrapping" in src
+
+
+def test_the_webview_authenticates_itself_to_the_server():
+    """B1 depends on this: without the grant every page returns 403, so the
+    two fixes have to stay consistent with each other."""
+    raw = _source()
+    assert "/?k=" in raw, "the WebView no longer performs the auth grant"
+    assert "Uri.encode(token)" in raw
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_a_dead_server_thread_reports_why(monkeypatch):
+    """start_server() returns as soon as the thread is spawned, so an
+    exception raised while building or serving the app never reached the
+    Android activity. It polled /healthz, gave up, and showed "the app engine
+    didn't respond" — a message that describes the symptom and hides the
+    cause. The reason is now recorded where Java can ask for it.
+    """
+    import time
+    from spendwise import android_entry as ae
+
+    monkeypatch.setattr(ae, "_startup_error", None)
+    monkeypatch.setattr(ae, "_server_thread", None)
+
+    def boom(*a, **kw):
+        raise RuntimeError("simulated on-device failure")
+
+    monkeypatch.setattr(ae, "_serve", boom)
+    ae.start_server("/tmp", "tok", "sec", port=8998)
+
+    for _ in range(60):
+        if ae.startup_error():
+            break
+        time.sleep(0.05)
+    assert "simulated on-device failure" in ae.startup_error()
+    assert "RuntimeError" in ae.startup_error()
+
+
+def test_no_startup_error_is_reported_when_nothing_failed(monkeypatch):
+    """The activity shows this string to the user, so a healthy launch must
+    not put a stray value on the error screen."""
+    from spendwise import android_entry as ae
+    monkeypatch.setattr(ae, "_startup_error", None)
+    assert ae.startup_error() == ""
+
+
+def test_the_startup_timeout_leaves_room_for_a_cold_chaquopy_launch():
+    """A first launch unpacks Python and the stdlib, imports Flask and
+    waitress, and runs every schema migration against a database that does
+    not exist yet. Twenty seconds covered a fast phone and not a slow one,
+    where the activity reported a failure for a server that was still
+    starting."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise/MainActivity.java")
+    raw = src.read_text()
+    import re
+    m = re.search(r"SERVER_TIMEOUT_MS\s*=\s*(\d+)L", raw)
+    assert m, "the startup timeout constant moved"
+    assert int(m.group(1)) >= 60000, \
+        f"startup timeout is {m.group(1)}ms — too tight for a cold launch"
+
+
+def test_the_startup_error_screen_shows_the_reason():
+    """A retry button and nothing else asks the user to guess."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise/MainActivity.java")
+    raw = src.read_text()
+    assert "pythonStartupError()" in raw, \
+        "the activity no longer asks Python why it failed"
+    assert "showStartupError(reason)" in raw
+    assert "htmlEncode(reason)" in raw, \
+        "the reason is interpolated into HTML without escaping"
+
+
+def test_startup_reports_which_step_it_is_on(tmp_path):
+    """A splash reading "Starting your money engine…" for ninety seconds and
+    then failing tells nobody anything. The stage turns a hang into a located
+    hang — "opening the database" and "importing the app" are different bugs
+    — without needing a cable and adb.
+    """
+    import time
+    from spendwise import android_entry as ae
+
+    seen = []
+    ae.start_server(str(tmp_path), "tok", "secret", port=8973)
+    for _ in range(200):
+        st = ae.startup_stage()
+        if not seen or seen[-1] != st:
+            seen.append(st)
+        if st == "serving":
+            break
+        time.sleep(0.05)
+
+    assert "serving" in seen, f"never reached serving; stages were {seen}"
+    assert seen[-1] == "serving", f"ended on {seen[-1]!r}; stages were {seen}"
+
+    # Not asserting that a particular intermediate stage was OBSERVED: on a
+    # fast machine several complete between polls, and a test that depends on
+    # losing that race is a flake waiting to happen. What matters is that the
+    # ones we did see came in the defined order.
+    ORDER = ["not started", "checking for a running engine", "importing the app",
+             "opening the database", "starting the web server", "binding port",
+             "serving"]
+
+    def rank(stage):
+        for i, known in enumerate(ORDER):
+            if stage.startswith(known):
+                return i
+        raise AssertionError(f"unknown stage {stage!r}")
+
+    ranks = [rank(st) for st in seen]
+    assert ranks == sorted(ranks), f"stages went backwards: {seen}"
+
+    # Every stage must read as a phrase for a person, not an identifier.
+    for st in seen:
+        assert "_" not in st, f"{st!r} looks like an identifier"
+        assert st[0].islower() or st[0].isdigit(), f"{st!r} is not a phrase"
+
+
+def test_the_activity_puts_the_stage_on_the_loading_screen():
+    """Java has to actually surface it, or the Python side is decoration."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise/MainActivity.java")
+    raw = src.read_text()
+    assert "startup_stage" in raw, "the activity never asks Python for the stage"
+    assert "showStage(" in raw
+    assert "evaluateJavascript" in raw
+    assert "JSONObject.quote(stage)" in raw, \
+        "the stage is injected into JS without quoting"
+    assert "Still at: " in raw, \
+        "a stuck start with no exception still reports nothing"
+
+
+def test_relaunching_onto_our_own_port_is_not_a_failure(tmp_path):
+    """The device failure, reproduced.
+
+    The Android process outlives the activity and the OS may start a new one
+    before the old has released its socket, so a fresh launch routinely finds
+    port 8765 taken — by the previous SpendWise server, still perfectly able
+    to serve. Treating that as fatal put
+
+        OSError: [Errno 98] Address already in use
+
+    on screen while a working server was listening the whole time.
+    """
+    import time
+    from spendwise import android_entry as ae
+
+    port = 8981
+    ae.start_server(str(tmp_path), "tok", "secret", port=port)
+    for _ in range(200):
+        if ae.startup_stage() == "serving":
+            break
+        time.sleep(0.05)
+    assert ae.startup_stage() == "serving"
+
+    # A second process: no live thread of its own, but the port is held.
+    ae._server_thread = None
+    ae._startup_error = None
+    ae._stage = "not started"
+    ae.start_server(str(tmp_path), "tok", "secret", port=port)
+    for _ in range(200):
+        if ae.startup_stage() == "serving" or ae.startup_error():
+            break
+        time.sleep(0.05)
+
+    assert ae.startup_error() == "", \
+        f"a relaunch reported a failure: {ae.startup_error()}"
+    assert ae.startup_stage() == "serving"
+
+
+def test_a_port_conflict_is_survived_rather_than_reported(tmp_path):
+    """This test used to assert the opposite, and the change is the point.
+
+    While the port was fixed at 8765, the best available behaviour was a clear
+    error naming it. Now that the server takes any free loopback port, a
+    conflict is not something the user needs to hear about at all — it is
+    handled. An error here would be a regression to the build that showed
+    "Address already in use" instead of an app.
+    """
+    import socket
+    import time
+    from spendwise import android_entry as ae
+
+    squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    squatter.bind(("127.0.0.1", 0))
+    taken = squatter.getsockname()[1]
+    squatter.listen(1)
+    try:
+        ae._server_thread = None
+        ae._startup_error = None
+        ae._stage = "not started"
+        ae.start_server(str(tmp_path), "tok", "secret", port=taken)
+        for _ in range(200):
+            if ae.startup_stage() == "serving" or ae.startup_error():
+                break
+            time.sleep(0.05)
+        assert ae.startup_error() == "", \
+            f"a port conflict was surfaced to the user: {ae.startup_error()}"
+        assert ae.startup_stage() == "serving"
+        assert ae.server_port() != taken, "did not move off the taken port"
+    finally:
+        squatter.close()
+
+
+def test_start_server_returns_the_url_it_actually_bound(tmp_path):
+    """Java believes this return value now, so it has to be true."""
+    import socket
+    import time
+    import urllib.request
+    from spendwise import android_entry as ae
+
+    squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    squatter.bind(("127.0.0.1", 0))
+    taken = squatter.getsockname()[1]
+    squatter.listen(1)
+    try:
+        ae._server_thread = None
+        ae._startup_error = None
+        ae._stage = "not started"
+        url = ae.start_server(str(tmp_path), "tok", "secret", port=taken)
+        for _ in range(200):
+            if ae.startup_stage() == "serving":
+                break
+            time.sleep(0.05)
+        assert url.endswith(str(ae.server_port())), \
+            f"returned {url} but serving on {ae.server_port()}"
+        with urllib.request.urlopen(url + "/healthz", timeout=3) as r:
+            assert r.status == 200, "the reported URL does not answer"
+    finally:
+        squatter.close()
+
+
+def test_the_activity_uses_the_port_python_reports():
+    """Python choosing a port is useless if Java keeps assuming 8765."""
+    import pathlib
+    import re
+    base = pathlib.Path(__file__).resolve().parents[2] / (
+        "android/app/src/main/java/com/jeevavibeapp/spendwise")
+
+    activity = (base / "MainActivity.java").read_text()
+    assert "serverUrl" in activity
+    assert "rememberServerPort" in activity, \
+        "the chosen port is never persisted for the SMS receiver"
+    for call in re.findall(r"new URL\(([^)]*)\)", activity):
+        assert "DEFAULT_SERVER_URL" not in call, \
+            f"{call} targets the preferred port instead of the live one"
+
+    receiver = (base / "SmsReceiver.java").read_text()
+    assert "ingestUrl(context)" in receiver, \
+        "the SMS receiver still posts to a hard-coded port"
+    assert "PREF_SERVER_PORT" in receiver
