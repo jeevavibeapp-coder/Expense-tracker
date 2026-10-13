@@ -1,48 +1,322 @@
 """Entry point used by the Android app (Chaquopy) to run SpendWise on-device.
 
 The Android `MainActivity` starts a background thread that calls
-``start_server(files_dir)``; this launches the Flask app on 127.0.0.1 so the
-Capacitor WebView can load it. Everything runs fully offline inside the APK.
+``start_server(files_dir, token)``; this launches the Flask app on 127.0.0.1 so
+the Capacitor WebView can load it. Everything runs fully offline inside the APK.
 """
 from __future__ import annotations
 
+import json
 import os
+import socket
 import threading
+import time
+import urllib.parse
+import urllib.request
 
 _server_thread: "threading.Thread | None" = None
 _lock = threading.Lock()
+_device_token: "str | None" = None
+_session_secret: "str | None" = None
+# Set by the server thread when startup fails, so the activity can show
+# the real reason instead of a generic timeout message.
+_startup_error: "str | None" = None
+# Where startup has got to. Polled by the activity while the loading screen is
+# up, so a hang can be located without a USB cable: "stuck at building the app"
+# and "stuck at opening the database" point at completely different bugs, and
+# an unchanging "Starting your money engine…" points at neither.
+_stage: str = "not started"
+# The port actually in use. Java asks for it rather than assuming 8765, so a
+# device that cannot give us the preferred port still gets a working app.
+_server_port: int = 8765
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
+# Finance SMS that arrived while the app was closed are appended here by the
+# Android SMS receiver, then drained into the app on the next launch.
+INBOX_NAME = "sms_inbox.jsonl"
 
-def _run(db_path: str, host: str, port: int) -> None:
+
+def _watch_until_serving(host: str, port: int) -> None:
+    """Flip the stage to "serving" once the socket actually answers."""
+    def _watch() -> None:
+        global _stage
+        for _ in range(240):                         # ~60s, then give up quietly
+            if _healthz_ok(host, port, timeout=0.5):
+                _stage = "serving"
+                return
+            time.sleep(0.25)
+
+    threading.Thread(target=_watch, daemon=True,
+                     name="spendwise-stage-watch").start()
+
+
+def _choose_port(host: str, preferred: int) -> "tuple[int, bool]":
+    """Pick a port to serve on. Returns (port, reusing_existing_server).
+
+    A single hard-coded port is not safe on Android. The process outlives the
+    activity, the OS may start a new one before the old has released its
+    socket, and there is no guarantee some other app has not taken 8765 in the
+    meantime. Insisting on it produced "Address already in use" and no app at
+    all — when any free port would have worked just as well, because nothing
+    outside this phone ever connects here.
+
+    Preferred port first, so the common case keeps a stable origin (and with
+    it the session cookie). Anything free will do after that.
+    """
+    if _healthz_ok(host, preferred):
+        return preferred, True                       # our own server, already up
+
+    for candidate in (preferred, 0, 0, 0):
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind((host, candidate))
+            chosen = probe.getsockname()[1]
+            return chosen, False
+        except OSError:
+            continue
+        finally:
+            try:
+                probe.close()
+            except OSError:
+                pass
+    raise OSError("no free port on the loopback interface")
+
+
+def _log_traceback() -> None:
+    try:
+        import traceback
+        traceback.print_exc()                        # lands in logcat
+    except Exception:
+        pass
+
+
+def _healthz_ok(host: str, port: int, timeout: float = 1.5) -> bool:
+    """Is a SpendWise server already answering on this address?
+
+    The Android process outlives the activity, and the OS is free to start a
+    new one before the old has released its socket. So "the port is taken" is
+    a normal thing to find, and usually what is holding it is OUR OWN server
+    from a moment ago, still perfectly able to serve. Asking it is the only
+    way to tell that apart from a genuine conflict with another app.
+    """
+    try:
+        with urllib.request.urlopen(
+                f"http://{host}:{port}/healthz", timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _run(db_path: str, host: str, port: int, token: "str | None",
+         secret: "str | None" = None) -> None:
+    """Build the app and serve it. Runs on a daemon thread.
+
+    Anything that goes wrong in here used to vanish. Java calls start_server(),
+    which returns as soon as the thread is spawned, so an import error or a
+    failed migration on THIS thread never reached the caller — the activity
+    just polled /healthz for twenty seconds and put up "the app engine didn't
+    respond", which says nothing about what actually happened. The failure is
+    now recorded where Java can ask for it.
+    """
+    global _startup_error, _stage
+    try:
+        _serve(db_path, host, port, token, secret)
+    except OSError as exc:
+        # EADDRINUSE (98). If our own server is on the other end of that
+        # socket the app is fine and this thread simply has nothing to do —
+        # reporting a failure here is what put "Address already in use" on
+        # screen while a working server was listening the whole time.
+        if _healthz_ok(host, port):
+            _stage = "serving"
+            _startup_error = None
+            return
+        _startup_error = (
+            f"{type(exc).__name__}: {exc}. Port {port} is held by something "
+            f"that is not SpendWise. Close the other app, or restart the "
+            f"phone.")
+        _log_traceback()
+        raise
+    except BaseException as exc:                     # noqa: BLE001
+        _startup_error = f"{type(exc).__name__}: {exc}"
+        _log_traceback()
+        raise
+
+
+def _serve(db_path: str, host: str, port: int, token: "str | None",
+           secret: "str | None" = None) -> None:
+    global _stage
+    # Cheapest possible check first: if a server is already up on this port,
+    # there is nothing to do and nothing to fail.
+    _stage = "checking for a running engine"
+    if _healthz_ok(host, port):
+        _stage = "serving"
+        return
+
+    _stage = "importing the app"
     from spendwise.app import create_app
 
-    app = create_app(db_path=db_path, single_user=True)
-    # Werkzeug's dev server is sufficient for a single on-device user.
-    app.run(host=host, port=port, threaded=True, use_reloader=False, debug=False)
+    _stage = "opening the database"
+
+    # `secret` comes from the Android Keystore (SecretVault). Passing it here
+    # means the session key never has to be persisted in the database;
+    # create_app also erases any plaintext copy an older build left behind.
+    app = create_app(db_path=db_path, single_user=True, device_token=token,
+                     secret_key=secret)
+    _stage = "starting the web server"
+    try:
+        # waitress is pure Python (py3-none-any), so it runs under Chaquopy.
+        # Werkzeug's dev server is explicitly not for production: it has no
+        # connection cap or timeouts, so any co-installed app could open
+        # sockets to the loopback port until the process is killed — taking an
+        # in-flight ledger write with it. These limits bound that.
+        from waitress import serve
+        _stage = f"binding port {port}"
+        # serve() blocks for the life of the process, so nothing after it can
+        # advance the stage. Without this watcher the splash would sit on
+        # "binding port 8765" for as long as it was shown — while the server
+        # was already answering.
+        _watch_until_serving(host, port)
+        serve(app, host=host, port=port,
+              threads=4,               # a single on-device user
+              connection_limit=32,     # refuse floods instead of exhausting RAM
+              channel_timeout=30,      # reap slow/stalled sockets (slowloris)
+              ident=None,              # don't advertise the server banner
+              clear_untrusted_proxy_headers=True)
+    except ImportError:
+        # Never leave the user without an app if the wheel is missing from a
+        # given build; fall back with the same bounded intent.
+        _stage = f"binding port {port} (fallback server)"
+        app.run(host=host, port=port, threaded=True, use_reloader=False, debug=False)
 
 
-def start_server(files_dir: str = None, host: str = DEFAULT_HOST,
-                 port: int = DEFAULT_PORT) -> str:
-    """Start the embedded server once; return the URL the WebView should load.
+def _ingest(base_url: str, token: "str | None", item: dict) -> None:
+    data = urllib.parse.urlencode(
+        {"sender": item.get("sender") or "", "body": item.get("body") or ""}).encode()
+    req = urllib.request.Request(f"{base_url}/sms/ingest", data=data)
+    if token:
+        req.add_header("X-SpendWise-Token", token)
+    # Raises HTTPError on non-2xx, so failed ingests are kept in the queue.
+    urllib.request.urlopen(req, timeout=5)
 
-    Safe to call multiple times — only the first call starts the thread.
-    Called from Java via Chaquopy: ``getModule("spendwise.android_entry")
-    .callAttr("start_server", filesDir)``.
+
+def _drain_inbox(base: str, host: str, port: int, token: "str | None") -> None:
+    """Wait for the server, then replay any SMS queued while it was offline.
+
+    Atomically rotates the queue file before processing so messages appended by
+    the receiver *during* the drain are never clobbered.
     """
-    global _server_thread
+    path = os.path.join(base, INBOX_NAME)
+    base_url = f"http://{host}:{port}"
+    # Wait (up to ~30s) for the server to accept requests.
+    for _ in range(120):
+        try:
+            urllib.request.urlopen(f"{base_url}/healthz", timeout=1)
+            break
+        except Exception:
+            time.sleep(0.25)
+    if not os.path.exists(path):
+        return
+    # Claim the current queue by renaming it; concurrent appends create a fresh
+    # file that a later drain will pick up.
+    work = "%s.%d.%d.draining" % (path, os.getpid(), int(time.time() * 1000))
+    try:
+        os.rename(path, work)
+    except OSError:
+        return  # another drain already claimed it, or it vanished
+    try:
+        with open(work, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return
+    remaining = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue  # drop unparseable lines
+        try:
+            _ingest(base_url, token, item)
+        except Exception:
+            remaining.append(line)  # keep for the next launch on failure
+    # Re-queue failures by appending to the live file (which may now hold newly
+    # arrived messages), then drop the work file.
+    try:
+        if remaining:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write("\n".join(remaining) + "\n")
+        os.remove(work)
+    except OSError:
+        pass
+
+
+def start_server(files_dir: str = None, token: str = None, secret: str = None,
+                 host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> str:
+    """Start the embedded server (once) and drain any queued SMS.
+
+    Safe to call multiple times — only the first call starts the server thread,
+    but every call kicks a drain (cheap; atomic rotation makes it idempotent).
+    Called from Java via Chaquopy: ``getModule("spendwise.android_entry")
+    .callAttr("start_server", filesDir, token)``.
+    """
+    global _server_thread, _device_token, _session_secret, _server_port, _stage
     base = files_dir or os.getcwd()
     db_path = os.path.join(base, "spendwise.db")
     with _lock:
+        if token:
+            _device_token = token
+        if secret:
+            _session_secret = secret
+        tok = _device_token
+        sec = _session_secret
         if _server_thread is None or not _server_thread.is_alive():
-            _server_thread = threading.Thread(
-                target=_run, args=(db_path, host, port), daemon=True,
-                name="spendwise-server")
-            _server_thread.start()
+            # Chosen HERE, not on the server thread, so this call can return
+            # the real URL to Java. Java used to assume 8765 and had no way to
+            # learn otherwise.
+            chosen, reusing = _choose_port(host, port)
+            _server_port = chosen
+            if reusing:
+                _stage = "serving"
+            else:
+                _server_thread = threading.Thread(
+                    target=_run, args=(db_path, host, chosen, tok, sec),
+                    daemon=True, name="spendwise-server")
+                _server_thread.start()
+        port = _server_port
+    # Replay queued SMS once the server is ready (off the main thread). Runs on
+    # every call so messages queued within a warm process still drain.
+    threading.Thread(target=_drain_inbox, args=(base, host, port, tok),
+                     daemon=True, name="spendwise-sms-drain").start()
     return f"http://{host}:{port}"
 
 
 def is_running() -> bool:
     return _server_thread is not None and _server_thread.is_alive()
+
+
+def server_port() -> int:
+    """The port the app is actually served on."""
+    return _server_port
+
+
+def startup_stage() -> str:
+    """How far startup got, as a phrase fit to show a user.
+
+    Crosses the Chaquopy boundary, so it is a plain string.
+    """
+    return _stage
+
+
+def startup_error() -> str:
+    """The exception that killed the server thread, or "" if there was none.
+
+    Called from Java when the readiness poll times out. A string rather than
+    an object because it crosses the Chaquopy boundary and is only ever shown
+    to a person.
+    """
+    return _startup_error or ""

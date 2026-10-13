@@ -22,8 +22,8 @@ jobs:
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Build React App
-        run: npm run build
+      # NOTE: no web build step. The APK bundles only webshell/ (a static
+      # loading screen); the real UI is served by the embedded Flask app.
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -53,16 +53,70 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug assembleRelease
+          # :app is the shipping Capacitor + Chaquopy build. :nativeapp is
+          # the Kotlin rewrite, built separately so a compile error there
+          # costs a red job rather than the only installable APK. || true
+          # keeps the native build non-blocking until it is proven green.
+          ./gradlew :app:assembleSmsRelease :app:assembleNosmsRelease :app:assembleSmsDebug
+          ./gradlew :nativeapp:assembleSmsRelease :nativeapp:assembleNosmsRelease || \
+            echo "::warning::nativeapp did not build; :app artifacts are unaffected"
+        env:
+          # Empty unless configured as repository secrets; the build then
+          # produces an unsigned release rather than signing with a repo key.
+          SPENDWISE_KEYSTORE_FILE: ${{ secrets.SPENDWISE_KEYSTORE_FILE }}
+          SPENDWISE_KEYSTORE_PASSWORD: ${{ secrets.SPENDWISE_KEYSTORE_PASSWORD }}
+          SPENDWISE_KEY_ALIAS: ${{ secrets.SPENDWISE_KEY_ALIAS }}
+          SPENDWISE_KEY_PASSWORD: ${{ secrets.SPENDWISE_KEY_PASSWORD }}
 
-      - name: Upload Debug APK
+      # Two APKs, because Play Protect blocks the sideload of any app that
+      # requests READ_SMS — in India/Singapore/Thailand/Brazil with no
+      # override. That block is about the permission being in the manifest,
+      # not about signing or the debuggable flag, so the only build that
+      # installs on those devices is one that never asks for it.
+      - name: Upload no-SMS APK (installs anywhere)
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: app-NOSMS-installs-anywhere
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/nosms/release/app-nosms-release.apk
 
-      - name: Upload Release APK
+      - name: Upload full APK (needs Play Protect allowances)
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: app-FULL-sms-autocapture
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/sms/release/app-sms-release.apk
+
+      # Debuggable. For `adb install` during development only — Play Protect
+      # blocks debuggable builds hardest of all.
+      - name: Upload debug APK (adb only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-for-adb-only
+          if-no-files-found: warn
+          path: android/app/build/outputs/apk/sms/debug/app-sms-debug.apk
+
+      - name: Upload native rewrite (preview)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nativeapp-PREVIEW-kotlin-rewrite
+          if-no-files-found: ignore
+          path: |
+            android/nativeapp/build/outputs/apk/nosms/release/nativeapp-nosms-release.apk
+            android/nativeapp/build/outputs/apk/sms/release/nativeapp-sms-release.apk
+
+      - name: Report what was built
+        if: always()
+        run: |
+          find android/app/build/outputs/apk -name '*.apk' -printf '%f  %s bytes\n' \
+            2>/dev/null | sort || true
+          if ls android/app/build/outputs/apk/*/release/*unsigned*.apk >/dev/null 2>&1; then
+            echo "::error::An UNSIGNED release APK was produced. It cannot be"\
+                 "installed. build.gradle should fall back to the committed key."
+            exit 1
+          fi
+          echo "::notice::Play Protect blocks sideloaded apps that request"\
+               "READ_SMS. If 'app-FULL-sms-autocapture' is refused with"\
+               "INSTALL_FAILED_VERIFICATION_FAILURE, install"\
+               "'app-NOSMS-installs-anywhere' instead — same app, no automatic"\
+               "capture, paste bank messages into the Import screen."

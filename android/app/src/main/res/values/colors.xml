@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SpendWise brand palette -->
+    <color name="colorPrimary">#7C5CFF</color>
+    <color name="colorPrimaryDark">#5B3CFF</color>
+    <color name="colorAccent">#5B7CFF</color>
+
+    <!-- Splash / window background: matches the gradient start so no flash -->
+    <color name="windowBackground">#0A0A0F</color>
+</resources>

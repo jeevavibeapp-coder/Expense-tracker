@@ -1,0 +1,19 @@
+// Pure Kotlin/JVM. No Android plugin on purpose: the domain logic must stay
+// compilable and testable without the Android SDK, which is what keeps the
+// feedback loop at seconds rather than an emulator boot.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+dependencies {
+    testImplementation 'org.jetbrains.kotlin:kotlin-test'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging { events "passed", "failed", "skipped" }
+}
