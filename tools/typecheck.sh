@@ -18,7 +18,6 @@ KH=${KOTLIN_HOME:-/opt/kotlin}
 KOTLINC=${KOTLINC:-kotlinc-jvm}
 STUBS=$ROOT/tools/compose-stubs
 APP=$ROOT/android/nativeapp/src/main/java
-CORE_CLASSES=$ROOT/core/build/classes
 
 VERBOSE=0
 if [ "${1:-}" = "-v" ]; then VERBOSE=1; shift; fi
@@ -27,12 +26,6 @@ for jar in "$KH/kotlin-stdlib.jar" "$KH/coroutines.jar"; do
   [ -f "$jar" ] || { echo "missing $jar — set KOTLIN_HOME" >&2; exit 2; }
 done
 
-# :core is a dependency, not part of this check. Its own tests are the gate.
-if [ ! -d "$CORE_CLASSES" ]; then
-  echo "core/build/classes missing — building :core first" >&2
-  (cd "$ROOT/core" && ./run-tests.sh >/dev/null) || {
-    echo "core build failed; fix :core before type-checking the app" >&2; exit 2; }
-fi
 
 if [ "$#" -gt 0 ]; then SOURCES=("$@")
 else mapfile -t SOURCES < <(find "$APP" -name '*.kt' | sort); fi
@@ -41,6 +34,23 @@ mapfile -t STUB_SOURCES < <(find "$STUBS" -name '*.kt' | sort)
 
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
+
+# :core is compiled fresh, here, every run — never read from core/build/classes.
+# Reading the shared directory had two failure modes. A concurrent
+# run-tests.sh could be halfway through replacing it. Worse, it could simply
+# be STALE: change a :core signature, run this without re-running the core
+# tests first, and the app was checked against the old API and passed. That is
+# a false green, and nothing about it looks wrong. :core takes a few seconds
+# to compile; that is the price of the check meaning what it says.
+mapfile -t CORE_SOURCES < <(find "$ROOT/core/src/main/kotlin" -name '*.kt' | sort)
+CORE_CLASSES=$OUT/core-classes
+if ! "$KOTLINC" -cp "$KH/kotlin-stdlib.jar" -nowarn -d "$CORE_CLASSES" \
+      "${CORE_SOURCES[@]}" >"$OUT/core.log" 2>&1; then
+  echo "── :core does not compile, so the app cannot be checked against it" >&2
+  grep -v JAVA_TOOL_OPTIONS "$OUT/core.log" | grep "error:" | head -10 >&2
+  echo "   fix :core first: ./core/run-tests.sh" >&2
+  exit 2
+fi
 
 # Everything in one invocation: the app files reference each other, so
 # compiling them separately would report their own declarations as missing.

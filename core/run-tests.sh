@@ -17,13 +17,30 @@ if [ ! -f "$STDLIB" ]; then
 fi
 KOTLINC=${KOTLINC:-kotlinc-jvm}
 
-rm -rf build/classes build/test
-$KOTLINC -cp "$STDLIB" -nowarn -d build/classes $(find src/main/kotlin -name '*.kt')
-$KOTLINC -cp "$STDLIB:build/classes" -nowarn -d build/test $(find src/test/kotlin -name '*.kt')
+# Every run builds in its own private directory. This used to compile
+# straight into build/classes after an rm -rf, so two runs at once — normal
+# when several agents verify their work in parallel — deleted each other's
+# classes mid-run and every suite failed with NoClassDefFoundError, which reads
+# exactly like a regression and is not one.
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+$KOTLINC -cp "$STDLIB" -nowarn -d "$WORK/classes" $(find src/main/kotlin -name '*.kt')
+$KOTLINC -cp "$STDLIB:$WORK/classes" -nowarn -d "$WORK/test" $(find src/test/kotlin -name '*.kt')
 
 status=0
-for main in $(cd build/test && ls *Kt.class 2>/dev/null | sed 's/\.class$//'); do
+for main in $(cd "$WORK/test" && ls *Kt.class 2>/dev/null | sed 's/\.class$//'); do
   echo "── $main ──"
-  java -cp "build/classes:build/test:$STDLIB" "$main" || status=1
+  java -cp "$WORK/classes:$WORK/test:$STDLIB" "$main" || status=1
 done
+
+# Publish the compiled :core for anyone who wants it, by swapping a complete
+# directory into place rather than writing into the live one, so a reader
+# never sees a half-written tree. Nothing in tools/ depends on this any more.
+mkdir -p build
+cp -r "$WORK/classes" "build/classes.new.$$"
+rm -rf "build/classes.old.$$"
+[ -d build/classes ] && mv build/classes "build/classes.old.$$"
+mv "build/classes.new.$$" build/classes
+rm -rf "build/classes.old.$$"
 exit $status
