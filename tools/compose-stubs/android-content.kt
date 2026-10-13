@@ -17,6 +17,12 @@ abstract class Context {
     open fun checkSelfPermission(permission: String): Int = PackageManager.PERMISSION_DENIED
     open fun getSystemService(name: String): Any? = null
     open fun getExternalFilesDir(type: String?): java.io.File? = null
+    /** Where Room puts a database it is given by name, so the recovery path
+     *  checks and copies the same file Room opens. */
+    open fun getDatabasePath(name: String): java.io.File = java.io.File(name)
+    /** Abstract in the SDK and overridden by ContextWrapper, which is how a
+     *  wrapper can refuse it on a library's behalf. */
+    open fun deleteDatabase(name: String): Boolean = false
     open val filesDir: java.io.File get() = java.io.File(".")
     open val cacheDir: java.io.File get() = java.io.File(".")
 }

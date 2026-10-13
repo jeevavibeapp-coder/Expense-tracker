@@ -40,5 +40,24 @@ class SQLiteDatabase private constructor() : SQLiteClosable() {
          *  depends on. */
         fun openDatabase(path: String, factory: CursorFactory?, flags: Int): SQLiteDatabase =
             throw UnsupportedOperationException("android stub")
+
+        /** The overload that matters: the three-argument one installs
+         *  DefaultDatabaseErrorHandler, which DELETES a file it finds
+         *  corrupt — so checking a damaged ledger with it would destroy the
+         *  ledger being checked. */
+        fun openDatabase(
+            path: String,
+            factory: CursorFactory?,
+            flags: Int,
+            errorHandler: android.database.DatabaseErrorHandler?,
+        ): SQLiteDatabase = throw UnsupportedOperationException("android stub")
     }
+}
+
+/** Every SQLite failure the platform raises is one of these, which is how a
+ *  refusal by SQLite is told apart from a bug in the code asking. */
+open class SQLiteException : android.database.SQLException {
+    constructor() : super()
+    constructor(error: String?) : super(error)
+    constructor(error: String?, cause: Throwable?) : super(error, cause)
 }

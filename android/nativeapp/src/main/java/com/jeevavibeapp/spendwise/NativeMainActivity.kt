@@ -14,6 +14,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +42,7 @@ import com.jeevavibeapp.spendwise.core.Backup
 import com.jeevavibeapp.spendwise.core.Budget
 import com.jeevavibeapp.spendwise.core.Budgets
 import com.jeevavibeapp.spendwise.core.Insights
+import com.jeevavibeapp.spendwise.core.Recovery
 import com.jeevavibeapp.spendwise.core.Recurring
 import com.jeevavibeapp.spendwise.core.SenderBook
 import com.jeevavibeapp.spendwise.core.Senders
@@ -52,8 +54,11 @@ import com.jeevavibeapp.spendwise.data.Repo
 import com.jeevavibeapp.spendwise.data.SettingsEntity
 import com.jeevavibeapp.spendwise.data.TransactionEntity
 import com.jeevavibeapp.spendwise.ui.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -86,16 +91,46 @@ class NativeMainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
         smsAccess.value = readSmsAccess()
-        if (granted.values.any { it }) {
+        // Only over a ledger that opened: the scanner would otherwise start
+        // a recovery on the main thread, or throw from inside this callback.
+        if (granted.values.any { it } && ledger.value is AppGraph.Ledger.Ready) {
             // Catch up on anything that arrived while the app was closed.
             lifecycleScope.launch { AppGraph.inboxScanner(this@NativeMainActivity).scan() }
         }
     }
 
+    /** Null while the open runs, which can take seconds when it recovers,
+     *  so nothing on screen can reach the ledger before it exists. */
+    private val ledger = MutableStateFlow<AppGraph.Ledger?>(null)
+
+    /** Cleared here the moment it is acknowledged, so the dialog does not
+     *  wait on the file being deleted behind it. */
+    private val notice = MutableStateFlow<AppGraph.Notice?>(null)
+
+    /** So a second tap on "Try again" cannot queue another run behind the
+     *  first, each of which may copy the whole ledger. */
+    private val retrying = MutableStateFlow(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val repo = AppGraph.repo(this)
         smsAccess.value = readSmsAccess()
+        setContent { Root() }
+        // Off the main thread: the check, a weekly snapshot or a restore can
+        // each outlast a frame, and a restore can outlast the ANR timeout.
+        lifecycleScope.launch {
+            arrive(withContext(Dispatchers.IO) { AppGraph.open(this@NativeMainActivity) })
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        smsAccess.value = readSmsAccess()
+    }
+
+    private fun arrive(result: AppGraph.Ledger) {
+        ledger.value = result
+        if (result !is AppGraph.Ledger.Ready) return
+        val repo = result.repo
 
         // Engine.SEED_MERCHANTS files its built-in merchants under category
         // NAMES, and resolveMerchant turns a name into an id by looking in
@@ -111,18 +146,44 @@ class NativeMainActivity : ComponentActivity() {
             lifecycleScope.launch { AppGraph.inboxScanner(this@NativeMainActivity).scan() }
         }
 
-        setContent { Root(repo) }
+        lifecycleScope.launch {
+            notice.value = withContext(Dispatchers.IO) { AppGraph.notice(this@NativeMainActivity) }
+        }
     }
 
-    override fun onResume() {
-        super.onResume()
-        smsAccess.value = readSmsAccess()
+    private fun retry() {
+        if (retrying.value) return
+        retrying.value = true
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { AppGraph.retry(this@NativeMainActivity) }
+            retrying.value = false
+            arrive(result)
+        }
+    }
+
+    private fun dismissNotice() {
+        notice.value = null
+        lifecycleScope.launch(Dispatchers.IO) { AppGraph.dismissNotice(this@NativeMainActivity) }
     }
 
     @Composable
-    private fun Root(repo: Repo) {
+    private fun Root() {
+        when (val opened = ledger.collectAsState().value) {
+            null -> SpendWiseTheme { Opening() }
+            is AppGraph.Ledger.Ready -> Themed(opened.repo)
+            is AppGraph.Ledger.Unavailable -> SpendWiseTheme {
+                val busy by retrying.collectAsState()
+                LedgerFailure(opened, retrying = busy, onRetry = ::retry)
+            }
+        }
+    }
+
+    @Composable
+    private fun Themed(repo: Repo) {
         val stored by remember(repo) { repo.settings() }.collectAsState(initial = null)
         val settings = stored
+        val untold by notice.collectAsState()
+        val access by smsAccess.collectAsState()
 
         SpendWiseTheme(
             dark = when (settings?.theme) {
@@ -136,6 +197,11 @@ class NativeMainActivity : ComponentActivity() {
             // ago, which is what rendering the default would do.
             if (settings == null) Surface(Modifier.fillMaxSize()) {}
             else App(repo, settings)
+
+            untold?.let {
+                RecoveryNotice(it, rescans = access == SmsAccess.GRANTED,
+                    onDismiss = ::dismissNotice)
+            }
         }
     }
 
@@ -1148,4 +1214,203 @@ private fun describe(plan: Backup.Plan): String {
                else "Added $added rows."
     return if (skipped == 0) head
            else "$head Skipped $skipped already here or unreadable."
+}
+
+private val SnapshotStamp: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM yyyy 'at' HH:mm", Locale.ENGLISH)
+
+private fun stamp(snapshot: String?): String? =
+    snapshot?.let(Recovery::takenAt)?.format(SnapshotStamp)
+
+/** Only once opening has taken longer than a glance. A label on every
+ *  ordinary launch would flicker, and a blank screen through a recovery that
+ *  takes seconds reads as a hang. */
+@Composable
+private fun Opening() {
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(700)
+        slow = true
+    }
+    Surface(Modifier.fillMaxSize()) {
+        if (slow) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Opening your ledger…", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * Instead of a crash, when the ledger will not open.
+ *
+ * In the order a frightened person needs it: what happened, that the data
+ * still exists and where, and a way to try again. A lock gets different words
+ * from damage, because telling someone whose data is fine that it is damaged
+ * is a harm of its own.
+ */
+@Composable
+private fun LedgerFailure(
+    failure: AppGraph.Ledger.Unavailable,
+    retrying: Boolean,
+    onRetry: () -> Unit,
+) {
+    val stopped = failure.stopped
+    val where = failure.where
+    val untouched = stopped.keptAs.isEmpty() && stopped.restoredFrom == null
+    val files = if (untouched) "Nothing was changed or deleted."
+                else "Nothing has been deleted: every file SpendWise moved is kept, listed below."
+    val (title, body) = when {
+        stopped.outcome == Recovery.Outcome.BUSY -> "Your ledger is busy" to
+            "Something else on this phone was still writing to it — usually a bank message " +
+            "being saved — so it couldn't be opened just now. That is not damage. Give it a " +
+            "moment, then try again. $files"
+        stopped.failure == Recovery.Failure.MIGRATION -> "SpendWise couldn't finish updating" to
+            "This version couldn't bring your ledger up to date, so it stopped rather than " +
+            "risk it. Your transactions are on this phone, as the previous version left " +
+            "them. $files An update to SpendWise is the likely fix."
+        stopped.failure == Recovery.Failure.CORRUPTION -> "Your ledger couldn't be read" to
+            "The file your transactions are kept in is damaged, and SpendWise couldn't " +
+            "repair it from a saved copy. $files"
+        else -> "SpendWise couldn't open your ledger" to
+            "Opening it failed for a reason SpendWise doesn't recognise. A phone that is " +
+            "out of storage is the usual one, so freeing some space is worth trying " +
+            "first. $files"
+    }
+
+    Scaffold { pad ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(pad)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Tokens.screenPadding, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
+        ) {
+            FailureCard {
+                Text("SPENDWISE", style = MicroLabel,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Text(title, style = MaterialTheme.typography.headlineLarge)
+                Spacer(Modifier.height(10.dp))
+                Text(body, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onRetry,
+                    enabled = !retrying,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+                ) { Text(if (retrying) "Trying again…" else "Try again") }
+            }
+
+            Text("WHERE YOUR DATA IS", style = SectionHeading,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, top = 8.dp))
+            FailureCard {
+                PathRow("Your ledger", null, where.ledger)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(vertical = 14.dp))
+                val copies = stopped.snapshots
+                PathRow(
+                    "Saved copies",
+                    if (copies.isEmpty()) "None yet."
+                    else "${copies.size} on this phone, the newest from ${stamp(copies.first())}.",
+                    where.snapshots,
+                )
+                for (path in where.kept) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(vertical = 14.dp))
+                    PathRow("Kept as it was when it failed", null, path)
+                }
+            }
+
+            // Busy is not a state anyone needs warning off a reinstall for.
+            if (stopped.outcome == Recovery.Outcome.SAFE_MODE) FailureCard {
+                Text("Don't uninstall SpendWise or clear its storage. Either one deletes " +
+                     "these files, and there is no other copy of them.",
+                    style = MaterialTheme.typography.bodyMedium, color = Expense)
+            }
+
+            stopped.detail?.let { detail ->
+                Text("WHAT THE PHONE REPORTED", style = SectionHeading,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, top = 8.dp))
+                Text(detail, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp))
+            }
+        }
+    }
+}
+
+/**
+ * A recovery that let the app open, said once. A restore means entries may be
+ * missing and a fresh start means all of them are, so neither can be silent —
+ * and only the button clears it, because a tap beside the dialog is not
+ * someone having read that their history changed.
+ */
+@Composable
+private fun RecoveryNotice(notice: AppGraph.Notice, rescans: Boolean, onDismiss: () -> Unit) {
+    val (title, body) = when {
+        notice.outcome == Recovery.Outcome.STARTED_FRESH -> "Your ledger was started again" to
+            "The file your transactions were kept in couldn't be read, and there was no " +
+            "working saved copy to go back to, so SpendWise started a new, empty one."
+        notice.withoutLoss -> "An update was retried" to
+            "Updating your ledger failed the first time, so SpendWise put back the copy it " +
+            "had saved just before and tried again. It worked, and nothing was lost."
+        else -> "Your ledger was restored" to
+            "The file your transactions were kept in was damaged, so SpendWise put back the " +
+            "copy it saved on ${stamp(notice.restoredFrom) ?: "an earlier date"}. Anything " +
+            "recorded after that is missing" +
+            (if (rescans) ". Bank messages still in your inbox are read again, but anything " +
+                "you entered yourself will need adding again." else ".")
+    }
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(body, style = MaterialTheme.typography.bodyMedium)
+                if (!notice.withoutLoss && notice.where.kept.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("The unreadable file was kept, not deleted. Uninstalling or clearing " +
+                         "storage would delete it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    for (path in notice.where.kept) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(path, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+            ) { Text("OK") }
+        },
+    )
+}
+
+@Composable
+private fun FailureCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(Tokens.cardRadius),
+        modifier = Modifier.fillMaxWidth(),
+    ) { Column(Modifier.padding(18.dp), content = content) }
+}
+
+@Composable
+private fun PathRow(label: String, detail: String?, path: String) {
+    Text(label, style = MaterialTheme.typography.titleMedium)
+    if (detail != null) {
+        Spacer(Modifier.height(2.dp))
+        Text(detail, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Spacer(Modifier.height(4.dp))
+    Text(path, style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

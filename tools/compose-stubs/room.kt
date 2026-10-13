@@ -62,6 +62,9 @@ abstract class RoomDatabase {
     open fun clearAllTables() {}
     open fun close() {}
     open val isOpen: Boolean get() = false
+    /** Reading writableDatabase off this is what forces Room's lazy open. */
+    open val openHelper: androidx.sqlite.db.SupportSQLiteOpenHelper
+        get() = throw UnsupportedOperationException("stub")
     open fun <R> runInTransaction(body: java.util.concurrent.Callable<R>): R = body.call()
     abstract class Callback {
         open fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
@@ -89,6 +92,9 @@ object Room {
     class Builder<T : RoomDatabase> internal constructor() {
         fun addMigrations(vararg migrations: androidx.room.migration.Migration): Builder<T> = this
         fun addCallback(callback: RoomDatabase.Callback): Builder<T> = this
+        fun openHelperFactory(
+            factory: androidx.sqlite.db.SupportSQLiteOpenHelper.Factory?,
+        ): Builder<T> = this
         fun fallbackToDestructiveMigration(): Builder<T> = this
         fun fallbackToDestructiveMigrationFrom(vararg startVersions: Int): Builder<T> = this
         fun fallbackToDestructiveMigrationOnDowngrade(): Builder<T> = this
