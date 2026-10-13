@@ -105,14 +105,22 @@ class Repo(private val dao: SpendDao) {
      * verdict into the column reserved for a person's, and the capture path
      * would then stop revising it.
      *
-     * @return false if nothing was stored.
+     * The key goes through [Senders.normalizeSender] because that is the key
+     * [ingestSms] stores a row under and looks it up by. A decision filed
+     * under any other spelling would sit on a row the next message never
+     * reads.
+     *
+     * @return true only when a stored row now carries [trust]. False when no
+     *   row matched — a screen showing a sender a restore has since replaced,
+     *   a row stored under a spelling the capture path would not produce —
+     *   because then the next message from that sender is judged exactly as
+     *   before, and a caller that announced the decision would be lying.
      */
     suspend fun setSenderTrust(sender: String, trust: String): Boolean =
         withContext(Dispatchers.IO) {
             val key = Senders.normalizeSender(sender)
             if (key.isEmpty() || !SenderBook.isUserDecision(trust)) return@withContext false
-            dao.setSenderTrust(key, trust)
-            true
+            dao.setSenderTrust(key, trust) > 0
         }
 
     /** Open only. The alert list is a queue of things to look at, not a log
@@ -296,8 +304,10 @@ class Repo(private val dao: SpendDao) {
      * same sender in a list afterwards is how a repeat offender keeps its
      * welcome.
      *
-     * @return the sender that was blocked, or null if the message carried no
-     *   usable sender; the message is discarded either way.
+     * @return the sender that was blocked, or null if nothing was blocked —
+     *   the message carried no usable sender, or no stored sender row matched
+     *   it, which is what a restore that replaced the senders but kept the
+     *   held messages leaves behind. The message is discarded either way.
      */
     suspend fun rejectHeldAndBlock(id: String): String? = withContext(Dispatchers.IO) {
         val row = dao.quarantineById(id)

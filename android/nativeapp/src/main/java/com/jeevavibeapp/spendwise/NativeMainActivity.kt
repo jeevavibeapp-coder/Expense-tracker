@@ -481,11 +481,15 @@ class NativeMainActivity : ComponentActivity() {
                             onBlock = { id ->
                                 lifecycleScope.launch {
                                     val who = repo.rejectHeldAndBlock(id)
+                                    // The button only exists on a message with a
+                                    // sender, so null means the block half failed.
+                                    // Leaving that unsaid lets the user assume it
+                                    // worked until the sender's next scam is filed.
                                     announce(if (who != null)
                                         "Discarded, and $who is blocked. Anything else it " +
                                         "sends is held without asking."
-                                    else "Discarded. It stays on your phone, out of " +
-                                         "your ledger.")
+                                    else "Discarded, but the sender couldn't be blocked, " +
+                                         "so its next message is checked like any other.")
                                 }
                             },
                             onDismiss = { id ->
@@ -505,6 +509,13 @@ class NativeMainActivity : ComponentActivity() {
                                                 "$sender is back to being checked like any " +
                                                 "other sender."
                                         })
+                                    } else {
+                                        // Nothing matched, so the row keeps its old
+                                        // label. Silence beside it reads as a tap that
+                                        // did not register, and a user who believes a
+                                        // sender is blocked stops watching for it.
+                                        announce("Couldn't change $sender, so nothing was " +
+                                                 "saved. Its messages are handled as before.")
                                     }
                                 }
                             },

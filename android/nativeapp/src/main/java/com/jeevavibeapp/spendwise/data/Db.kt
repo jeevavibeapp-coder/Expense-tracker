@@ -402,9 +402,13 @@ abstract class SpendDao {
 
     /** The user's own verdict. Written only through [Repo.setSenderTrust],
      *  which holds it to the three values SenderBook allows — the capture
-     *  path reads this column back and will not overwrite a decision. */
+     *  path reads this column back and will not overwrite a decision.
+     *
+     *  Returns the rows the WHERE matched. An UPDATE that finds no row is not
+     *  an error to SQLite, so without the count a key that addresses nothing
+     *  is indistinguishable from a decision that was saved. */
     @Query("UPDATE sms_senders SET trust = :trust WHERE sender = :sender")
-    abstract suspend fun setSenderTrust(sender: String, trust: String)
+    abstract suspend fun setSenderTrust(sender: String, trust: String): Int
 
     @Query("SELECT * FROM fraud_alerts WHERE status = 'open' ORDER BY createdAt DESC")
     abstract fun openAlerts(): Flow<List<FraudAlertEntity>>
