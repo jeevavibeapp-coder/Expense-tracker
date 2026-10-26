@@ -81,7 +81,24 @@ jobs:
         id: native
         continue-on-error: true
         working-directory: android
-        run: ./gradlew :nativeapp:assembleSmsRelease :nativeapp:assembleNosmsRelease
+        # One variant per invocation. Each variant's Room processor writes the
+        # same exported schema file; built in one invocation they run at the
+        # same time, and one reads the other's half-written file and dies
+        # with "Empty schema file" before any Kotlin is compiled.
+        run: |
+          ./gradlew :nativeapp:assembleSmsRelease
+          ./gradlew :nativeapp:assembleNosmsRelease
+
+      # The schema Room exported, so it can be committed: migrations are then
+      # reviewable as a diff, and a build that finds an identical file just
+      # compares it instead of rewriting it.
+      - name: Upload native Room schema
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nativeapp-room-schema
+          if-no-files-found: ignore
+          path: android/nativeapp/schemas/
 
       # Two APKs, because Play Protect blocks the sideload of any app that
       # requests READ_SMS — in India/Singapore/Thailand/Brazil with no
