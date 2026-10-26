@@ -89,6 +89,19 @@ jobs:
           ./gradlew :nativeapp:assembleSmsRelease
           ./gradlew :nativeapp:assembleNosmsRelease
 
+      # Also printed into the log, between markers: artifacts live in blob
+      # storage that not every environment working on this repo can reach,
+      # and the schema is small, plain metadata (table definitions, no data).
+      - name: Show exported Room schema
+        if: always()
+        run: |
+          for f in android/nativeapp/schemas/*/*.json; do
+            [ -f "$f" ] || continue
+            echo "SCHEMA-BEGIN ${f#android/nativeapp/}"
+            cat "$f"; echo
+            echo "SCHEMA-END"
+          done
+
       # The schema Room exported, so it can be committed: migrations are then
       # reviewable as a diff, and a build that finds an identical file just
       # compares it instead of rewriting it.
