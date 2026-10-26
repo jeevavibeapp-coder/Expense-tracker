@@ -41,6 +41,15 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default list starts with 'tools', the SDK Tools
+          # package Google retired. sdkmanager in current runner images no
+          # longer knows it, exits 1, and every step after this is skipped —
+          # so no APK at all was built while this went unnoticed.
+          packages: 'platform-tools'
+          # Logging accepted licences printed a thousand lines of legal text
+          # directly above that error, which is how it stayed hidden.
+          log-accepted-android-sdk-licenses: false
 
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
@@ -53,13 +62,8 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          # :app is the shipping Capacitor + Chaquopy build. :nativeapp is
-          # the Kotlin rewrite, built separately so a compile error there
-          # costs a red job rather than the only installable APK. || true
-          # keeps the native build non-blocking until it is proven green.
+          # :app is the shipping Capacitor + Chaquopy build.
           ./gradlew :app:assembleSmsRelease :app:assembleNosmsRelease :app:assembleSmsDebug
-          ./gradlew :nativeapp:assembleSmsRelease :nativeapp:assembleNosmsRelease || \
-            echo "::warning::nativeapp did not build; :app artifacts are unaffected"
         env:
           # Empty unless configured as repository secrets; the build then
           # produces an unsigned release rather than signing with a repo key.
@@ -67,6 +71,17 @@ jobs:
           SPENDWISE_KEYSTORE_PASSWORD: ${{ secrets.SPENDWISE_KEYSTORE_PASSWORD }}
           SPENDWISE_KEY_ALIAS: ${{ secrets.SPENDWISE_KEY_ALIAS }}
           SPENDWISE_KEY_PASSWORD: ${{ secrets.SPENDWISE_KEY_PASSWORD }}
+
+      # The Kotlin rewrite gets its own step so its result is visible on its
+      # own: this is the only place it is compiled against the REAL Compose,
+      # Room and KSP rather than the hand-written stubs in tools/. Non-blocking
+      # until proven green — an error here must cost a red step, never the
+      # only installable APK.
+      - name: Build native rewrite (preview)
+        id: native
+        continue-on-error: true
+        working-directory: android
+        run: ./gradlew :nativeapp:assembleSmsRelease :nativeapp:assembleNosmsRelease
 
       # Two APKs, because Play Protect blocks the sideload of any app that
       # requests READ_SMS — in India/Singapore/Thailand/Brazil with no
@@ -110,6 +125,10 @@ jobs:
         run: |
           find android/app/build/outputs/apk -name '*.apk' -printf '%f  %s bytes\n' \
             2>/dev/null | sort || true
+          echo "nativeapp build: ${{ steps.native.outcome }}"
+          if [ "${{ steps.native.outcome }}" = "failure" ]; then
+            echo "::warning::nativeapp did not build; :app artifacts are unaffected"
+          fi
           if ls android/app/build/outputs/apk/*/release/*unsigned*.apk >/dev/null 2>&1; then
             echo "::error::An UNSIGNED release APK was produced. It cannot be"\
                  "installed. build.gradle should fall back to the committed key."
