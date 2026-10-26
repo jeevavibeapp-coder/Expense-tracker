@@ -1,28 +1,54 @@
 {% extends "base.html" %}
-{% block title %}Fraud Alerts · {{ app_name }}{% endblock %}
-{% block heading %}Fraud Alerts{% endblock %}
+{% import "_macros.html" as m %}
+{% block title %}Alerts · {{ app_name }}{% endblock %}
+{% block heading %}Security Alerts{% endblock %}
 {% block content %}
-<div class="card">
+<div class="screen stack">
+  {% set open = alerts | selectattr('status','equalto','open') | list %}
+  {% if open %}
+  <div class="mut" style="font-size: 0.8125rem; padding:0 4px">{{ open|length }} alert{{ '' if open|length == 1 else 's' }} need your attention.</div>
+  {% endif %}
   {% if alerts %}
-  <table>
-    <tr><th>Severity</th><th>Type</th><th>Message</th><th>Status</th><th></th></tr>
     {% for a in alerts %}
-    <tr>
-      <td class="sev-{{ a['severity'] }}">{{ a['severity']|capitalize }}</td>
-      <td>{{ a['alert_type'].replace('_', ' ')|capitalize }}</td>
-      <td>{{ a['message'] }}</td>
-      <td><span class="pill {{ 'pill-warn' if a['status'] == 'open' else 'pill-ok' }}">{{ a['status']|capitalize }}</span></td>
-      <td>
+    {% set sev = a['severity'] %}
+    {% set tone = 'var(--expense)' if sev=='high' else ('var(--warn)' if sev=='medium' else 'var(--text-2)') %}
+    {% set softclass = 'high' if sev=='high' else '' %}
+    <div class="alert {{ softclass }}" style="{{ 'opacity:.6' if a['status'] != 'open' else '' }}">
+      <span class="ai" style="background:{{ tone }}22; color:{{ tone }}">{{ m.icon('shield') }}</span>
+      <div class="am">
+        <div class="at">{{ a['alert_type'].replace('_',' ')|title }}
+          <span class="pill" style="background:{{ tone }}22; color:{{ tone }}; margin-left:6px">{{ sev|title }}</span></div>
+        <div class="ad">{{ a['message'] }}</div>
+        {% if a['transaction_id'] and a['tx_amount'] is not none %}
+        <a href="/transactions?tx={{ a['transaction_id'] }}"
+           style="display:flex; align-items:center; gap:10px; margin-top:10px; padding:10px 12px;
+                  border-radius:12px; background:var(--surface-2); text-decoration:none; color:inherit">
+          {{ m.avatar(a['tx_merchant'] or a['tx_raw'] or '?') }}
+          <div style="flex:1; min-width:0">
+            <div style="font-size: 0.8125rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
+              {{ a['tx_merchant'] or a['tx_raw'] or 'Unknown merchant' }}</div>
+            <div class="faint" style="font-size: 0.7188rem">{{ a['tx_occurred'][:10] }}</div>
+          </div>
+          <div class="num" style="font-weight:800; font-size: 0.8438rem">{{ currency|symbol }}{{ m.money(a['tx_amount']) }}</div>
+          <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
+        </a>
+        {% endif %}
         {% if a['status'] == 'open' %}
-        <form class="inline-form" method="post" action="/fraud/{{ a['id'] }}/status">
-          <input type="hidden" name="status" value="dismissed"><button class="btn-ghost btn-sm" type="submit">Dismiss</button></form>
-        <form class="inline-form" method="post" action="/fraud/{{ a['id'] }}/status">
-          <input type="hidden" name="status" value="resolved"><button class="btn-ghost btn-sm" type="submit">Resolve</button></form>
-        {% else %}<span class="muted">—</span>{% endif %}
-      </td>
-    </tr>
+        <div class="btn-row" style="margin-top:10px">
+          <form method="post" action="/fraud/{{ a['id'] }}/status" style="flex:1">
+            <input type="hidden" name="status" value="dismissed">
+            <button class="btn-soft btn-sm" type="submit" style="width:100%">Dismiss</button></form>
+          <form method="post" action="/fraud/{{ a['id'] }}/status" style="flex:1">
+            <input type="hidden" name="status" value="resolved">
+            <button class="btn btn-sm" type="submit" style="width:100%">Mark safe</button></form>
+        </div>
+        {% else %}<div class="pill" style="margin-top:8px; display:inline-block">{{ a['status']|title }}</div>{% endif %}
+      </div>
+    </div>
     {% endfor %}
-  </table>
-  {% else %}<div class="empty">No fraud alerts. The engine watches for duplicates, high-value outliers and unusual spending.</div>{% endif %}
+  {% else %}
+  <div class="empty"><div class="ei" style="color:var(--income)">{{ m.icon('shield') }}</div>
+    <h2 class="empty-h">You're all clear</h2><p>No suspicious activity. We watch for duplicates, high-value charges and unusual spending.</p></div>
+  {% endif %}
 </div>
 {% endblock %}

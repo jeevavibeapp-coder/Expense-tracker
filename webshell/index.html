@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SpendWise</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0a0f;color:#f6f6f9;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;text-align:center}
+  .w{padding:28px}
+  .mark{width:76px;height:76px;margin:0 auto 18px;border-radius:22px;
+    background:linear-gradient(135deg,#9b6bff,#5b7cff);display:grid;place-items:center;
+    box-shadow:0 14px 40px rgba(124,92,255,.35)}
+  .mark svg{width:40px;height:40px}
+  h1{font-size:19px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em}
+  p{margin:0;font-size:13px;color:#a6a6b8}
+  .bar{margin:20px auto 0;width:120px;height:3px;border-radius:99px;background:#262633;overflow:hidden}
+  .bar i{display:block;width:40%;height:100%;border-radius:99px;
+    background:linear-gradient(135deg,#9b6bff,#5b7cff);animation:slide 1.1s ease-in-out infinite}
+  @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+</style>
+</head>
+<body>
+  <div class="w">
+    <div class="mark">
+      <svg viewBox="0 0 108 108" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M41,29 h26 a7,7 0 0 1 7,7 v4 h-40 v-4 a7,7 0 0 1 7,-7 z" fill="#ffffff" fill-opacity=".6"/>
+        <path d="M35,37 h38 a9,9 0 0 1 9,9 v17 a9,9 0 0 1 -9,9 h-38 a9,9 0 0 1 -9,-9 v-17 a9,9 0 0 1 9,-9 z" fill="#fff"/>
+        <circle cx="70.5" cy="54.5" r="5.5" fill="#7C5CFF"/>
+      </svg>
+    </div>
+    <h1>SpendWise</h1>
+    <p>Starting your money engine…</p>
+    <div class="bar"><i></i></div>
+  </div>
+</body>
+</html>
