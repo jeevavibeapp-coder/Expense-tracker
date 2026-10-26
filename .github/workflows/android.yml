@@ -156,6 +156,14 @@ jobs:
           find android/app/build/outputs/apk -name '*.apk' -printf '%f  %s bytes\n' \
             2>/dev/null | sort || true
           echo "nativeapp build: ${{ steps.native.outcome }}"
+          # Which key signed each APK. It must be the same on every build, or
+          # an update cannot install over the previous one.
+          for apk in android/app/build/outputs/apk/*/release/*.apk \
+                     android/nativeapp/build/outputs/apk/*/release/*.apk; do
+            [ -f "$apk" ] || continue
+            echo "$(basename "$apk") signer: $("$ANDROID_HOME/build-tools/36.0.0/apksigner" \
+              verify --print-certs "$apk" 2>&1 | grep -m1 'SHA-256' || echo 'NOT VERIFIABLE')"
+          done
           if [ "${{ steps.native.outcome }}" = "failure" ]; then
             echo "::warning::nativeapp did not build; :app artifacts are unaffected"
           fi

@@ -32,10 +32,41 @@ android {
         nosms { dimension 'capture' }
     }
 
+    // The same signing policy as :app, and for the same reason; see the long
+    // comment there. AGP's default debug keystore is generated fresh on every
+    // CI runner, so signing with it gave each build a different key: no
+    // update could install over the previous one, and the only way forward
+    // was an uninstall — which destroys the ledger, because there is no
+    // cloud copy by design.
+    signingConfigs {
+        devDebug {
+            storeFile file('../app/spendwise.jks')
+            storePassword 'spendwise'
+            keyAlias 'spendwise'
+            keyPassword 'spendwise'
+        }
+        release {
+            def ksFile = System.getenv('SPENDWISE_KEYSTORE_FILE')
+            if (ksFile) {
+                storeFile file(ksFile)
+                storePassword System.getenv('SPENDWISE_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('SPENDWISE_KEY_ALIAS')
+                keyPassword System.getenv('SPENDWISE_KEY_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.devDebug
+        }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            if (System.getenv('SPENDWISE_KEYSTORE_FILE')) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.devDebug
+            }
         }
     }
 
