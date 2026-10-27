@@ -191,11 +191,21 @@ private object KeepDamagedFiles : SupportSQLiteOpenHelper.Factory {
 }
 
 /**
- * The Context the open helper is given. androidx.sqlite has a second way to
- * lose a ledger: when Room's onOpen fails twice with any SQLite error —
- * damage, or merely a lock — it calls Context.deleteDatabase and starts again
- * empty, whatever allowDataLossOnRecovery says. Refused here, the failure
- * surfaces instead, RecoverySequence classifies it, and the file is kept.
+ * The Context the open helper is given, so that the helper cannot delete the
+ * ledger. In androidx.sqlite 2.4.0, the version Room 2.6.1 pins,
+ * FrameworkSQLiteOpenHelper retries a failed open once after 500 ms, and if
+ * that retry fails inside Room's onOpen with any SQLiteException — damage, an
+ * I/O error, or merely a lock — it calls Context.deleteDatabase and opens
+ * again, which creates an empty ledger. That branch never reads
+ * allowDataLossOnRecovery; only an error from the open itself is gated by it.
+ * androidx-main changed this between sqlite 2.5.0-alpha04 and alpha05 (mid
+ * 2024) so that onOpen errors are also rethrown unless data loss is allowed,
+ * which Room never asks for. After an upgrade past Room 2.6 this is a second
+ * lock on a shut door, and still harmless: nothing legitimate deletes the
+ * ledger through this Context, and Room's pre-packaged-copy helper holds the
+ * unwrapped one. Refused here, the helper's third attempt runs on the same
+ * file, its failure surfaces, RecoverySequence classifies it, and the file
+ * is kept.
  */
 private class NoDeletes(base: Context) : ContextWrapper(base) {
     override fun deleteDatabase(name: String): Boolean {
