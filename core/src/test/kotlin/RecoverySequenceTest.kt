@@ -272,6 +272,20 @@ fun main() {
             "stage" !in disk.log && disk.snapshots.isEmpty(), disk.log.toString())
     }
     run {
+        // Room wraps the SQLite error, and the chain is classified whole, so
+        // one failure can name a lock and damage at once. The lock wins: the
+        // cost of the other reading is a live ledger replaced by an old copy.
+        val ledger = DbFile(rows = 200, version = 3)
+        val disk = SimulatedDisk(ledger)
+        disk.shelve(NOW.minusDays(2), DbFile(rows = 150, version = 3))
+        disk.openScript = listOf("$MALFORMED <- $LOCKED", null)
+        val result = open(disk)
+        check("a failure naming both a lock and damage is retried as a lock, and opens",
+            result is Opened && result.outcome == Outcome.NORMAL, result.toString())
+        check("with no older copy put over the live ledger",
+            !destructive(disk.log) && disk.ledger == ledger, disk.log.toString())
+    }
+    run {
         // The race python_app found in production: an upgrade that loses a
         // lock is contention, so it is retried, not rolled back.
         val disk = SimulatedDisk(DbFile(rows = 200, version = 2))
@@ -564,6 +578,14 @@ fun main() {
     }
     run {
         val disk = SimulatedDisk(DbFile(rows = 10, version = 3))
+        disk.shelve(NOW.minusDays(30), DbFile(rows = 6, version = 3))
+        disk.shelve(NOW.minusDays(2), DbFile(rows = 9, version = 3))
+        val result = open(disk) as Opened
+        check("the newest copy decides whether another is due, not the oldest",
+            result.snapshotTaken == null && "stage" !in disk.log, disk.log.toString())
+    }
+    run {
+        val disk = SimulatedDisk(DbFile(rows = 10, version = 3))
         disk.shelve(NOW.minusDays(Recovery.REFRESH_DAYS), DbFile(rows = 9, version = 3))
         val result = open(disk) as Opened
         check("a week-old one is replaced", result.snapshotTaken == Recovery.snapshotName(NOW))
@@ -603,6 +625,21 @@ fun main() {
         check("through Recovery.expired", "delete $oldest" in disk.log, disk.log.toString())
         check("and junk in the directory is left alone",
             disk.log.none { it.startsWith("delete") && !Recovery.isSnapshotName(it.removePrefix("delete ")) })
+    }
+    // Pruning makes room for a copy that exists and verified, never for one
+    // that might not: otherwise a full disk retires the oldest good copy
+    // every week and replaces it with nothing.
+    for ((why, ledger, cannotCopy) in listOf(
+        Triple("could not be written", DbFile(rows = 10, version = 3), true),
+        Triple("did not verify", DbFile(rows = 0, version = 0), false),
+    )) {
+        val disk = SimulatedDisk(ledger)
+        val old = listOf(30L, 20L, 10L).map { disk.shelve(NOW.minusDays(it), DbFile(rows = 5, version = 3)) }
+        disk.cannotCopy = cannotCopy
+        open(disk)
+        check("a copy that $why retires no older one",
+            disk.snapshots.keys.containsAll(old) && disk.log.none { it.startsWith("delete") },
+            disk.log.toString())
     }
     run {
         // A clock that ran backwards: three copies stamped in the "future".
@@ -652,6 +689,7 @@ fun main() {
     var olderRollback: String? = null
     var unverifiedRestore: String? = null
     var uncheckedCopy: String? = null
+    var reinspected: String? = null
     for (c in checks) for (shelf in shelves) for (moves in listOf("work", "stuck", "half"))
     for (script in scripts(answers, 4)) {
         val disk = SimulatedDisk(if (c == null) null else DbFile(rows = 50, version = c.version ?: 3))
@@ -691,6 +729,10 @@ fun main() {
         }
         if ("stage" in disk.log && !(c?.integrity == "ok" && c.raised == null) &&
             uncheckedCopy == null) uncheckedCopy = case
+        // Each inspection opens a full copy and reads every page of it, and
+        // two readings of one file within a run must not be allowed to differ.
+        val inspections = disk.log.filter { it.startsWith("inspect ") }
+        if (inspections.size != inspections.toSet().size && reinspected == null) reinspected = case
     }
     check("every one of $runs runs stops within three opens", tooLong == null && longest <= 3,
         tooLong ?: "longest=$longest")
@@ -709,6 +751,7 @@ fun main() {
         unverifiedRestore ?: "")
     check("only a ledger whose check came back clean is ever copied", uncheckedCopy == null,
         uncheckedCopy ?: "")
+    check("no snapshot is inspected twice in one run", reinspected == null, reinspected ?: "")
 
     println()
     println("=".repeat(60))
