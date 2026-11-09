@@ -96,8 +96,13 @@ class NativeMainActivity : ComponentActivity() {
         // Only over a ledger that opened: the scanner would otherwise start
         // a recovery on the main thread, or throw from inside this callback.
         if (granted.values.any { it } && ledger.value is AppGraph.Ledger.Ready) {
-            // Catch up on anything that arrived while the app was closed.
-            lifecycleScope.launch { AppGraph.inboxScanner(this@NativeMainActivity).scan() }
+            // Catch up on anything that arrived while the app was closed. On
+            // IO because the scan walks up to 500 inbox rows through the SMS
+            // provider's cursor, which is SQLite in another process, and its
+            // window fills block whichever thread asks.
+            lifecycleScope.launch(Dispatchers.IO) {
+                AppGraph.inboxScanner(this@NativeMainActivity).scan()
+            }
         }
     }
 
@@ -145,7 +150,9 @@ class NativeMainActivity : ComponentActivity() {
         // put the system dialog in front of that screen — which is the one
         // thing the screen exists to prevent.
         if (smsAccess.value == SmsAccess.GRANTED) {
-            lifecycleScope.launch { AppGraph.inboxScanner(this@NativeMainActivity).scan() }
+            lifecycleScope.launch(Dispatchers.IO) {
+                AppGraph.inboxScanner(this@NativeMainActivity).scan()
+            }
         }
 
         lifecycleScope.launch {
