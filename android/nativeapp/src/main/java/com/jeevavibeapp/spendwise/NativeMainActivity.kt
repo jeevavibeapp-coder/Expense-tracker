@@ -217,7 +217,6 @@ class NativeMainActivity : ComponentActivity() {
         var flash by remember { mutableStateOf<String?>(null) }
         var restoreOffer by remember { mutableStateOf<Backup.Read.Ok?>(null) }
         var editingCategories by remember { mutableStateOf(false) }
-        var pasting by remember { mutableStateOf(false) }
         // The name Page.MERCHANT shows. Beside the stack rather than in it,
         // because pages are an enum and only one merchant page is ever open.
         var merchant by remember { mutableStateOf<String?>(null) }
@@ -763,7 +762,7 @@ class NativeMainActivity : ComponentActivity() {
                         onPrivacy = { stack = stack + Page.PRIVACY },
                         onHelp = { stack = stack + Page.HELP },
                         onHowItWorks = { stack = stack + Page.WELCOME },
-                        onImport = { pasting = true },
+                        onImport = { stack = stack + Page.PASTE },
                         flash = flash,
                     )
 
@@ -776,7 +775,31 @@ class NativeMainActivity : ComponentActivity() {
                         sms = sms,
                         onAllowSms = onAllowSms,
                         onExportUnreadable = onExportHeld,
-                        onImport = { pasting = true },
+                        onImport = { stack = stack + Page.PASTE },
+                    )
+
+                    // Read, shown, corrected, and only then written. The
+                    // save runs on the activity's scope rather than the
+                    // page's, so leaving straight after Save cannot cancel
+                    // it halfway.
+                    Page.PASTE -> PasteScreen(
+                        categories = categories,
+                        preview = { body -> repo.previewPaste(body) },
+                        // Only after the preview has said it cannot be read,
+                        // and only its masked shape: the preview itself writes
+                        // nothing, and this is the same evidence a captured
+                        // unreadable message leaves.
+                        onUnreadable = { body -> repo.recordUnreadable(null, body, pasted = true) },
+                        banked = { key -> repo.bankedAs(key) },
+                        onSave = { commit ->
+                            lifecycleScope.launch { announce(describe(repo.savePaste(commit))) }
+                        },
+                        onRestore = { row ->
+                            lifecycleScope.launch {
+                                repo.undelete(row.id)
+                                announce("Restored. It's back in your ledger as it was.")
+                            }
+                        },
                     )
 
                     // The introduction, reopened deliberately from settings.
@@ -835,18 +858,6 @@ class NativeMainActivity : ComponentActivity() {
                     }
                 },
                 onDismiss = { editingCategories = false },
-            )
-        }
-
-        if (pasting) {
-            PasteDialog(
-                onDismiss = { pasting = false },
-                onRead = { body ->
-                    pasting = false
-                    lifecycleScope.launch {
-                        announce(describe(repo.ingestSms(null, body, pasted = true)))
-                    }
-                },
             )
         }
 
@@ -1071,50 +1082,6 @@ class NativeMainActivity : ComponentActivity() {
     }
 
     /**
-     * Paste a bank message.
-     *
-     * The only capture path the no-SMS build has, and the one anybody can use
-     * to check what SpendWise would make of a message before granting it the
-     * inbox. It runs the same [Repo.ingestSms] the receiver does.
-     */
-    @Composable
-    private fun PasteDialog(onDismiss: () -> Unit, onRead: (String) -> Unit) {
-        var body by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Paste a bank message") },
-            text = {
-                Column {
-                    Text("It is read on this phone, by the same parser that reads " +
-                         "captured messages. Nothing is sent anywhere.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = body,
-                        onValueChange = { body = it },
-                        label = { Text("Message") },
-                        minLines = 4,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { if (body.isNotBlank()) onRead(body) },
-                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
-                ) { Text("Read it") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
-                ) { Text("Cancel") }
-            },
-        )
-    }
-
-    /**
      * What is in the file, before anything is written.
      *
      * Replace is the only mode that can lose data, so it is a switch the user
@@ -1269,6 +1236,7 @@ private enum class Page(val title: String) {
     SETTINGS("Settings"),
     PRIVACY("Privacy"),
     HELP("Help"),
+    PASTE("Paste a bank message"),
     WELCOME("How SpendWise works"),
 }
 

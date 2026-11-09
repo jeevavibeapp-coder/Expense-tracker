@@ -523,6 +523,92 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
         return if (dao.idByDedupKey(key) != null) key else null
     }
 
+    /**
+     * What saving a pasted message would store, with nothing stored.
+     *
+     * Runs on "Read it", before the user has agreed to anything, so every
+     * call below is a read: the settings row, the categories, the learning
+     * behind [resolveMerchant] and the dedup index. The decision itself is
+     * [Paste.preview] in :core. Nothing here keeps the pasted text either —
+     * the old path held a scam-worded paste in the quarantine table, where
+     * the held-message export could carry it off the phone.
+     */
+    suspend fun previewPaste(body: String, now: LocalDateTime = LocalDateTime.now()): Paste.Preview =
+        withContext(Dispatchers.IO) {
+            val prefs = dao.settingsRow() ?: SettingsEntity()
+            // The categories the card's picker shows. An archived one is not
+            // among them, so suggesting it would select a chip nobody can see.
+            val sides = dao.allCategories().filterNot { it.isArchived }
+                .associateBy({ it.id }, { it.type })
+            Paste.preview(
+                body = body,
+                now = now,
+                // The same bridge ingestSms uses: :core takes plain functions,
+                // these lookups suspend, and this is already an IO thread.
+                resolve = { raw, amount, at ->
+                    val r = runBlocking { resolveMerchant(raw, amount, at) }
+                    Pipeline.Resolution(r.merchantName, r.categoryId, r.confidence)
+                },
+                banked = { key -> runBlocking { bankedAs(key) } },
+                categoryType = { id -> sides[id] },
+                autoAt = prefs.autoSaveThreshold,
+                confirmAt = prefs.confirmThreshold,
+            )
+        }
+
+    /** The row an unhashed dedup key is already filed as, deleted or not —
+     *  the unique index refuses a second row either way. */
+    suspend fun bankedAs(key: String): Paste.Banked? = withContext(Dispatchers.IO) {
+        val id = dao.idByDedupKey(sha256(key)) ?: return@withContext null
+        val row = dao.byId(id) ?: return@withContext null
+        Paste.Banked(row.id, row.amount, row.type, row.merchantName ?: row.rawMerchant,
+            localTime(row.occurredAt), row.isDeleted)
+    }
+
+    /**
+     * Store a pasted message the user has checked: exactly the row
+     * [Paste.commit] made from what was on the card, and the lesson it says
+     * the engine should learn. Nothing is decided here.
+     */
+    suspend fun savePaste(commit: Paste.Commit): Ingest = withContext(Dispatchers.IO) {
+        val tx = TransactionEntity(
+            id = newId(),
+            amount = commit.amount,
+            type = commit.type,
+            categoryId = commit.categoryId,
+            rawMerchant = commit.rawMerchant,
+            merchantName = commit.merchantName,
+            referenceNumber = commit.referenceNumber,
+            occurredAt = millis(commit.occurredAt),
+            // A bank message, whoever carried it in, as it was before there
+            // was a preview: it belongs with the captures in the review queue
+            // and in what "Clear unreviewed captures" offers to clear.
+            source = "sms",
+            confidence = commit.confidence,
+            status = commit.status,
+            // The card had a category picker on it, so the question
+            // CategoryPrompt exists to raise has already been asked.
+            categoryPrompted = true,
+            dedupKey = sha256(commit.dedupKey),
+            createdAt = System.currentTimeMillis(),
+        )
+        // IGNORE on the unique key: the same message already captured by the
+        // receiver, or saved twice from two cards, lands once.
+        if (dao.insert(tx) == -1L) return@withContext Ingest.Duplicate(tx.dedupKey!!)
+        raiseFraudAlerts(tx)
+        commit.learn?.let { l ->
+            recordConfirmation(
+                rawMerchant = l.rawMerchant,
+                merchantName = l.merchantName,
+                categoryId = l.categoryId,
+                amount = commit.amount,
+                occurredAt = commit.occurredAt,
+                wasCorrection = l.isCorrection,
+            )
+        }
+        Ingest.Captured(tx.id, commit.categoryId == null)
+    }
+
     data class Resolved(val merchantName: String?, val categoryId: String?, val confidence: Int)
 
     /**

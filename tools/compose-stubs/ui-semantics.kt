@@ -44,6 +44,19 @@ var SemanticsPropertyReceiver.role: Role
     get() = throw UnsupportedOperationException("write-only semantics property")
     set(_) {}
 
+/** compose-ui since 1.0 (a value class over Int upstream): a node whose
+ *  content changes is announced by TalkBack without being focused. */
+class LiveRegionMode private constructor(private val v: Int) {
+    companion object {
+        val Polite = LiveRegionMode(0)
+        val Assertive = LiveRegionMode(1)
+    }
+}
+
+var SemanticsPropertyReceiver.liveRegion: LiveRegionMode
+    get() = throw UnsupportedOperationException("write-only semantics property")
+    set(_) {}
+
 fun SemanticsPropertyReceiver.disabled() {}
 fun SemanticsPropertyReceiver.heading() {}
 
