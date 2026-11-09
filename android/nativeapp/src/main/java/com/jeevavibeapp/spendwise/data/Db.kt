@@ -332,11 +332,28 @@ abstract class SpendDao {
     @Query("SELECT COUNT(*) FROM transactions WHERE isDeleted = 0")
     abstract fun count(): Flow<Int>
 
+    /** The categories anything new may be filed under. A deleted category is
+     *  archived rather than removed — see Categories in :core — so this
+     *  filter is what deleting one actually changes on screen. */
     @Query("SELECT * FROM categories WHERE isArchived = 0 ORDER BY name")
     abstract fun categories(): Flow<List<CategoryEntity>>
 
+    /** Deleted ones included. A category deleted after things were filed
+     *  under it still names them — on the report, on their edit sheet — it is
+     *  only no longer offered for anything new. */
+    @Query("SELECT * FROM categories ORDER BY name")
+    abstract fun everyCategory(): Flow<List<CategoryEntity>>
+
     @Query("SELECT * FROM categories")
     abstract suspend fun allCategories(): List<CategoryEntity>
+
+    /** Deleting a category, or bringing one back: the flag and the budget
+     *  that goes with it, in one statement. Name, type and colour are left
+     *  as stored, so a row read a moment earlier is never written back over
+     *  a change made since. Returns the rows matched — zero means the
+     *  category is gone, and the caller must not say it was changed. */
+    @Query("UPDATE categories SET isArchived = :archived, budgetAmount = :budget WHERE id = :id")
+    abstract suspend fun setArchived(id: String, archived: Boolean, budget: Double?): Int
 
     @Query("SELECT * FROM categories WHERE name = :name LIMIT 1")
     abstract suspend fun categoryByName(name: String): CategoryEntity?

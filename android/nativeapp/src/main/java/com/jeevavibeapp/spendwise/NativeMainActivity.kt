@@ -41,6 +41,7 @@ import com.jeevavibeapp.spendwise.core.Analytics
 import com.jeevavibeapp.spendwise.core.Backup
 import com.jeevavibeapp.spendwise.core.Budget
 import com.jeevavibeapp.spendwise.core.Budgets
+import com.jeevavibeapp.spendwise.core.Categories
 import com.jeevavibeapp.spendwise.core.Insights
 import com.jeevavibeapp.spendwise.core.Recovery
 import com.jeevavibeapp.spendwise.core.Recurring
@@ -53,6 +54,7 @@ import com.jeevavibeapp.spendwise.data.QuarantineEntity
 import com.jeevavibeapp.spendwise.data.Repo
 import com.jeevavibeapp.spendwise.data.SettingsEntity
 import com.jeevavibeapp.spendwise.data.TransactionEntity
+import com.jeevavibeapp.spendwise.data.asRow
 import com.jeevavibeapp.spendwise.ui.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -229,6 +231,11 @@ class NativeMainActivity : ComponentActivity() {
         // blocked. Without this read the register is write-only.
         val senderRows by remember(repo) { repo.senders() }.collectAsState(initial = emptyList())
         val categories by remember(repo) { repo.categories() }.collectAsState(initial = emptyList())
+        // Deleted categories as well: what is already filed under one keeps
+        // its name on the report and on its own edit sheet, which is what the
+        // delete confirmation promises. Nothing new is offered from this list.
+        val everyCategory by remember(repo) { repo.everyCategory() }
+            .collectAsState(initial = emptyList())
         val q by query.collectAsState()
         val access by smsAccess.collectAsState()
         // A count, not the queue: the badge is on screen constantly, and
@@ -258,8 +265,8 @@ class NativeMainActivity : ComponentActivity() {
         // The lookup, not a lambda over it: :core takes the naming function
         // by value, and a fresh closure on every recomposition would be a new
         // remember key each time and recompute the whole report with it.
-        val categoryNames = remember(categories) {
-            categories.associateBy({ c -> c.id }, { c -> c.name })
+        val categoryNames = remember(everyCategory) {
+            everyCategory.associateBy({ c -> c.id }, { c -> c.name })
         }
 
         val sms = remember(access, transactions, held) {
@@ -593,8 +600,12 @@ class NativeMainActivity : ComponentActivity() {
                     // on it is a second, untested implementation of
                     // arithmetic that already exists.
                     Page.REPORT -> {
-                        val all = remember(expenseBudgets, incomeBudgets) {
-                            expenseBudgets + incomeBudgets
+                        // Names and colours only — buildReport reads no
+                        // budget — so deleted categories are in it: their
+                        // past spending stays under their own names instead
+                        // of turning into Uncategorised.
+                        val all = remember(everyCategory) {
+                            everyCategory.toBudgets("expense") + everyCategory.toBudgets("income")
                         }
                         ReportScreen(
                             report = remember(ledger, reportMonth, all, today) {
@@ -740,7 +751,9 @@ class NativeMainActivity : ComponentActivity() {
             // panel the moment the user pressed Delete.
             val existing = (editing as? Sheet.Edit)?.tx
             AddEditSheet(
-                categories = categories,
+                categories = remember(everyCategory, existing) {
+                    everyCategory.filter { Categories.pickable(it.asRow(), existing?.categoryId) }
+                },
                 resolveMerchant = { typed -> repo.resolveMerchant(typed, null, null).merchantName },
                 onSave = { tx -> lifecycleScope.launch { repo.save(tx) } },
                 onDismiss = { sheet = null },
@@ -753,6 +766,7 @@ class NativeMainActivity : ComponentActivity() {
         if (editingCategories) {
             CategoryDialog(
                 categories = categories,
+                ledger = ledger,
                 onCreate = { name, type ->
                     lifecycleScope.launch {
                         announce(describe(repo.createCategory(name, type), name.trim()))
@@ -761,6 +775,14 @@ class NativeMainActivity : ComponentActivity() {
                 onRename = { id, name ->
                     lifecycleScope.launch {
                         announce(describe(repo.renameCategory(id, name), name.trim()))
+                    }
+                },
+                onDelete = { id, notice ->
+                    lifecycleScope.launch {
+                        // The count the user agreed to, said back to them —
+                        // or, if nothing was written, that nothing was.
+                        announce(if (repo.deleteCategory(id)) notice.done
+                                 else describe(Repo.CategoryResult.GONE, ""))
                     }
                 },
                 onDismiss = { editingCategories = false },
@@ -793,31 +815,54 @@ class NativeMainActivity : ComponentActivity() {
     // call that no screen in that package has a parameter for.
 
     /**
-     * Creating and renaming categories.
+     * Creating, renaming and deleting categories.
      *
      * Renaming is an edit of the row transactions already point at, never a
      * new category plus a move: the id is what the ledger stores, so a rename
      * cannot orphan a single transaction.
+     *
+     * Deleting asks first, in place of the list rather than in a second
+     * dialog stacked over it, so Back from the question returns to the list
+     * instead of closing both.
      */
     @Composable
     private fun CategoryDialog(
         categories: List<CategoryEntity>,
+        ledger: List<Tx>,
         onCreate: (name: String, type: String) -> Unit,
         onRename: (id: String, name: String) -> Unit,
+        onDelete: (id: String, notice: Categories.DeleteNotice) -> Unit,
         onDismiss: () -> Unit,
     ) {
         var newName by remember { mutableStateOf("") }
         var newType by remember { mutableStateOf("expense") }
         var renamingId by remember { mutableStateOf<String?>(null) }
         var renameTo by remember { mutableStateOf("") }
+        var deletingId by remember { mutableStateOf<String?>(null) }
+
+        // Looked up in the live list rather than held, so a category that has
+        // left it meanwhile cannot still be the subject of the question.
+        val deleting = categories.firstOrNull { it.id == deletingId }
+        if (deleting != null) {
+            ConfirmCategoryDelete(
+                category = deleting,
+                ledger = ledger,
+                onConfirm = { notice ->
+                    onDelete(deleting.id, notice)
+                    deletingId = null
+                },
+                onCancel = { deletingId = null },
+            )
+            return
+        }
 
         AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text("Categories") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Transactions are filed under these. Renaming one keeps " +
-                         "everything already filed under it.",
+                    Text("Transactions are filed under these. Renaming or deleting one " +
+                         "keeps everything already filed under it.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(14.dp))
@@ -880,16 +925,32 @@ class NativeMainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth()
                                     .heightIn(min = Tokens.minTouchTarget),
                             ) {
-                                Text(c.name, modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.titleMedium)
-                                Text(if (c.type == "income") "INCOME" else "EXPENSE",
-                                    style = MicroLabel,
-                                    color = if (c.type == "income") Income else Expense)
-                                Spacer(Modifier.width(8.dp))
+                                // Name over direction rather than beside it, so
+                                // a long name keeps the width two buttons take.
+                                Column(Modifier.weight(1f)) {
+                                    Text(c.name, style = MaterialTheme.typography.titleMedium)
+                                    Text(if (c.type == "income") "INCOME" else "EXPENSE",
+                                        style = MicroLabel,
+                                        color = if (c.type == "income") Income else Expense)
+                                }
+                                // Each button says which category it acts on: a
+                                // screen reader walking this list otherwise hears
+                                // "Rename, Delete" a dozen times over.
                                 TextButton(
                                     onClick = { renamingId = c.id; renameTo = c.name },
-                                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget)
+                                        .semantics { contentDescription = "Rename ${c.name}" },
                                 ) { Text("Rename") }
+                                // Quiet, because it repeats on every row. The
+                                // warning colour is saved for the question it
+                                // opens, where it means something.
+                                TextButton(
+                                    onClick = { renamingId = null; deletingId = c.id },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget)
+                                        .semantics { contentDescription = "Delete ${c.name}" },
+                                ) { Text("Delete") }
                             }
                         }
                     }
@@ -900,6 +961,60 @@ class NativeMainActivity : ComponentActivity() {
                     onClick = onDismiss,
                     modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
                 ) { Text("Done") }
+            },
+        )
+    }
+
+    /**
+     * The question before a category is deleted.
+     *
+     * "Delete" beside a folder of someone's own history reads as losing that
+     * history, so the first thing said is what happens to the transactions in
+     * it — kept, still filed under it — and only then what changes. Every
+     * sentence is :core's, decided and checked there, so the dialog cannot
+     * promise something the code does not do.
+     */
+    @Composable
+    private fun ConfirmCategoryDelete(
+        category: CategoryEntity,
+        ledger: List<Tx>,
+        onConfirm: (Categories.DeleteNotice) -> Unit,
+        onCancel: () -> Unit,
+    ) {
+        val notice = remember(category, ledger) {
+            Categories.deleteNotice(category.asRow(), ledger)
+        }
+        AlertDialog(
+            onDismissRequest = onCancel,
+            title = { Text("Delete ${category.name}?") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(notice.kept, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                    Text(notice.hidden, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // The one thing adding the name back does not undo.
+                    notice.budget?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = Expense)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(notice.undo, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { onConfirm(notice) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                ) { Text("Delete ${category.name}") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = onCancel,
+                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                ) { Text("Keep it") }
             },
         )
     }
@@ -1199,8 +1314,15 @@ private fun sorted(rows: Int, category: String?): String = when {
 
 private fun describe(result: Repo.CategoryResult, name: String): String = when (result) {
     Repo.CategoryResult.CREATED -> "Added $name."
+    Repo.CategoryResult.RESTORED ->
+        "Brought back $name, with everything that was filed under it. Set its budget " +
+        "again on Budgets if it had one."
     Repo.CategoryResult.RENAMED -> "Renamed to $name."
     Repo.CategoryResult.DUPLICATE -> "There is already a category called $name."
+    Repo.CategoryResult.HELD_BY_DELETED ->
+        "$name is the name of a deleted category. Add it as a new category to bring it " +
+        "back, or choose another name."
+    Repo.CategoryResult.GONE -> "That category is no longer there, so nothing was changed."
     Repo.CategoryResult.INVALID -> "A category needs a name."
 }
 

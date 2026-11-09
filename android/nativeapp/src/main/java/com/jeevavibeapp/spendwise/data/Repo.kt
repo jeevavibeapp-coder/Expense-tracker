@@ -140,6 +140,10 @@ class Repo(private val dao: SpendDao) {
 
     fun categories(): Flow<List<CategoryEntity>> = dao.categories()
 
+    /** Deleted categories too, for naming what is already filed under them.
+     *  Anything that offers a category for a new entry reads [categories]. */
+    fun everyCategory(): Flow<List<CategoryEntity>> = dao.everyCategory()
+
     /** An install with no settings row yet is the ordinary first launch, not
      *  an error, so the defaults stand in for it and every reader downstream
      *  gets a row rather than a null it has to think about. */
@@ -519,26 +523,38 @@ class Repo(private val dao: SpendDao) {
         val normalized = Engine.normalizeMerchant(rawMerchant)
         if (normalized.isEmpty()) return Resolved(null, null, 0)
 
+        // Each source below can name a category the user has since deleted:
+        // a payee learned before it, a seed filed under a built-in name, a
+        // model trained on its old rows. Categories.fileable refuses those, so
+        // the capture is asked about instead of filed where nothing shows it.
+        val categories = dao.allCategories().map { it.asRow() }
+
         dao.learningFor(normalized)?.let { row ->
             val learning = LearningRow(
                 row.rawName, row.merchantName, row.categoryId, row.confirmationCount,
                 row.correctionCount, row.sampleCount, row.avgAmount, row.amountMin,
                 row.amountMax, parseHistogram(row.hourHistogram))
             val b = Engine.score(learning, amount, row.categoryId, occurredAt)
-            return Resolved(row.merchantName, row.categoryId, b.total)
+            return Resolved(row.merchantName, Categories.fileable(row.categoryId, categories),
+                b.total)
         }
 
         Engine.seedLookup(normalized)?.let { (display, categoryName) ->
-            val cat = dao.allCategories().firstOrNull { it.name == categoryName }
-            return Resolved(display, cat?.id, Engine.SEED_CONFIDENCE)
+            val cat = categories.firstOrNull { it.name == categoryName }
+            return Resolved(display, Categories.fileable(cat?.id, categories),
+                Engine.SEED_CONFIDENCE)
         }
 
         // Nothing learned and not a seed: ask the categoriser trained on this
         // user's own corrections. It declines below its confidence floor,
         // which is why a wrong category is rare rather than merely unlikely.
         val suggestion = trainedModel()?.predict(normalized)
-        return Resolved(titleCase(normalized), suggestion?.first,
-            suggestion?.let { (it.second * 100).toInt().coerceAtMost(70) } ?: 0)
+        val filed = Categories.fileable(suggestion?.first, categories)
+        // The model's confidence was only ever about the category, so a
+        // refused category leaves no evidence behind it.
+        return Resolved(titleCase(normalized), filed,
+            if (filed == null) 0
+            else suggestion?.let { (it.second * 100).toInt().coerceAtMost(70) } ?: 0)
     }
 
     /** Retrained on demand from the user's own categorised transactions.
@@ -650,7 +666,20 @@ class Repo(private val dao: SpendDao) {
      * different sentences: a blank name is something the user can fix by
      * typing, a duplicate is them already having what they asked for.
      */
-    enum class CategoryResult { CREATED, RENAMED, DUPLICATE, INVALID }
+    enum class CategoryResult {
+        CREATED,
+        /** The name was a deleted category's, so that category came back. */
+        RESTORED,
+        RENAMED,
+        DUPLICATE,
+        /** A rename onto a deleted category's name. Said as that rather than
+         *  DUPLICATE: "already exists" about a category no screen shows is a
+         *  sentence the user can do nothing with. */
+        HELD_BY_DELETED,
+        /** The category was no longer there, so nothing was written. */
+        GONE,
+        INVALID,
+    }
 
     /**
      * Seed the built-in categories, once, into an empty table.
@@ -672,34 +701,73 @@ class Repo(private val dao: SpendDao) {
     }
 
     suspend fun createCategory(name: String, type: String): CategoryResult =
-        withContext(Dispatchers.IO) {
-            val clean = name.trim()
-            if (clean.isEmpty()) return@withContext CategoryResult.INVALID
-            if (dao.categoryByName(clean) != null) return@withContext CategoryResult.DUPLICATE
-            // IGNORE on the unique name index, so two taps on a slow device
-            // cannot produce two categories with the same name.
-            val rowId = dao.insertCategory(CategoryEntity(
-                id = newId(), name = clean, type = type,
-                color = DEFAULT_CATEGORIES.firstOrNull { it.first == clean }?.third
-                    ?: Budgets.DEFAULT_COLOR,
-            ))
-            if (rowId == -1L) CategoryResult.DUPLICATE else CategoryResult.CREATED
+        withContext(Dispatchers.IO) { claimCategory(name, type).first }
+
+    /**
+     * Adding a category by name, with the id it ended up under — the one
+     * created, the one already holding the name, or the deleted one the name
+     * brought back. The review screen files into that id directly: looking
+     * the name up again afterwards would miss a holder spelled in another
+     * case, and file nothing.
+     */
+    private suspend fun claimCategory(name: String, type: String): Pair<CategoryResult, String?> {
+        val stored = dao.allCategories()
+        return when (val claim = Categories.claim(name, stored.map { it.asRow() })) {
+            Categories.Claim.Blank -> CategoryResult.INVALID to null
+            is Categories.Claim.Taken -> CategoryResult.DUPLICATE to claim.id
+            is Categories.Claim.Restore -> {
+                val back = claim.row
+                if (dao.setArchived(back.id, back.isArchived, back.budgetAmount) > 0)
+                    CategoryResult.RESTORED to back.id
+                else CategoryResult.GONE to null
+            }
+            is Categories.Claim.Create -> {
+                val fresh = CategoryEntity(
+                    id = newId(), name = claim.name, type = type,
+                    color = DEFAULT_CATEGORIES.firstOrNull { it.first == claim.name }?.third
+                        ?: Budgets.DEFAULT_COLOR,
+                )
+                // IGNORE on the unique name index, so two taps on a slow device
+                // cannot produce two categories with the same name.
+                if (dao.insertCategory(fresh) == -1L)
+                    CategoryResult.DUPLICATE to dao.categoryByName(claim.name)?.id
+                else CategoryResult.CREATED to fresh.id
+            }
         }
+    }
 
     /** Rename in place. The id is what transactions point at, so renaming
      *  never has to touch — or risk orphaning — a single row that uses it. */
     suspend fun renameCategory(id: String, name: String): CategoryResult =
         withContext(Dispatchers.IO) {
-            val clean = name.trim()
-            if (clean.isEmpty()) return@withContext CategoryResult.INVALID
-            val row = dao.allCategories().firstOrNull { it.id == id }
-                ?: return@withContext CategoryResult.INVALID
-            if (clean == row.name) return@withContext CategoryResult.RENAMED
-            val clash = dao.categoryByName(clean)
-            if (clash != null && clash.id != id) return@withContext CategoryResult.DUPLICATE
-            dao.updateCategory(row.copy(name = clean))
-            CategoryResult.RENAMED
+            val stored = dao.allCategories()
+            when (val r = Categories.rename(id, name, stored.map { it.asRow() })) {
+                is Categories.Rename.To -> {
+                    dao.updateCategory(stored.first { it.id == id }.copy(name = r.name))
+                    CategoryResult.RENAMED
+                }
+                Categories.Rename.Unchanged -> CategoryResult.RENAMED
+                Categories.Rename.Taken -> CategoryResult.DUPLICATE
+                Categories.Rename.HeldByDeleted -> CategoryResult.HELD_BY_DELETED
+                Categories.Rename.Missing -> CategoryResult.GONE
+                Categories.Rename.Blank -> CategoryResult.INVALID
+            }
         }
+
+    /**
+     * Delete a category, which archives it: see Categories in :core for why
+     * the row is never removed. Not one transaction is touched — they stay
+     * filed under it — and nothing new can be filed there until the name is
+     * added again.
+     *
+     * @return false when there was no visible category with that id, so the
+     *   caller does not announce a deletion that did not happen.
+     */
+    suspend fun deleteCategory(id: String): Boolean = withContext(Dispatchers.IO) {
+        val row = dao.allCategories().firstOrNull { it.id == id } ?: return@withContext false
+        val archived = Categories.archive(row.asRow()) ?: return@withContext false
+        dao.setArchived(archived.id, archived.isArchived, archived.budgetAmount) > 0
+    }
 
     /** Null clears the budget, which is a different state from zero — see
      *  `Budget.amount` in :core. */
@@ -803,13 +871,14 @@ class Repo(private val dao: SpendDao) {
     /** The category a review decision lands in: the one tapped, or the one
      *  typed — found if it already exists, created if it does not. */
     private suspend fun resolveCategory(id: String?, typed: String?, type: String): String? {
-        if (id != null) return dao.allCategories().firstOrNull { it.id == id }?.id
+        // A tapped chip can name a category deleted since the screen drew it,
+        // and filing a group there is exactly what deleting it ruled out.
+        if (id != null) return Categories.fileable(id, dao.allCategories().map { it.asRow() })
         // Capped at the length the picker can show. A category whose name
         // does not fit on a chip is one the user cannot recognise later.
         val clean = typed?.trim()?.take(MAX_CATEGORY_NAME).orEmpty()
         if (clean.isEmpty()) return null
-        createCategory(clean, type)
-        return dao.categoryByName(clean)?.id
+        return claimCategory(clean, type).second
     }
 
     /**
@@ -1012,3 +1081,8 @@ class Repo(private val dao: SpendDao) {
         .filter { it.isNotEmpty() }
         .joinToString(" ") { w -> w.lowercase().replaceFirstChar { it.uppercase() } }
 }
+
+/** A stored category as the rules in :core's Categories read it. */
+fun CategoryEntity.asRow(): Categories.Row =
+    Categories.Row(id = id, name = name, type = type, budgetAmount = budgetAmount,
+        isArchived = isArchived)
