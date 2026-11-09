@@ -1305,31 +1305,6 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
         }
     }
 
-    /**
-     * The held messages, as text the user can send to whoever can fix the
-     * parser.
-     *
-     * Nothing leaves the phone on its own — this produces a string, and the
-     * only thing that moves it anywhere is the user choosing a destination in
-     * the system file picker.
-     */
-    suspend fun heldExport(): String = withContext(Dispatchers.IO) {
-        val rows = dao.allHeld()
-        buildString {
-            append("SpendWise — messages that could not be banked\n")
-            append("${rows.size} message(s). Nothing here was added to your ledger.\n")
-            for (q in rows) {
-                append("\n--------------------------------\n")
-                append("sender: ").append(q.sender ?: "unknown").append('\n')
-                append("seen:   ").append(localTime(q.createdAt)).append('\n')
-                append("times:  ").append(q.seenCount).append('\n')
-                append("reason: ").append(q.reason ?: "-").append('\n')
-                append("risk:   ").append(q.risk).append('\n')
-                append("body:\n").append(q.body).append('\n')
-            }
-        }
-    }
-
     private fun parseHistogram(raw: String): List<Int> =
         raw.split(",").mapNotNull { it.trim().toIntOrNull() }
 

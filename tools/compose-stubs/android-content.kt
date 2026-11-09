@@ -63,6 +63,7 @@ class Intent {
         const val FLAG_ACTIVITY_NEW_TASK = 0x10000000
         const val EXTRA_STREAM = "android.intent.extra.STREAM"
         const val EXTRA_TEXT = "android.intent.extra.TEXT"
+        const val EXTRA_SUBJECT = "android.intent.extra.SUBJECT"
         fun createChooser(target: Intent, title: CharSequence?): Intent = Intent()
     }
 }

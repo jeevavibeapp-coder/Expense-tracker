@@ -1,6 +1,8 @@
 package com.jeevavibeapp.spendwise.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
@@ -18,9 +20,11 @@ import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.jeevavibeapp.spendwise.core.Insights
+import com.jeevavibeapp.spendwise.core.ParseMisses
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -210,6 +214,9 @@ fun SettingsScreen(
     onHowItWorks: () -> Unit,
     onImport: (() -> Unit)? = null,
     flash: String? = null,
+    /** The parser's misses, one per format per sender, as :core folded them. */
+    unreadable: List<ParseMisses.Group> = emptyList(),
+    onClearUnreadable: () -> Unit = {},
 ) {
     // Re-seeded whenever the stored preferences change, so the fields show
     // what is saved rather than what was last typed into them.
@@ -217,6 +224,7 @@ fun SettingsScreen(
     var amountText by remember(prefs) { mutableStateOf(amountField(prefs.highValueAmount)) }
     var amountRejected by remember(prefs) { mutableStateOf(false) }
     var confirmingPurge by remember { mutableStateOf(false) }
+    var viewingUnreadable by remember { mutableStateOf(false) }
 
     val savedAmountText = amountField(prefs.highValueAmount)
     val dirty = draft != prefs || amountText != savedAmountText
@@ -359,19 +367,22 @@ fun SettingsScreen(
                     Spacer(Modifier.height(14.dp))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                     Spacer(Modifier.height(14.dp))
-                    Text("${sms.unreadableKinds} message " +
-                         plural(sms.unreadableKinds, "type", "types") + " not understood",
+                    Text("${sms.unreadableTotal} bank " +
+                         plural(sms.unreadableTotal, "message", "messages") +
+                         " couldn't be read",
                         style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
-                    Note("${sms.unreadableTotal} bank " +
-                         plural(sms.unreadableTotal, "message", "messages") +
-                         " looked financial but could not be read — usually a format " +
-                         "this build doesn't know yet. They stay on your device.")
+                    Note("In ${sms.unreadableKinds} " +
+                         plural(sms.unreadableKinds, "format", "formats") +
+                         " — usually wording this build doesn't know yet. Only a masked " +
+                         "copy is kept: every number, amount, account, UPI ID and name is " +
+                         "replaced before it is saved, and nothing leaves your phone " +
+                         "unless you share it.")
                     Spacer(Modifier.height(10.dp))
                     OutlinedButton(
-                        onClick = onExportUnreadable,
+                        onClick = { viewingUnreadable = true },
                         modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
-                    ) { Text("Export unreadable messages") }
+                    ) { Text("See what couldn't be read") }
                 }
 
                 if (sms.unreviewed > 0) {
@@ -449,6 +460,93 @@ fun SettingsScreen(
             },
         )
     }
+
+    // Closed by itself once the list is empty — after a clear, or when the
+    // last row ages out — rather than showing a dialog about nothing.
+    if (viewingUnreadable && unreadable.isNotEmpty()) {
+        UnreadableDialog(
+            groups = unreadable,
+            onShare = onExportUnreadable,
+            onClear = { viewingUnreadable = false; onClearUnreadable() },
+            onDismiss = { viewingUnreadable = false },
+        )
+    }
+}
+
+/**
+ * The masked shapes, exactly as stored and exactly as Share sends them.
+ *
+ * Showing the very text that would be shared is the point: the person can
+ * check for themselves that no number or name of theirs is in it before
+ * deciding to send it anywhere.
+ *
+ * Clearing takes two taps. It only empties this list, but it is the list the
+ * user came here to send, and a stray tap on a scrolling dialog should not
+ * cost them it.
+ */
+@Composable
+private fun UnreadableDialog(
+    groups: List<ParseMisses.Group>,
+    onShare: () -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var confirmingClear by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Couldn't be read") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Note("Masked on this phone. This is all that is kept, and all that " +
+                     "Share sends.")
+                for (g in groups) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(g.title, style = MaterialTheme.typography.titleMedium)
+                    Text("${g.messages} " + plural(g.messages, "message", "messages") +
+                         " · " + ParseMisses.reasonLabel(g.reason),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    Text(g.shape, style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace)
+                }
+                Spacer(Modifier.height(14.dp))
+                if (confirmingClear) {
+                    Note("Clear the list? Your ledger is not touched, and new messages " +
+                         "that can't be read will still be listed.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = onClear,
+                            colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+                            modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                        ) { Text("Clear it") }
+                        TextButton(
+                            onClick = { confirmingClear = false },
+                            modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                        ) { Text("Keep it") }
+                    }
+                } else {
+                    TextButton(
+                        onClick = { confirmingClear = true },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+                        modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                    ) { Text("Clear this list") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onShare,
+                modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+            ) { Text("Share") }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+            ) { Text("Close") }
+        },
+    )
 }
 
 /**
@@ -487,6 +585,10 @@ fun PrivacyScreen(onBackup: () -> Unit, onExportCsv: () -> Unit) {
                     "Sender reputations" to
                         "Which sender IDs your bank actually uses, learned from the " +
                         "messages you have received, so a lookalike can be spotted.",
+                    "Messages SpendWise couldn't read" to
+                        "Never the message itself. Which bank sent it, and its wording " +
+                        "with every number, amount, account, UPI ID and name replaced — " +
+                        "the most recent 200, on this phone only, and not in backups.",
                     "Your settings" to "Theme, and the two engine thresholds.",
                 )
             }
@@ -627,15 +729,15 @@ fun HelpScreen(
             PageCard {
                 Text("Still stuck?", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(6.dp))
-                Note("Nothing is sent from this app automatically. If you want to " +
-                     "report a message your bank sends that SpendWise cannot read, " +
-                     "exporting it is an explicit action you take, and the file stays " +
-                     "on your phone until you choose to share it.")
+                Note("Nothing is sent from this app automatically. If your bank sends " +
+                     "messages SpendWise cannot read, you can share a masked copy of " +
+                     "them — every number, amount, account, UPI ID and name replaced — " +
+                     "with whoever you choose. Sharing is something only you can start.")
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = onExportUnreadable,
                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
-                ) { Text("Export unreadable messages") }
+                ) { Text("Share unreadable messages") }
             }
         }
     }
@@ -745,9 +847,9 @@ private val HELP_TOPICS: List<HelpTopic> = listOf(
                 "POCO, Oppo, Vivo and Realme this is the usual cause. Enable Autostart " +
                 "for SpendWise in your phone's Settings → Apps, and set its battery " +
                 "mode to No restrictions.",
-            "Your bank's message format is not recognised yet. Settings shows a count " +
-                "of messages that looked financial but could not be read; you can " +
-                "export them from there to see what was missed.",
+            "Your bank's message format is not recognised yet. Settings shows how " +
+                "many bank messages could not be read; you can see their masked " +
+                "wording there and share it, so the format can be supported.",
         )),
     )),
 

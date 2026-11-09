@@ -52,8 +52,8 @@ import java.util.Locale
  *   this page, so leaving straight after Save cannot cancel the write.
  * @param onRestore bring back the deleted row a message was filed as.
  * @param onUnreadable log the masked shape of a message the preview said it
- *   cannot read, so it reaches "Export unreadable messages" as a captured one
- *   would. True when a row was written; the card says so only then.
+ *   cannot read, so it reaches Settings' list of unreadable messages as a
+ *   captured one would. True when a row was written; the card says so only then.
  */
 @Composable
 fun PasteScreen(

@@ -1,6 +1,7 @@
 package com.jeevavibeapp.spendwise
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -43,6 +44,7 @@ import com.jeevavibeapp.spendwise.core.Budget
 import com.jeevavibeapp.spendwise.core.Budgets
 import com.jeevavibeapp.spendwise.core.Categories
 import com.jeevavibeapp.spendwise.core.Insights
+import com.jeevavibeapp.spendwise.core.ParseMisses
 import com.jeevavibeapp.spendwise.core.Recovery
 import com.jeevavibeapp.spendwise.core.Recurring
 import com.jeevavibeapp.spendwise.core.SenderBook
@@ -230,6 +232,11 @@ class NativeMainActivity : ComponentActivity() {
 
         val transactions by remember(repo) { repo.stream() }.collectAsState(initial = emptyList())
         val held by remember(repo) { repo.heldMessages() }.collectAsState(initial = emptyList())
+        // Bank messages the parser could not read, as masked shapes. Without
+        // this read, a bank whose format is unsupported shows "0 captured"
+        // and nothing else.
+        val unreadable by remember(repo) { repo.unreadable() }
+            .collectAsState(initial = emptyList())
         // The Fraud protection card promises that a charge at or above the
         // high-value amount raises an alert. Repo.raiseFraudAlerts writes
         // them as transactions are filed; this is the read that finally puts
@@ -278,8 +285,8 @@ class NativeMainActivity : ComponentActivity() {
             everyCategory.associateBy({ c -> c.id }, { c -> c.name })
         }
 
-        val sms = remember(access, transactions, held) {
-            smsStatus(access, transactions, held)
+        val sms = remember(access, transactions, held, unreadable) {
+            smsStatus(access, transactions, held, unreadable)
         }
         val prefs = remember(settings) {
             AppPrefs(settings.currency, settings.theme, settings.autoSaveThreshold,
@@ -323,17 +330,6 @@ class NativeMainActivity : ComponentActivity() {
             }
         }
 
-        val saveHeld = rememberLauncherForActivityResult(
-            ActivityResultContracts.CreateDocument("text/plain")
-        ) { uri: Uri? ->
-            if (uri != null) lifecycleScope.launch {
-                announce(
-                    if (writeDocument(uri, repo.heldExport()))
-                        "Saved. Nothing was sent anywhere — the file is on your phone."
-                    else "Couldn't write to that file. Try another folder.")
-            }
-        }
-
         val openBackup = rememberLauncherForActivityResult(
             ActivityResultContracts.OpenDocument()
         ) { uri: Uri? ->
@@ -353,7 +349,24 @@ class NativeMainActivity : ComponentActivity() {
 
         val onBackup: () -> Unit = { saveBackup.launch(backupFilename()) }
         val onExportCsv: () -> Unit = { saveCsv.launch(csvFilename()) }
-        val onExportHeld: () -> Unit = { saveHeld.launch("spendwise-unreadable.txt") }
+        // The masked list, through the system share sheet. This used to save
+        // the held messages' full text to a file under the same "unreadable"
+        // label — a stand-in from before the parser's misses were stored,
+        // and raw SMS leaving the app for a purpose the shapes now serve.
+        val onShareUnreadable: () -> Unit = {
+            lifecycleScope.launch {
+                if (!shareText(UNREADABLE_SUBJECT, repo.unreadableExport())) {
+                    announce("Couldn't open the share sheet on this phone.")
+                }
+            }
+        }
+        val onClearUnreadable: () -> Unit = {
+            lifecycleScope.launch {
+                val n = repo.clearUnreadable()
+                announce("Cleared $n from the list. Your ledger is unchanged, and new " +
+                         "messages SpendWise can't read will still be listed.")
+            }
+        }
         // Every file type, because a file manager that reports a backup as
         // octet-stream would otherwise grey out the only file that works.
         val onRestore: () -> Unit = { openBackup.launch(arrayOf("*/*")) }
@@ -758,7 +771,9 @@ class NativeMainActivity : ComponentActivity() {
                         onBackup = onBackup,
                         onRestore = onRestore,
                         onExportCsv = onExportCsv,
-                        onExportUnreadable = onExportHeld,
+                        onExportUnreadable = onShareUnreadable,
+                        unreadable = unreadable,
+                        onClearUnreadable = onClearUnreadable,
                         onClearUnreviewed = {
                             lifecycleScope.launch {
                                 val n = repo.clearUnreviewedCaptures()
@@ -781,7 +796,7 @@ class NativeMainActivity : ComponentActivity() {
                     Page.HELP -> HelpScreen(
                         sms = sms,
                         onAllowSms = onAllowSms,
-                        onExportUnreadable = onExportHeld,
+                        onExportUnreadable = onShareUnreadable,
                         onImport = { stack = stack + Page.PASTE },
                     )
 
@@ -1174,6 +1189,22 @@ class NativeMainActivity : ComponentActivity() {
         false
     }
 
+    /** Text out through the system share sheet. The app sends nothing
+     *  itself — it has no INTERNET permission — the person picks where the
+     *  text goes, or backs out. */
+    private fun shareText(subject: String, text: String): Boolean = try {
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, subject)
+            .putExtra(Intent.EXTRA_TEXT, text)
+        startActivity(Intent.createChooser(send, subject))
+        true
+    } catch (t: Throwable) {
+        // No activity to resolve the chooser on a stripped-down ROM. The
+        // caller says so rather than looking like a tap that did nothing.
+        false
+    }
+
     private fun readDocument(uri: Uri): ByteArray? = try {
         contentResolver.openInputStream(uri)?.use { it.readBytes() }
     } catch (t: Throwable) {
@@ -1269,21 +1300,22 @@ private fun List<TransactionEntity>.matching(query: String): List<TransactionEnt
     }
 }
 
+private const val UNREADABLE_SUBJECT = "Bank messages SpendWise couldn't read"
+
 /**
  * What the settings and help screens say about capture.
  *
- * `unreadable` is the quarantine. Every held message cleared the parser's
- * "looks transactional" gate and still did not reach the ledger, which is
- * what the screen means by a message that could not be read; its sender is
- * the closest thing this schema records to a message *type*. Messages that
- * failed to parse outright are not stored anywhere, so counting them would
- * mean inventing a number — this counts what actually exists, which is also
- * exactly the set that "Export unreadable messages" writes out.
+ * `unreadable` is the parser's misses, folded by :core into one group per
+ * format per sender — the same list "Share" sends, so the count on screen
+ * and the file someone receives cannot disagree. Held messages are not
+ * counted there: they were read, and held because of who sent them or how
+ * they were worded, which `queued` already says.
  */
 private fun smsStatus(
     access: SmsAccess,
     transactions: List<TransactionEntity>,
     held: List<QuarantineEntity>,
+    unreadable: List<ParseMisses.Group>,
 ): SmsStatus {
     val captured = transactions.filter { it.source == "sms" }
     return SmsStatus(
@@ -1292,8 +1324,8 @@ private fun smsStatus(
         queued = held.size,
         lastCapture = captured.maxByOrNull { it.occurredAt }
             ?.let { Repo.localTime(it.occurredAt).toLocalDate().format(CaptureDate) },
-        unreadableKinds = held.mapNotNull { it.sender }.distinct().size,
-        unreadableTotal = held.size,
+        unreadableKinds = unreadable.size,
+        unreadableTotal = unreadable.sumOf { it.messages },
         unreviewed = captured.count { it.status != "confirmed" },
     )
 }
