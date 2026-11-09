@@ -22,12 +22,19 @@ object RecoverySequence {
     /** Read with plain SQLite, because Room's open is also its migration: by
      *  the time Room has looked at the file, it is too late to copy it first. */
     data class Check(
-        /** The first line of `PRAGMA integrity_check`, or the text of what
-         *  SQLite raised instead. Null when there is no verdict at all. */
+        /** The first line of `PRAGMA integrity_check`. Null when it never
+         *  answered. */
         val integrity: String?,
         /** `PRAGMA user_version`, which is where Room keeps its schema
          *  version. Null when it could not be read. */
         val version: Int?,
+        /** What SQLite raised instead of answering, class names included.
+         *  Kept apart from [integrity] because the two are read differently:
+         *  any complaint integrity_check makes is damage, but a refusal to
+         *  run the check is only damage if it says so. "database or disk is
+         *  full" and "disk I/O error" are refusals, and reading them as
+         *  complaints moved a healthy ledger aside on a full phone. */
+        val raised: String? = null,
     )
 
     /** Facts about a copy rather than a verdict on it, so that whether it may
@@ -38,7 +45,7 @@ object RecoverySequence {
         /** False on a first launch, which has nothing to check or snapshot. */
         fun ledgerExists(): Boolean
 
-        /** A refusal from SQLite itself belongs in [Check.integrity], because
+        /** A refusal from SQLite itself belongs in [Check.raised], because
          *  "database is locked" is an answer that must reach the classifier.
          *  Anything else that goes wrong is no evidence about the file, and
          *  comes back as a null verdict rather than as damage. */
@@ -137,7 +144,14 @@ object RecoverySequence {
         }
 
         val check = if (disk.ledgerExists()) disk.checkLedger() else null
-        val verdict = if (check == null) Failure.NONE else Recovery.classifyIntegrity(check.integrity)
+        // A refusal is read the way a failed open is: damage only when it
+        // names damage. Anything unrecognised then reaches Room's own open,
+        // whose failures never move the file unless they name damage too.
+        val verdict = when {
+            check == null -> Failure.NONE
+            check.raised != null -> Recovery.classify(check.raised)
+            else -> Recovery.classifyIntegrity(check.integrity)
+        }
 
         // Only a file that has just passed its check is copied. A snapshot of
         // a damaged ledger would later be restored as though it were good,
@@ -148,7 +162,7 @@ object RecoverySequence {
         // A verdict that is not fit to open is acted on before Room is ever
         // handed the file.
         var fromCheck: Failure? = if (Recovery.fitToOpen(verdict)) null else verdict
-        var detail: String? = if (fromCheck != null) check?.integrity else null
+        var detail: String? = if (fromCheck != null) check?.raised ?: check?.integrity else null
         var last = verdict
         var retried = false
         var movedAside = false

@@ -31,6 +31,16 @@ private const val MISHANDLED =
     "java.lang.IllegalStateException: Migration didn't properly handle: transactions"
 private const val DISK_FULL =
     "android.database.sqlite.SQLiteFullException: database or disk is full (code 13 SQLITE_FULL)"
+/** What a read-write open raises on a phone with no space left for the
+ *  -shm file it has to create. */
+private const val SHM_FULL =
+    "android.database.sqlite.SQLiteDiskIOException: disk I/O error (code 4874 SQLITE_IOERR_SHMSIZE)"
+private const val CANT_OPEN =
+    "android.database.sqlite.SQLiteCantOpenDatabaseException: unable to open database file " +
+        "(code 14 SQLITE_CANTOPEN)"
+private const val NOT_A_DB =
+    "android.database.sqlite.SQLiteDatabaseCorruptException: file is not a database " +
+        "(code 26 SQLITE_NOTADB)"
 
 /** A database file as far as the sequence can tell: how many entries it
  *  holds, the schema version it is at, and whether SQLite can read it. */
@@ -66,6 +76,8 @@ private class SimulatedDisk(var ledger: DbFile?) : RecoverySequence.Disk {
     var openScript: List<String?>? = null
     /** When set, answers the check instead of the file. */
     var checkScript: Check? = null
+    /** When set, the check's open raises this instead of answering. */
+    var checkRaises: String? = null
 
     var opens = 0
     /** Attempts to rename onto a name already holding a kept file. */
@@ -85,11 +97,13 @@ private class SimulatedDisk(var ledger: DbFile?) : RecoverySequence.Disk {
     override fun checkLedger(): Check {
         log += "check"
         checkScript?.let { return it }
+        checkRaises?.let { return Check(null, null, raised = it) }
         val file = ledger!!
-        if (lockedFor > 0) { lockedFor--; return Check("database is locked (code 5 SQLITE_BUSY)", null) }
-        if (file.damaged || file.truncated) {
-            return Check("database disk image is malformed (code 11 SQLITE_CORRUPT)", null)
-        }
+        // As Android does it: a lock and an unreadable header are raised,
+        // while damage inside a readable file is integrity_check's answer.
+        if (lockedFor > 0) { lockedFor--; return Check(null, null, raised = LOCKED) }
+        if (file.truncated) return Check(null, null, raised = NOT_A_DB)
+        if (file.damaged) return Check("*** in database main *** row 3 missing from index ix_tx", null)
         return Check("ok", file.version)
     }
 
@@ -436,6 +450,61 @@ fun main() {
             result is Opened && result.outcome == Outcome.NORMAL, result.toString())
     }
 
+    println("=== a check that SQLite refused to run is not a verdict of damage ===")
+    // A full phone is the common case: the check's read-write open has to
+    // create a -shm file, cannot, and raises. Read as integrity_check's
+    // complaint, that moved a healthy ledger aside and opened an empty one.
+    for (refusal in listOf(DISK_FULL, SHM_FULL, CANT_OPEN)) {
+        val short = refusal.substringAfter(": ").substringBefore(" (")
+        run {
+            val ledger = DbFile(rows = 200, version = 3)
+            val disk = SimulatedDisk(ledger)
+            disk.checkRaises = refusal
+            val result = open(disk)
+            check("'$short' from the check, then a clean open: it opens as it was",
+                result is Opened && result.outcome == Outcome.NORMAL, result.toString())
+            check("'$short' from the check: nothing is moved or replaced",
+                !destructive(disk.log) && disk.ledger == ledger && disk.kept.isEmpty(),
+                disk.log.toString())
+            check("'$short' from the check: nothing is copied from a file it never read",
+                "stage" !in disk.log, disk.log.toString())
+        }
+        run {
+            val ledger = DbFile(rows = 200, version = 3)
+            val disk = SimulatedDisk(ledger)
+            disk.shelve(NOW.minusDays(3), DbFile(rows = 150, version = 3))
+            disk.checkRaises = refusal
+            disk.openScript = listOf(refusal)
+            val result = open(disk)
+            check("'$short' everywhere stops in safe mode",
+                result is Stopped && result.outcome == Outcome.SAFE_MODE, result.toString())
+            check("'$short' everywhere is unknown, not damage",
+                (result as? Stopped)?.failure == Failure.UNKNOWN, result.toString())
+            check("'$short' everywhere leaves the ledger in place, with no older copy over it",
+                !destructive(disk.log) && disk.ledger == ledger && result.keptAs.isEmpty(),
+                disk.log.toString())
+        }
+    }
+    run {
+        val damaged = DbFile(rows = 120, version = 3, truncated = true)
+        val disk = SimulatedDisk(damaged)
+        val name = disk.shelve(NOW.minusDays(3), DbFile(rows = 100, version = 3))
+        val result = open(disk)
+        check("a refusal that names damage is still damage: the snapshot goes back",
+            result.outcome == Outcome.RESTORED && result.restoredFrom == name, result.toString())
+        check("and still before Room is handed the file",
+            disk.log.indexOf("restore $name") in 0 until disk.log.indexOf("open"),
+            disk.log.toString())
+    }
+    run {
+        val disk = SimulatedDisk(DbFile(rows = 120, version = 3))
+        val name = disk.shelve(NOW.minusDays(3), DbFile(rows = 100, version = 3))
+        disk.checkScript = Check("*** in database main *** Page 5: btreeInitPage() returns error code 11", 3)
+        val result = open(disk)
+        check("but any complaint integrity_check itself makes is damage, parsed or not",
+            result.outcome == Outcome.RESTORED && result.restoredFrom == name, result.toString())
+    }
+
     println("=== a first launch has nothing to check or copy ===")
     run {
         val disk = SimulatedDisk(null)
@@ -528,6 +597,11 @@ fun main() {
         Check("database is locked (code 5 SQLITE_BUSY)", null),
         Check("database disk image is malformed (code 11 SQLITE_CORRUPT)", null),
         Check(null, null),
+        Check(null, null, raised = LOCKED),
+        Check(null, null, raised = NOT_A_DB),
+        Check(null, null, raised = DISK_FULL),
+        Check(null, null, raised = SHM_FULL),
+        Check(null, null, raised = CANT_OPEN),
     )
     val shelves = listOf(
         emptyList(),
@@ -555,8 +629,8 @@ fun main() {
         val before = disk.snapshots.toMap()
         val result = open(disk)
         val seen = disk.answered()
-        val case = "check=${c?.integrity} shelf=${shelf.size} stuck=$stuck script=$script " +
-            "log=${disk.log}"
+        val case = "check=${c?.integrity}/${c?.raised} shelf=${shelf.size} stuck=$stuck " +
+            "script=$script log=${disk.log}"
         runs++
         longest = maxOf(longest, disk.opens)
 
@@ -566,20 +640,22 @@ fun main() {
         if (disk.collisions > 0 && overwrote == null) overwrote = case
         if (result.keptAs != disk.kept.keys.toList() && misreported == null) misreported = case
 
-        val damageSeen = c?.integrity?.contains("malformed") == true ||
-            seen.any { it == MALFORMED || it == MISHANDLED }
+        // Spelled out rather than asked of Recovery, so a classifier that
+        // starts calling a full disk damage fails here instead of agreeing.
+        val checkSawDamage = c?.integrity?.contains("malformed") == true || c?.raised == NOT_A_DB
+        val damageSeen = checkSawDamage || seen.any { it == MALFORMED || it == MISHANDLED }
         if (destructive(disk.log) && !damageSeen && movedWithoutDamage == null) {
             movedWithoutDamage = case
         }
 
         val restored = disk.log.filter { it.startsWith("restore ") }.map { it.removePrefix("restore ") }
-        val corruptionSeen = c?.integrity?.contains("malformed") == true || MALFORMED in seen
+        val corruptionSeen = checkSawDamage || MALFORMED in seen
         if (!corruptionSeen && restored.any { it != Recovery.snapshotName(NOW) } &&
             olderRollback == null) olderRollback = case
         if (restored.any { before[it]?.damaged == true } && unverifiedRestore == null) {
             unverifiedRestore = case
         }
-        if ("stage" in disk.log && Recovery.classifyIntegrity(c?.integrity) != Failure.NONE &&
+        if ("stage" in disk.log && !(c?.integrity == "ok" && c.raised == null) &&
             uncheckedCopy == null) uncheckedCopy = case
     }
     check("every one of $runs runs stops within three opens", tooLong == null && longest <= 3,

@@ -239,7 +239,7 @@ private class LedgerDisk(private val app: Context) : RecoverySequence.Disk {
     override fun checkLedger(): RecoverySequence.Check = try {
         withDatabase(live) { RecoverySequence.Check(firstRow(it, "PRAGMA integrity_check"), it.version) }
     } catch (e: SQLiteException) {
-        RecoverySequence.Check(describe(e), null)
+        RecoverySequence.Check(null, null, raised = describe(e))
     } catch (t: Throwable) {
         // Not SQLite's verdict on the file, so not evidence of damage either:
         // the real open decides instead.
