@@ -218,6 +218,9 @@ class NativeMainActivity : ComponentActivity() {
         var restoreOffer by remember { mutableStateOf<Backup.Read.Ok?>(null) }
         var editingCategories by remember { mutableStateOf(false) }
         var pasting by remember { mutableStateOf(false) }
+        // The name Page.MERCHANT shows. Beside the stack rather than in it,
+        // because pages are an enum and only one merchant page is ever open.
+        var merchant by remember { mutableStateOf<String?>(null) }
 
         val transactions by remember(repo) { repo.stream() }.collectAsState(initial = emptyList())
         val held by remember(repo) { repo.heldMessages() }.collectAsState(initial = emptyList())
@@ -349,6 +352,10 @@ class NativeMainActivity : ComponentActivity() {
         // octet-stream would otherwise grey out the only file that works.
         val onRestore: () -> Unit = { openBackup.launch(arrayOf("*/*")) }
         val onAllowSms: () -> Unit = { requestSms() }
+        val openMerchant: (String) -> Unit = { name ->
+            merchant = name
+            stack = stack + Page.MERCHANT
+        }
 
         // Back never exits from a page or an inner tab: it unwinds the stack,
         // then returns to Home, and only then falls through to the system.
@@ -638,6 +645,48 @@ class NativeMainActivity : ComponentActivity() {
                             onTransaction = { id ->
                                 transactions.firstOrNull { it.id == id }
                                     ?.let { sheet = Sheet.Edit(it) }
+                            },
+                            onMerchant = openMerchant,
+                        )
+                    }
+
+                    // One merchant, and what the engine has learned about it.
+                    // The rules are MerchantBook in :core; this branch only
+                    // routes the user's decisions to the repository.
+                    Page.MERCHANT -> merchant?.let { name ->
+                        MerchantScreen(
+                            name = name,
+                            ledger = ledger,
+                            transactions = transactions,
+                            categories = categories,
+                            today = today,
+                            filingFor = { keys -> repo.merchantFiling(name, keys) },
+                            onTransaction = { tx -> sheet = Sheet.Edit(tx) },
+                            onFileUnder = { categoryId, keys, moveIds ->
+                                lifecycleScope.launch {
+                                    announce(filedUnder(name,
+                                        repo.fileMerchantUnder(name, keys, categoryId, moveIds)))
+                                }
+                            },
+                            onForget = { mapping ->
+                                lifecycleScope.launch {
+                                    val gone = repo.forgetMapping(mapping.rawName)
+                                    if (gone == null) {
+                                        announce("That was already forgotten. Nothing changed.")
+                                        return@launch
+                                    }
+                                    // Undo rather than an "are you sure": the
+                                    // row is held here exactly as it was, and
+                                    // nothing in the ledger was touched.
+                                    val choice = snackbar.showSnackbar(
+                                        "Forgot “${mapping.rawName}”. New payments are worked " +
+                                        "out afresh; past ones are unchanged.",
+                                        actionLabel = "Undo",
+                                        duration = SnackbarDuration.Long)
+                                    if (choice == SnackbarResult.ActionPerformed) {
+                                        repo.restoreMapping(gone)
+                                    }
+                                }
                             },
                         )
                     }
@@ -1213,6 +1262,7 @@ private enum class Tab(val label: String) {
  *  one covers the bars, and back returns to whatever it covered. */
 private enum class Page(val title: String) {
     REPORT("Report"),
+    MERCHANT("Merchant"),
     REVIEW("Review"),
     SETTINGS("Settings"),
     PRIVACY("Privacy"),
@@ -1310,6 +1360,21 @@ private fun sorted(rows: Int, category: String?): String = when {
     rows == 0 -> "Nothing was sorted — those captures are no longer waiting."
     category == null -> "Sorted $rows ${if (rows == 1) "capture" else "captures"}."
     else -> "Sorted $rows ${if (rows == 1) "capture" else "captures"} into $category."
+}
+
+/** What the merchant page wrote, in the two halves the user decided
+ *  separately: where new payments go, and whether any past ones moved. */
+private fun filedUnder(name: String, result: Repo.Refiled?): String {
+    if (result == null) return "That category no longer exists, so nothing was changed."
+    val head = if (result.mappings == 0)
+        "New payments from $name were already filed under ${result.categoryName}."
+    else "New payments from $name will be filed under ${result.categoryName}."
+    val tail = when (result.moved) {
+        0 -> " Past payments were left as they were."
+        1 -> " 1 past payment was moved."
+        else -> " ${result.moved} past payments were moved."
+    }
+    return head + tail
 }
 
 private fun describe(result: Repo.CategoryResult, name: String): String = when (result) {

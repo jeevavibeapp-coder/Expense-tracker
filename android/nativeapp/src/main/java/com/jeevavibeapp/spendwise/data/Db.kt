@@ -396,6 +396,68 @@ abstract class SpendDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertLearning(items: List<LearningEntity>)
 
+    /**
+     * One merchant's learning: the rows that name it, and the rows keyed on a
+     * raw name its payments arrived under, which may name someone else.
+     *
+     * A Flow, so forgetting or changing a row redraws the card that offered
+     * it. No index on merchantName: the table holds one row per payee
+     * spelling, so scanning it is cheaper than maintaining an index on every
+     * capture that teaches it.
+     */
+    @Query("SELECT * FROM learning WHERE merchantName = :name OR rawName IN (:rawNames)")
+    abstract fun learningAbout(name: String, rawNames: List<String>): Flow<List<LearningEntity>>
+
+    /** The same rows, read at the moment of writing, so a change is planned
+     *  against the table as it is rather than the screen's last copy of it. */
+    @Query("SELECT * FROM learning WHERE merchantName = :name OR rawName IN (:rawNames)")
+    abstract suspend fun learningAboutNow(name: String, rawNames: List<String>): List<LearningEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun upsertLearningRows(items: List<LearningEntity>)
+
+    @Query("DELETE FROM learning WHERE rawName = :rawName")
+    abstract suspend fun deleteLearning(rawName: String): Int
+
+    /** One mapping removed, and handed back as it was so an undo can put the
+     *  same row back rather than a rebuilt one with its counts reset. */
+    @Transaction
+    open suspend fun forgetLearning(rawName: String): LearningEntity? {
+        val row = learningFor(rawName) ?: return null
+        deleteLearning(rawName)
+        return row
+    }
+
+    /**
+     * "File this merchant's new payments under…", and whatever past payments
+     * the user ticked, in one transaction.
+     *
+     * Taught rows go in with IGNORE: a capture that taught the same spelling
+     * a moment ago wins, rather than being overwritten by a row with no
+     * evidence in it.
+     */
+    @Transaction
+    open suspend fun relearnMerchant(
+        name: String,
+        changed: List<LearningEntity>,
+        taught: List<LearningEntity>,
+        refileIds: List<String>,
+        categoryId: String,
+    ): Int {
+        upsertLearningRows(changed)
+        insertLearning(taught)
+        return refileIds.chunked(BULK_IDS).sumOf { refileRows(it, name, categoryId) }
+    }
+
+    /** The name is part of the WHERE so a stale or mistaken id cannot move a
+     *  different merchant's payment: it matches only rows still listed under
+     *  [name], the way the ledger lists them. */
+    @Query("""
+        UPDATE transactions SET categoryId = :categoryId
+        WHERE isDeleted = 0 AND id IN (:ids)
+          AND COALESCE(merchantName, rawMerchant) = :name""")
+    abstract suspend fun refileRows(ids: List<String>, name: String, categoryId: String): Int
+
     @Query("SELECT * FROM sms_senders WHERE sender = :sender LIMIT 1")
     abstract suspend fun senderByName(sender: String): SenderEntity?
 

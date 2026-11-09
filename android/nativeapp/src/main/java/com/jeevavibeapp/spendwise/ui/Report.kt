@@ -2,6 +2,7 @@ package com.jeevavibeapp.spendwise.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -88,6 +91,8 @@ private val DayMonth: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM", L
  *   to page forward.
  * @param onTransaction jump to one transaction. Null hides the affordance
  *   rather than offering a button that does nothing.
+ * @param onMerchant open one merchant's page by the name the row shows.
+ *   Null leaves the rows as plain text, for the same reason.
  */
 @Composable
 fun ReportScreen(
@@ -101,6 +106,7 @@ fun ReportScreen(
     merchants: List<MerchantInsight> = emptyList(),
     onMonth: (YearMonth) -> Unit = {},
     onTransaction: ((String) -> Unit)? = null,
+    onMerchant: ((String) -> Unit)? = null,
 ) {
     val isCurrent = report.month == YearMonth.from(today)
 
@@ -148,7 +154,7 @@ fun ReportScreen(
         }
 
         if (merchants.isNotEmpty()) {
-            section("Merchants this month") { MerchantList(merchants) }
+            section("Merchants this month") { MerchantList(merchants, onMerchant) }
         }
 
         if (report.txCount == 0) {
@@ -616,13 +622,20 @@ private fun TrendList(trends: List<CategoryTrend>) {
 }
 
 @Composable
-private fun MerchantList(merchants: List<MerchantInsight>) {
+private fun MerchantList(merchants: List<MerchantInsight>, onMerchant: ((String) -> Unit)?) {
     ReportCard {
         merchants.forEachIndexed { i, m ->
             if (i > 0) HorizontalDivider(
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(vertical = 12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The whole row is the target, not a small link inside it: it is
+            // the only way into the page where a misfiled merchant is fixed.
+            val open = if (onMerchant == null) Modifier else Modifier
+                .clickable(onClickLabel = "Open ${m.name}", role = Role.Button) { onMerchant(m.name) }
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget).then(open),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f)) {
                     Text(m.name, style = MaterialTheme.typography.titleMedium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -636,6 +649,14 @@ private fun MerchantList(merchants: List<MerchantInsight>) {
                         Text(text, style = MaterialTheme.typography.bodySmall,
                             color = if (rising) Expense else Income)
                     }
+                }
+                if (onMerchant != null) {
+                    Spacer(Modifier.width(6.dp))
+                    // Says the row goes somewhere. Hidden from screen readers,
+                    // which announce the row as a button already.
+                    Text("›", style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clearAndSetSemantics {})
                 }
             }
         }

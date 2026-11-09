@@ -3,6 +3,7 @@ package com.jeevavibeapp.spendwise.data
 import com.jeevavibeapp.spendwise.core.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -604,6 +605,91 @@ class Repo(private val dao: SpendDao) {
             dao.insertMerchant(MerchantEntity(newId(), merchantKey, categoryId))
         }
     }
+
+    /**
+     * What decides how this merchant's next payment is named and filed, live.
+     *
+     * The rules are MerchantBook's; this only supplies the rows. Mapped off
+     * the main thread because the screen collects it there.
+     */
+    fun merchantFiling(name: String, rawNames: Set<String>): Flow<MerchantBook.Filing> =
+        dao.learningAbout(name, rawNames.toList())
+            .map { rows -> MerchantBook.filing(rows.map { learningRow(it) }, name, rawNames) }
+            .flowOn(Dispatchers.Default)
+
+    /** What [fileMerchantUnder] wrote: mappings changed or taught, and past
+     *  payments moved, which are the two things the user is told. */
+    data class Refiled(val categoryName: String, val mappings: Int, val moved: Int)
+
+    /**
+     * File new payments from [name] under [categoryId], and move exactly the
+     * past payments in [moveIds], which the user ticked.
+     *
+     * Planned against the table as it is now, not as the screen last saw it.
+     * Every write is one transaction, so a mapping never changes while the
+     * history the user asked to move with it stays where it was.
+     *
+     * @return null when the category no longer exists, so nothing was written.
+     */
+    suspend fun fileMerchantUnder(
+        name: String,
+        rawNames: Set<String>,
+        categoryId: String,
+        moveIds: List<String>,
+    ): Refiled? = withContext(Dispatchers.IO) {
+        val category = dao.allCategories().firstOrNull { it.id == categoryId }
+            ?: return@withContext null
+        val rows = dao.learningAboutNow(name, rawNames.toList())
+        val plan = MerchantBook.relearn(rows.map { learningRow(it) }, name, rawNames, categoryId)
+        val byRaw = rows.associateBy { it.rawName }
+        val changed = plan.changed.mapNotNull { r ->
+            byRaw[r.rawName]?.copy(
+                categoryId = r.categoryId,
+                confirmationCount = r.confirmationCount,
+                correctionCount = r.correctionCount,
+            )
+        }
+        val now = System.currentTimeMillis()
+        val taught = plan.taught.map { t ->
+            LearningEntity(
+                id = newId(), rawName = t.rawName, merchantName = t.merchantName,
+                categoryId = t.categoryId, confirmationCount = t.confirmationCount,
+                correctionCount = t.correctionCount, sampleCount = t.sampleCount,
+                avgAmount = t.avgAmount, amountMin = t.amountMin, amountMax = t.amountMax,
+                hourHistogram = t.hourHistogram.joinToString(","), lastSeenAt = now,
+            )
+        }
+        val moved = dao.relearnMerchant(name, changed, taught, moveIds, categoryId)
+        // Kept as recordConfirmation keeps it, so a backup taken now carries
+        // the merchant a taught row names.
+        val merchantKey = Engine.normalizeMerchant(name)
+        if (taught.isNotEmpty() && merchantKey.isNotEmpty() && dao.merchantByName(merchantKey) == null) {
+            dao.insertMerchant(MerchantEntity(newId(), merchantKey, categoryId))
+        }
+        Refiled(category.name, changed.size + taught.size, moved)
+    }
+
+    /**
+     * Forget one learned mapping. The next message under [rawName] is
+     * resolved as if it had never been learned: the built-in table, then the
+     * categoriser. Nothing in the ledger changes — every past payment keeps
+     * its name and category.
+     *
+     * @return the row as it was, for [restoreMapping]; null if it was already gone.
+     */
+    suspend fun forgetMapping(rawName: String): LearningEntity? = withContext(Dispatchers.IO) {
+        dao.forgetLearning(rawName)
+    }
+
+    /** The undo for [forgetMapping]. IGNORE, so if a capture has taught the
+     *  same spelling since, that newer row is kept rather than replaced. */
+    suspend fun restoreMapping(row: LearningEntity) = withContext(Dispatchers.IO) {
+        dao.insertLearning(listOf(row))
+    }
+
+    private fun learningRow(e: LearningEntity) = LearningRow(
+        e.rawName, e.merchantName, e.categoryId, e.confirmationCount, e.correctionCount,
+        e.sampleCount, e.avgAmount, e.amountMin, e.amountMax, parseHistogram(e.hourHistogram))
 
     private suspend fun holdMessage(sender: String?, body: String, parsed: ParsedSms,
                                     verdict: RiskAssessment) {
