@@ -71,7 +71,7 @@ object Parsing {
 
     /** The transactional gate: a money-movement verb must be present, or the
      *  message is promotional or informational and must never be captured. */
-    private val TXN_VERB = Regex(
+    internal val TXN_VERB = Regex(
         "\\b(debited|credited|spent|paid|sent|received|withdrawn|purchase(?:d)?|" +
         "deposit(?:ed)?|transferred|payment)\\b", I)
 
@@ -79,7 +79,7 @@ object Parsing {
      *  pre-debit reminders, EMI notices, declined and reversed transactions,
      *  and the marketing / lending / scam vocabulary that carries amounts and
      *  sometimes even transaction verbs. */
-    private val NON_TXN = Regex(
+    internal val NON_TXN = Regex(
         "(\\boff\\b|\\boffer|cashback|discount|coupon|% ?off|flat \\d|" +
         "payment request|requested|collect request|is requesting|" +
         "will be (?:debited|deducted|charged)|due on|due by|overdue|" +
@@ -100,7 +100,7 @@ object Parsing {
      *  genuine alert cites an account, card, UPI handle or reference.
      *  Promotional and scam messages carry amounts but almost never this, so
      *  requiring it is the highest-precision signal available offline. */
-    private val ACCOUNT_EVIDENCE = Regex(
+    internal val ACCOUNT_EVIDENCE = Regex(
         "(a/c|a/c no|acct|account\\s*(?:no|number|xx|\\*|ending)|" +
         "\\bac\\b\\s*[xX*\\d]|card\\s*(?:no\\.?\\s*)?[xX*\\d]|" +
         "\\bupi\\b|\\bvpa\\b|@[a-z]{2,}|" +
