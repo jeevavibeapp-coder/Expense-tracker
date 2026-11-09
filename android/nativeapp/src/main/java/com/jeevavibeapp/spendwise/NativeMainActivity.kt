@@ -843,7 +843,9 @@ class NativeMainActivity : ComponentActivity() {
                 onDismiss = { pasting = false },
                 onRead = { body ->
                     pasting = false
-                    lifecycleScope.launch { announce(describe(repo.ingestSms(null, body))) }
+                    lifecycleScope.launch {
+                        announce(describe(repo.ingestSms(null, body, pasted = true)))
+                    }
                 },
             )
         }
@@ -1351,6 +1353,8 @@ private fun describe(result: Repo.Ingest): String = when (result) {
     is Repo.Ingest.Duplicate -> "That one is already in your ledger."
     is Repo.Ingest.Held -> "Held for you to check: ${result.reason}"
     Repo.Ingest.NotFinancial -> "That doesn't read as a transaction, so nothing was added."
+    Repo.Ingest.Unreadable -> "SpendWise couldn't read this one, so nothing was added. A " +
+        "copy with every number and name masked is in Settings, if you want to send it on."
 }
 
 /** Rows written, not "done": the whole point of the screen is that one tap

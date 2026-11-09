@@ -114,7 +114,7 @@ object AppGraph {
                 if (result.outcome != Recovery.Outcome.NORMAL) disk.recordNotice(result)
                 val opened = checkNotNull(disk.opened)
                 db = opened
-                Ledger.Ready(Repo(opened.dao()).also { repoRef = it })
+                Ledger.Ready(Repo(opened.dao(), opened.misses()).also { repoRef = it })
             }
             is RecoverySequence.Stopped -> {
                 val unavailable = Ledger.Unavailable(result, disk.where(result.keptAs))
@@ -137,7 +137,7 @@ private const val TAG = "SpendWiseLedger"
  *  a v1 install crashes on first open instead of upgrading. There is no
  *  destructive fallback: there is no cloud copy to restore from, so every
  *  version must ship a real migration. */
-private val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+private val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
 /** The schema this build writes, read off the migrations rather than
  *  restated: Room's own number cannot be read until the open it is needed to

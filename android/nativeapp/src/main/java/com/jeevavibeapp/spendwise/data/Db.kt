@@ -619,12 +619,13 @@ abstract class SpendDao {
 @Database(
     entities = [TransactionEntity::class, CategoryEntity::class, MerchantEntity::class,
                 LearningEntity::class, SenderEntity::class, QuarantineEntity::class,
-                SettingsEntity::class, FraudAlertEntity::class],
-    version = 3,
+                SettingsEntity::class, FraudAlertEntity::class, ParseMissEntity::class],
+    version = 4,
     exportSchema = true,
 )
 abstract class SpendDatabase : RoomDatabase() {
     abstract fun dao(): SpendDao
+    abstract fun misses(): ParseMissDao
 }
 
 /**

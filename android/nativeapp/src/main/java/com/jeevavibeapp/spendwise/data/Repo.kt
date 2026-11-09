@@ -1,6 +1,7 @@
 package com.jeevavibeapp.spendwise.data
 
 import com.jeevavibeapp.spendwise.core.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -24,7 +25,7 @@ import java.util.UUID
  * class only reads rows, hands them to that logic, and writes the result. If
  * a rule looks like it is being decided here, it is in the wrong file.
  */
-class Repo(private val dao: SpendDao) {
+class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
 
     companion object {
         /** Longer than a chip can show, and the review screen creates
@@ -327,6 +328,9 @@ class Repo(private val dao: SpendDao) {
         data class Held(val reason: String, val risk: Int) : Ingest()
         data class Duplicate(val id: String) : Ingest()
         data object NotFinancial : Ingest()
+        /** From a bank, read like money moving, and the parser could not
+         *  read it. Logged as its shape so the user can see and send it. */
+        data object Unreadable : Ingest()
     }
 
     /**
@@ -346,12 +350,16 @@ class Repo(private val dao: SpendDao) {
      *   the message itself carries no date — and there it is load-bearing,
      *   because the dedup key falls back to it. Reading the clock instead
      *   would give the same undated purchase a new key every day.
+     * @param pasted the user pasted this into "Paste a bank message". It has
+     *   no sender, and the person pasting is the one saying a bank sent it —
+     *   which is what decides whether an unreadable one is worth logging.
      */
     suspend fun ingestSms(
         sender: String?,
         body: String,
         live: Boolean = true,
         receivedAt: LocalDateTime = LocalDateTime.now(),
+        pasted: Boolean = false,
     ): Ingest = withContext(Dispatchers.IO) {
         if (!live) {
             // Already banked. Checked first because the alternative is paying
@@ -413,7 +421,10 @@ class Repo(private val dao: SpendDao) {
         )
 
         when (outcome) {
-            is Pipeline.Outcome.NotFinancial -> Ingest.NotFinancial
+            is Pipeline.Outcome.NotFinancial ->
+                if (recordUnreadable(sender, body, live, receivedAt, pasted, senderRow))
+                    Ingest.Unreadable
+                else Ingest.NotFinancial
 
             is Pipeline.Outcome.Hold -> {
                 recordSender(outcome.verdict, captured = false)
@@ -880,6 +891,85 @@ class Repo(private val dao: SpendDao) {
      *  count query, so a screen that only shows the number does not load the
      *  rows behind it. */
     fun reviewCount(): Flow<Int> = dao.needingReviewCount()
+
+    /**
+     * Log a message the pipeline did not file, if [ParseMisses.judge] says
+     * it is one the parser failed to read. Only its shape is written.
+     *
+     * Public for a paste flow that reads before it writes: a paste the user
+     * was told cannot be read is the same evidence as one ingested directly.
+     *
+     * Never throws. This is diagnostics on the way out of the capture path,
+     * and a full disk here must not turn "nothing was added" into a crash —
+     * the result says whether the message is in the log, so no caller claims
+     * a record that does not exist.
+     */
+    suspend fun recordUnreadable(
+        sender: String?,
+        body: String,
+        live: Boolean = true,
+        receivedAt: LocalDateTime = LocalDateTime.now(),
+        pasted: Boolean = false,
+        senderRow: SenderEntity? = null,
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val known = senderRow ?: sender?.let { dao.senderByName(Senders.normalizeSender(it)) }
+            val miss = ParseMisses.judge(
+                source = if (pasted) ParseMisses.Source.PASTE else ParseMisses.Source.SMS,
+                sender = sender,
+                body = body,
+                history = known?.let {
+                    ParseMisses.History(it.trust, it.capturedCount, it.confirmedCount)
+                },
+            ) ?: return@withContext false
+            val at = millis(receivedAt)
+            misses.record(
+                ParseMissEntity(
+                    id = newId(),
+                    bodyHash = miss.bodyHash,
+                    sender = miss.sender,
+                    source = if (miss.source == ParseMisses.Source.PASTE) "paste" else "sms",
+                    shape = miss.shape,
+                    reason = miss.reason,
+                    parserVersion = Parsing.PARSER_VERSION,
+                    firstSeenAt = at,
+                    lastSeenAt = at,
+                ),
+                live = live,
+                keep = ParseMisses.MAX_ROWS,
+                before = millis(ParseMisses.expiresBefore(LocalDateTime.now())),
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** The unreadable formats, folded and ordered by :core. Folded off the
+     *  main thread: the screen collects this on it. */
+    fun unreadable(): Flow<List<ParseMisses.Group>> =
+        misses.showing(Parsing.PARSER_VERSION)
+            .map { rows -> ParseMisses.summarize(rows.map(::missRow)) }
+            .flowOn(Dispatchers.Default)
+
+    /**
+     * What "Share" sends: shapes, counts and senders, nothing else.
+     *
+     * Nothing leaves the phone on its own. This returns a string; only the
+     * user picking a destination in the system share sheet moves it.
+     */
+    suspend fun unreadableExport(): String = withContext(Dispatchers.IO) {
+        ParseMisses.export(ParseMisses.summarize(
+            misses.showingNow(Parsing.PARSER_VERSION).map(::missRow)))
+    }
+
+    /** Hidden, not deleted — see [ParseMissEntity] for why. The ledger is
+     *  not touched. */
+    suspend fun clearUnreadable(): Int = withContext(Dispatchers.IO) { misses.clearAll() }
+
+    private fun missRow(m: ParseMissEntity) = ParseMisses.Row(
+        m.sender, m.shape, m.reason, m.seenCount, localTime(m.lastSeenAt))
 
     /**
      * The review queue as questions rather than rows.
