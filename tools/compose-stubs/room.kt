@@ -70,6 +70,30 @@ abstract class RoomDatabase {
         open fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
         open fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
     }
+
+    enum class JournalMode { AUTOMATIC, TRUNCATE, WRITE_AHEAD_LOGGING }
+
+    /**
+     * Nested in RoomDatabase, as in Room 2.6.1's API (room-runtime
+     * api/current.txt at the 2.6.1 release commit 04d99ffb):
+     * Room.databaseBuilder returns RoomDatabase.Builder<T>. Declared on
+     * Room, a call site naming the type would pass here and fail the build.
+     */
+    open class Builder<T : RoomDatabase> internal constructor() {
+        open fun addMigrations(vararg migrations: androidx.room.migration.Migration): Builder<T> = this
+        open fun addCallback(callback: Callback): Builder<T> = this
+        open fun openHelperFactory(
+            factory: androidx.sqlite.db.SupportSQLiteOpenHelper.Factory?,
+        ): Builder<T> = this
+        open fun fallbackToDestructiveMigration(): Builder<T> = this
+        open fun fallbackToDestructiveMigrationFrom(vararg startVersions: Int): Builder<T> = this
+        open fun fallbackToDestructiveMigrationOnDowngrade(): Builder<T> = this
+        open fun allowMainThreadQueries(): Builder<T> = this
+        open fun createFromAsset(databaseFilePath: String): Builder<T> = this
+        /** The enum, not Any: typed loosely, any value at all would pass. */
+        open fun setJournalMode(journalMode: JournalMode): Builder<T> = this
+        open fun build(): T = throw UnsupportedOperationException("stub")
+    }
 }
 
 object Room {
@@ -82,25 +106,10 @@ object Room {
         context: android.content.Context,
         klass: Class<T>,
         name: String?,
-    ): Builder<T> = Builder()
+    ): RoomDatabase.Builder<T> = RoomDatabase.Builder()
 
     fun <T : RoomDatabase> inMemoryDatabaseBuilder(
         context: android.content.Context,
         klass: Class<T>,
-    ): Builder<T> = Builder()
-
-    class Builder<T : RoomDatabase> internal constructor() {
-        fun addMigrations(vararg migrations: androidx.room.migration.Migration): Builder<T> = this
-        fun addCallback(callback: RoomDatabase.Callback): Builder<T> = this
-        fun openHelperFactory(
-            factory: androidx.sqlite.db.SupportSQLiteOpenHelper.Factory?,
-        ): Builder<T> = this
-        fun fallbackToDestructiveMigration(): Builder<T> = this
-        fun fallbackToDestructiveMigrationFrom(vararg startVersions: Int): Builder<T> = this
-        fun fallbackToDestructiveMigrationOnDowngrade(): Builder<T> = this
-        fun allowMainThreadQueries(): Builder<T> = this
-        fun createFromAsset(databaseFilePath: String): Builder<T> = this
-        fun setJournalMode(mode: Any): Builder<T> = this
-        fun build(): T = throw UnsupportedOperationException("stub")
-    }
+    ): RoomDatabase.Builder<T> = RoomDatabase.Builder()
 }
