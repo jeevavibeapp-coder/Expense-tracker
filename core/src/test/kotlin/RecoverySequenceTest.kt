@@ -72,6 +72,10 @@ private class SimulatedDisk(var ledger: DbFile?) : RecoverySequence.Disk {
     var cannotCopy = false
     /** The ledger cannot be renamed: a fresh start has nowhere to go. */
     var cannotMove = false
+    /** A filesystem failing under the renames: the ledger is moved to the
+     *  kept name, the rest of the move fails, and so does putting it back.
+     *  The disk reports false, as though nothing had happened. */
+    var halfMoves = false
     /** When set, answers successive opens in order, the last one for ever. */
     var openScript: List<String?>? = null
     /** When set, answers the check instead of the file. */
@@ -147,6 +151,7 @@ private class SimulatedDisk(var ledger: DbFile?) : RecoverySequence.Disk {
         if (cannotCopy || copy == null) return false
         if (keepAs in kept) { collisions++; return false }
         ledger?.let { kept[keepAs] = it }
+        if (halfMoves) { ledger = null; return false }
         ledger = copy
         return true
     }
@@ -155,6 +160,7 @@ private class SimulatedDisk(var ledger: DbFile?) : RecoverySequence.Disk {
         log += "aside"
         if (cannotMove) return false
         if (keepAs in kept) { collisions++; return false }
+        if (halfMoves) { ledger?.let { kept[keepAs] = it }; ledger = null; return false }
         ledger?.let { kept[keepAs] = it }
         ledger = null
         return true
@@ -430,6 +436,33 @@ fun main() {
             disk.ledger.toString())
     }
 
+    println("=== a move that fails halfway is not reported as nothing happening ===")
+    run {
+        val damaged = DbFile(rows = 120, version = 3, damaged = true)
+        val disk = SimulatedDisk(damaged)
+        disk.shelve(NOW.minusDays(3), DbFile(rows = 100, version = 3))
+        disk.halfMoves = true
+        val result = open(disk)
+        check("a restore that moved the ledger and then failed is told as a fresh start",
+            result is Opened && result.outcome == Outcome.STARTED_FRESH, result.toString())
+        check("naming the file the ledger now sits in",
+            result.keptAs == listOf(Recovery.asideName(NAME, NOW)) &&
+                disk.kept[result.keptAs.first()] == damaged, "${result.keptAs} ${disk.kept}")
+        check("and never claiming the snapshot went back", result.restoredFrom == null,
+            result.restoredFrom.toString())
+    }
+    run {
+        val damaged = DbFile(rows = 80, version = 3, damaged = true)
+        val disk = SimulatedDisk(damaged)
+        disk.halfMoves = true
+        val result = open(disk)
+        check("a set-aside that failed after the rename is still a fresh start",
+            result is Opened && result.outcome == Outcome.STARTED_FRESH, result.toString())
+        check("with the ledger's new name in the result",
+            result.keptAs == disk.kept.keys.toList() && disk.kept.values.toList() == listOf(damaged),
+            "${result.keptAs} ${disk.kept}")
+    }
+
     println("=== a failure nothing recognises never touches the file ===")
     run {
         val ledger = DbFile(rows = 200, version = 3)
@@ -619,17 +652,18 @@ fun main() {
     var olderRollback: String? = null
     var unverifiedRestore: String? = null
     var uncheckedCopy: String? = null
-    for (c in checks) for (shelf in shelves) for (stuck in listOf(false, true))
+    for (c in checks) for (shelf in shelves) for (moves in listOf("work", "stuck", "half"))
     for (script in scripts(answers, 4)) {
         val disk = SimulatedDisk(if (c == null) null else DbFile(rows = 50, version = c.version ?: 3))
         disk.checkScript = c
         disk.openScript = script
-        disk.cannotMove = stuck
+        disk.cannotMove = moves == "stuck"
+        disk.halfMoves = moves == "half"
         shelf.forEachIndexed { i, f -> disk.shelve(NOW.minusDays(3L + i), f) }
         val before = disk.snapshots.toMap()
         val result = open(disk)
         val seen = disk.answered()
-        val case = "check=${c?.integrity}/${c?.raised} shelf=${shelf.size} stuck=$stuck " +
+        val case = "check=${c?.integrity}/${c?.raised} shelf=${shelf.size} moves=$moves " +
             "script=$script log=${disk.log}"
         runs++
         longest = maxOf(longest, disk.opens)

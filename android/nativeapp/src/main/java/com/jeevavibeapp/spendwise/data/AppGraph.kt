@@ -255,8 +255,12 @@ private class LedgerDisk(private val app: Context) : RecoverySequence.Disk {
         shelf.mkdirs()
         remove(staging)
         // The copy takes the main file alone, so whatever is still in the
-        // write-ahead log is folded into it first.
-        withDatabase(live) { firstRow(it, "PRAGMA wal_checkpoint(TRUNCATE)") }
+        // write-ahead log is folded into it first. A checkpoint another
+        // connection kept from finishing says so in its first column and
+        // raises nothing; copied anyway, the snapshot would verify while
+        // missing every row still in the log.
+        val busy = withDatabase(live) { firstRow(it, "PRAGMA wal_checkpoint(TRUNCATE)") }
+        if (busy != "0") throw IOException("checkpoint did not finish (busy=$busy)")
         copy(live, staging)
         inspect(staging)
     } catch (t: Throwable) {
@@ -290,21 +294,37 @@ private class LedgerDisk(private val app: Context) : RecoverySequence.Disk {
             return false
         }
         if (incoming.renameTo(live)) return true
-        File(dir, keepAs).renameTo(live)
+        // Its logs go back with it: the main file alone would open as it was
+        // before its last commits, and the log left under the kept name
+        // would be replaced by the next file set aside in this second.
+        moveWithLogs(keepAs, LEDGER)
         remove(incoming)
         return false
     }
 
-    override fun setAside(keepAs: String): Boolean {
-        val kept = File(dir, keepAs)
-        if (kept.exists() || (live.exists() && !live.renameTo(kept))) return false
-        for (suffix in SIDE_FILES) {
-            val side = File(dir, LEDGER + suffix)
-            // Left behind, it would be replayed into whatever takes the
-            // ledger's place: it goes with its file, or it goes.
-            if (side.exists() && !side.renameTo(File(dir, keepAs + suffix))) side.delete()
+    override fun setAside(keepAs: String): Boolean = moveWithLogs(LEDGER, keepAs)
+
+    /**
+     * Moves a database and its -wal, -shm and -journal together, or not at
+     * all. Left behind, a log would be replayed into whatever takes the
+     * file's place; deleted instead, a -wal takes with it every commit not
+     * yet checkpointed. A rename replaces what is at its target, so an
+     * occupied target refuses the whole move rather than overwrite it.
+     */
+    private fun moveWithLogs(from: String, to: String): Boolean {
+        val parts = listOf("") + SIDE_FILES
+        if (parts.any { File(dir, to + it).exists() }) return false
+        val moved = mutableListOf<String>()
+        for (part in parts) {
+            val source = File(dir, from + part)
+            if (!source.exists()) continue
+            if (!source.renameTo(File(dir, to + part))) {
+                for (back in moved.asReversed()) File(dir, to + back).renameTo(File(dir, from + back))
+                return false
+            }
+            moved += part
         }
-        return !live.exists()
+        return true
     }
 
     override fun open(): String? {

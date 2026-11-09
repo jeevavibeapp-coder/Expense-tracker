@@ -69,11 +69,14 @@ object RecoverySequence {
         fun deleteSnapshot(name: String)
 
         /** Put [snapshot] where the ledger is and keep the file it replaces
-         *  as [keepAs]. All or nothing: false must mean the ledger is still
-         *  where it was, never that it was moved and nothing took its place. */
+         *  as [keepAs]. All or nothing: false should mean the ledger is still
+         *  where it was. The sequence checks [ledgerExists] after a false
+         *  rather than trust it, because undoing a rename is itself a rename
+         *  that can fail. */
         fun restore(snapshot: String, keepAs: String): Boolean
 
-        /** Move the ledger to [keepAs], so the next open creates an empty one. */
+        /** Move the ledger, with its logs, to [keepAs], so the next open
+         *  creates an empty one. Checked the same way as [restore]. */
         fun setAside(keepAs: String): Boolean
 
         /** The real open, migrations included. Null when it opened; otherwise
@@ -211,6 +214,15 @@ object RecoverySequence {
                         if (disk.restore(candidate, keepAs)) {
                             restoredFrom = candidate
                             if (had) kept += keepAs
+                        } else if (had && !disk.ledgerExists()) {
+                            // Moved, never replaced, and not put back: a
+                            // filesystem failing under the rename. The next
+                            // open creates an empty ledger, and saying
+                            // nothing would leave the user's history in a
+                            // file no screen ever names.
+                            movedAside = true
+                            startedFresh = true
+                            kept += keepAs
                         }
                     }
                 }
@@ -220,7 +232,9 @@ object RecoverySequence {
                     movedAside = true
                     val had = disk.ledgerExists()
                     val keepAs = keepName()
-                    if (disk.setAside(keepAs)) {
+                    // A move that failed halfway and could not be undone has
+                    // still taken the ledger away, so it is told the same way.
+                    if (disk.setAside(keepAs) || (had && !disk.ledgerExists())) {
                         startedFresh = true
                         if (had) kept += keepAs
                     }
