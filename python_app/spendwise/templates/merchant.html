@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ name }} · {{ app_name }}{% endblock %}
+{% block heading %}{{ name }}{% endblock %}
+{% block subhead %}<div class="sub">Merchant history</div>{% endblock %}
+{% block content %}
+<div class="screen stack">
+
+  {# Merchant hero #}
+  <div class="card reveal" style="display:flex; align-items:center; gap:14px">
+    {{ m.avatar(name) }}
+    <div style="flex:1">
+      <div style="font-weight:800; font-size: 1.0rem">{{ name }}</div>
+      <div class="mut" style="font-size: 0.7812rem">{{ count }} transaction{{ '' if count == 1 else 's' }}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="num" style="font-weight:800; font-size: 1.0625rem">{{ currency|symbol }}{{ m.money_k(total) }}</div>
+      <div class="faint" style="font-size: 0.6875rem">total spent</div>
+    </div>
+  </div>
+
+  {# Stats #}
+  <div class="card stat-strip reveal">
+    <div class="stat"><div class="k">Average</div><div class="v num">{{ m.money_k(avg) }}</div></div>
+    <div class="stat"><div class="k">Visits</div><div class="v num">{{ count }}</div></div>
+    <div class="stat"><div class="k">Last visit</div>
+      <div class="v num">{{ transactions[0]['occurred_at'][8:10] ~ '/' ~ transactions[0]['occurred_at'][5:7] if transactions else '–' }}</div></div>
+  </div>
+
+  {# Merchant intelligence — what the engine has learned #}
+  {% if learning %}
+  <div class="section-h"><h2>Merchant intelligence</h2></div>
+  <div class="card reveal stack" style="gap:12px">
+    {% for l in learning %}
+    <div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="pill" style="background:var(--surface-3); font-family:monospace; font-size: 0.7188rem">{{ l['raw_name'] }}</span>
+        <span style="flex:1"></span>
+        {{ m.confidence_badge(l['confidence']) }}
+      </div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:6px">
+        Confirmed {{ l['confirmation_count'] }}×
+        {%- if l['correction_count'] %} · corrected {{ l['correction_count'] }}×{% endif %}
+        {%- if l['sample_count'] %} · usually {{ currency|symbol }}{{ '%.0f'|format(l['amount_min']) }}–{{ '%.0f'|format(l['amount_max']) }}{% endif %}
+        {%- if l['category_name'] %} · {{ l['category_name'] }}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <div class="faint" style="font-size: 0.7188rem">These are the SMS names SpendWise has learned to resolve to {{ name }}. Every confirmation makes predictions stronger.</div>
+  </div>
+  {% endif %}
+
+  {# Monthly trend #}
+  {% if trend and trend|length > 1 %}
+  <div class="section-h"><h2>Month by month</h2></div>
+  <div class="card reveal">
+    {% set tmax = trend | map(attribute='value') | max %}
+    <div class="spark" style="height:70px">
+      {% for t in trend %}
+      <i style="height:{{ [(t.value / tmax * 100)|round|int, 4]|max if tmax else 4 }}%"
+         title="{{ t.period }} · {{ m.money(t.value) }}"></i>
+      {% endfor %}
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px" class="faint">
+      <span style="font-size: 0.6562rem">{{ trend[0].period[5:] }}/{{ trend[0].period[2:4] }}</span>
+      <span style="font-size: 0.6562rem">{{ trend[-1].period[5:] }}/{{ trend[-1].period[2:4] }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {# History #}
+  <div class="section-h"><h2>All transactions</h2></div>
+  <div class="tx-list reveal">
+    {% for t in transactions %}
+    <div class="tx">
+      {{ m.avatar(name) }}
+      <div class="tx-main">
+        <div class="tx-name">{{ t['occurred_at'][:10] }}</div>
+        <div class="tx-meta">
+          {% if t['notes'] %}<span>{{ t['notes'] }}</span>
+          {% elif t['reference_number'] %}<span>Ref {{ t['reference_number'] }}</span>
+          {% else %}<span style="text-transform:capitalize">{{ t['source'] }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency|symbol }}{{ m.money(t['amount']) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

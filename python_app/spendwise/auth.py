@@ -84,17 +84,46 @@ def authenticate(conn, *, email: str, password: str) -> str:
     return row["id"]
 
 
+LOCAL_EMAIL = "local@spendwise.app"
+
+
 def ensure_local_user(conn) -> str:
     """For the embedded single-user (mobile) mode: return the one local user,
-    creating it on first launch so no login is required."""
+    creating it on first launch so no login is required.
+
+    Must be safe to call CONCURRENTLY. This runs in `before_request`, the
+    production server is waitress with 4 threads, and on first launch the
+    native layer fires several requests at once (the /healthz readiness poll
+    plus POST /device/state). The check-then-insert below is therefore racy:
+    two threads both find no user, both insert, and the second dies with
+    "UNIQUE constraint failed: users.email" — a 500 on the very first screen
+    the user ever sees.
+
+    The unique index on users.email is what makes the fix safe: whoever loses
+    the race is told so by the database and simply reads the winner's row.
+    """
     row = db.one(conn, "SELECT id FROM users ORDER BY created_at LIMIT 1")
     if row:
         return row["id"]
     uid = db.new_id()
-    db.execute(conn,
-               "INSERT INTO users(id,email,full_name,pw_hash,created_at) VALUES (?,?,?,?,?)",
-               (uid, "local@spendwise.app", "You", hash_password(os.urandom(8).hex()),
-                dt.datetime.now(dt.timezone.utc).isoformat()))
+    try:
+        db.execute(conn,
+                   "INSERT INTO users(id,email,full_name,pw_hash,created_at) "
+                   "VALUES (?,?,?,?,?)",
+                   (uid, LOCAL_EMAIL, "You", hash_password(os.urandom(8).hex()),
+                    dt.datetime.now(dt.timezone.utc).isoformat()))
+    except db.sqlite3.IntegrityError:
+        # Another thread created it between our SELECT and INSERT. Roll back
+        # our partial attempt and adopt theirs — provisioning is already done
+        # (or in flight) on their side.
+        conn.rollback()
+        row = db.one(conn, "SELECT id FROM users WHERE email=?", (LOCAL_EMAIL,))
+        if row:
+            return row["id"]
+        row = db.one(conn, "SELECT id FROM users ORDER BY created_at LIMIT 1")
+        if row:
+            return row["id"]
+        raise
     _provision(conn, uid)
     conn.commit()
     return uid

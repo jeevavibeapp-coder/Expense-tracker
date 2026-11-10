@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SpendWise launcher mark: a wallet with a card tucked behind it.
+     Drawn inside the adaptive-icon safe zone (content kept within the central
+     72dp of the 108dp canvas) so no launcher mask — circle, squircle or
+     rounded square — ever clips it. Pure vector: crisp at every density.
+     (Replaces the stock Android robot-head placeholder.) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Card peeking out behind the wallet -->
+    <path
+        android:fillColor="#99FFFFFF"
+        android:pathData="M41,29 h26 a7,7 0 0 1 7,7 v4 h-40 v-4 a7,7 0 0 1 7,-7 z" />
+
+    <!-- Wallet body -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M35,37 h38 a9,9 0 0 1 9,9 v17 a9,9 0 0 1 -9,9 h-38 a9,9 0 0 1 -9,-9 v-17 a9,9 0 0 1 9,-9 z" />
+
+    <!-- Clasp: punched through to the brand gradient behind -->
+    <path
+        android:fillColor="#FF7C5CFF"
+        android:pathData="M76,54.5 a5.5,5.5 0 1,1 -11,0 a5.5,5.5 0 1,1 11,0 z" />
+</vector>

@@ -13,6 +13,11 @@ buildscript {
         // (AGP 8.9.1 here) and requires minSdk 24 (matches variables.gradle).
         // Available on Maven Central (declared below), so no extra repo needed.
         classpath 'com.chaquo.python:gradle:16.1.0'
+        // For :nativeapp — Kotlin, KSP (Room's annotation processor) and the
+        // Compose compiler plugin, which Kotlin 2.x ships separately.
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'
+        classpath 'com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:2.0.21-1.0.25'
+        classpath 'org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.0.21'
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files

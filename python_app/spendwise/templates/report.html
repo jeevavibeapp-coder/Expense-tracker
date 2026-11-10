@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Report · {{ app_name }}{% endblock %}
+{% block heading %}Monthly report{% endblock %}
+{% block subhead %}<div class="sub">{{ r.label }}</div>{% endblock %}
+{% block content %}
+<div class="screen stack">
+
+  {# Month navigation #}
+  <div class="card" style="display:flex; align-items:center; padding:10px 12px">
+    <a class="icon-btn" href="/report?m={{ r.prev_m }}" aria-label="Previous month"
+       style="transform:rotate(180deg)">{{ m.icon('chevron') }}</a>
+    <div style="flex:1; text-align:center; font-weight:800; font-size: 0.9375rem">{{ r.label }}</div>
+    {% if r.month < cur_m %}
+    <a class="icon-btn" href="/report?m={{ r.next_m }}" aria-label="Next month">{{ m.icon('chevron') }}</a>
+    {% else %}
+    <span class="icon-btn" style="opacity:.25">{{ m.icon('chevron') }}</span>
+    {% endif %}
+  </div>
+
+  {# Summary hero #}
+  <div class="hero reveal">
+    <div class="label">Spent in {{ r.label.split()[0] }}</div>
+    <div class="balance num"><span class="cur">{{ currency|symbol }}</span><span>{{ m.money(r.expense) }}</span></div>
+    <div class="hero-row">
+      <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ currency|symbol }}{{ m.money_k(r.income) }}</div></div>
+      {# Amount and rate on separate lines: at the display type size the two
+         packed onto one line wrapped mid-value and broke the pill. #}
+      <div class="hero-pill"><div class="k">Saved</div>
+        <div class="v num">{{ currency|symbol }}{{ m.money_k([r.saved, 0]|max) }}</div>
+        {% if r.save_rate is not none %}
+        <div class="k" style="margin-top:2px">{{ [r.save_rate, 0]|max }}% of income</div>
+        {% endif %}</div>
+    </div>
+  </div>
+
+  {# vs last month #}
+  <div class="card reveal" style="display:flex; gap:10px; align-items:center">
+    {% if r.expense_delta > 0 %}
+    <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--expense-soft);color:var(--expense);flex:0 0 38px">{{ m.icon('income') }}</span>
+    <div style="font-size: 0.8125rem">You spent <b class="num">{{ currency|symbol }}{{ m.money_k(r.expense_delta) }}</b> more than last month{{ ' over the same days' if r.month == cur_m }} ({{ currency|symbol }}{{ m.money_k(r.prev_expense) }}).</div>
+    {% elif r.expense_delta < 0 %}
+    <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:rgba(54,211,154,.12);color:var(--income);flex:0 0 38px">{{ m.icon('expense') }}</span>
+    <div style="font-size: 0.8125rem">Nice — <b class="num">{{ currency|symbol }}{{ m.money_k(-r.expense_delta) }}</b> less than last month{{ ' over the same days' if r.month == cur_m }} ({{ currency|symbol }}{{ m.money_k(r.prev_expense) }}).</div>
+    {% else %}
+    <span class="ai" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--surface-3);color:var(--text-2);flex:0 0 38px">{{ m.icon('activity') }}</span>
+    <div style="font-size: 0.8125rem">Same as last month{{ ' over the same days' if r.month == cur_m }} ({{ currency|symbol }}{{ m.money_k(r.prev_expense) }}).</div>
+    {% endif %}
+  </div>
+
+  {# Headline stats #}
+  <div class="card stat-strip reveal">
+    <div class="stat"><div class="k">Transactions</div><div class="v num">{{ r.tx_count }}</div></div>
+    <div class="stat"><div class="k">No-spend days</div><div class="v num">{{ r.no_spend_days }}</div></div>
+    <div class="stat"><div class="k">Priciest day</div>
+      <div class="v num">{{ 'Day ' ~ r.highest_day.d if r.highest_day else '–' }}</div></div>
+  </div>
+
+  {# Daily spend bars #}
+  {% if r.daily and r.expense > 0 %}
+  {% set dmax = r.daily | map(attribute='v') | max %}
+  <div class="section-h"><h2>Day by day</h2></div>
+  <div class="card reveal">
+    <div class="spark" style="height:80px">
+      {% for p in r.daily %}
+      <i class="{{ 'zero' if p.v == 0 }}" style="height:{{ [(p.v / dmax * 100)|round|int, 4]|max if dmax else 4 }}%"
+         title="Day {{ p.d }} · {{ m.money(p.v) }}"></i>
+      {% endfor %}
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px" class="faint">
+      <span style="font-size: 0.6562rem">1</span><span style="font-size: 0.6562rem">{{ r.daily|length }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Categories vs last month #}
+  {% if r.categories %}
+  <div class="section-h"><h2>By category</h2></div>
+  <div class="card reveal stack" style="gap:12px">
+    {% set cmax = r.categories[0].value %}
+    {% for c in r.categories %}
+    <div>
+      <div style="display:flex; align-items:baseline; gap:8px">
+        <span style="width:9px;height:9px;border-radius:50%;background:{{ c.color }};flex:0 0 9px;align-self:center"></span>
+        <span style="flex:1; font-size: 0.8438rem; font-weight:600">{{ c.name }}</span>
+        {% if c.delta > 0 %}<span class="num" style="font-size: 0.6875rem; font-weight:700; color:var(--expense)">▲ {{ m.money_k(c.delta) }}</span>
+        {% elif c.delta < 0 %}<span class="num" style="font-size: 0.6875rem; font-weight:700; color:var(--income)">▼ {{ m.money_k(-c.delta) }}</span>{% endif %}
+        <span class="num" style="font-size: 0.7812rem; font-weight:700">{{ currency|symbol }}{{ m.money_k(c.value) }}</span>
+      </div>
+      <div class="cat-bar" style="margin-top:6px"><i style="width:{{ (c.value / cmax * 100)|round|int if cmax else 0 }}%; background:{{ c.color }}"></i></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Top merchants #}
+  {% if r.merchants %}
+  <div class="section-h"><h2>Top merchants</h2></div>
+  <div class="tx-list reveal">
+    {% for mch in r.merchants %}
+    <div class="tx">
+      {{ m.avatar(mch.name) }}
+      <div class="tx-main"><div class="tx-name">{{ mch.name }}</div></div>
+      <div class="tx-amt num">{{ currency|symbol }}{{ m.money_k(mch.value) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── Local intelligence ────────────────────────────────────────────────
+     Every block below is arithmetic over this device's own rows. Each one
+     renders only when it has enough evidence to be worth reading, so a new
+     ledger shows a short honest page rather than a wall of placeholders. #}
+
+  {# Forecast — only ever for the month in progress #}
+  {% if ins.forecast %}
+  <div class="section-h"><h2>Where this month lands</h2></div>
+  <div class="card reveal">
+    <div style="display:flex; align-items:baseline; gap:8px">
+      <div class="num" style="font-size: var(--t-h1); font-weight:800">
+        {{ currency|symbol }}{{ m.money(ins.forecast.projected) }}</div>
+      <div class="faint" style="font-size: var(--t-xs)">projected</div>
+    </div>
+    <div class="cat-bar" style="margin-top:10px">
+      <i style="width:{{ (ins.forecast.spent / ins.forecast.projected * 100)|round|int
+                          if ins.forecast.projected else 0 }}%; background:var(--grad)"></i>
+    </div>
+    <div class="mut" style="font-size: var(--t-xs); margin-top:8px">
+      {{ currency|symbol }}{{ m.money_k(ins.forecast.spent) }} spent over
+      {{ ins.forecast.elapsed_days }} day{{ '' if ins.forecast.elapsed_days == 1 else 's' }}
+      ({{ currency|symbol }}{{ m.money_k(ins.forecast.run_rate) }}/day),
+      {{ ins.forecast.remaining_days }} day{{ '' if ins.forecast.remaining_days == 1 else 's' }} to go.
+      {%- if ins.forecast.committed > 0 %}
+      Includes {{ currency|symbol }}{{ m.money_k(ins.forecast.committed) }} of recurring
+      charges already due.{% endif %}
+    </div>
+    {% if ins.forecast.vs_prev is not none %}
+    <div style="font-size: var(--t-sm); margin-top:10px; font-weight:600;
+                color:{{ 'var(--expense)' if ins.forecast.vs_prev > 0 else 'var(--income)' }}">
+      {% if ins.forecast.vs_prev > 0 %}
+        {{ currency|symbol }}{{ m.money_k(ins.forecast.vs_prev) }} above last month's
+        {{ currency|symbol }}{{ m.money_k(ins.forecast.prev_total) }}
+      {% else %}
+        {{ currency|symbol }}{{ m.money_k(-ins.forecast.vs_prev) }} below last month's
+        {{ currency|symbol }}{{ m.money_k(ins.forecast.prev_total) }}
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if ins.forecast.upcoming %}
+    <div class="stack" style="gap:6px; margin-top:12px; padding-top:12px;
+                              border-top:1px solid var(--hairline)">
+      {% for u in ins.forecast.upcoming %}
+      <div style="display:flex; align-items:center; gap:8px; font-size: var(--t-xs)">
+        <span class="faint" style="flex:1; min-width:0; overflow:hidden;
+                                   text-overflow:ellipsis; white-space:nowrap">
+          {{ u.name|merchant }}</span>
+        <span class="faint">{{ u.next_due[8:10] }}/{{ u.next_due[5:7] }}</span>
+        <span class="num" style="font-weight:700">{{ currency|symbol }}{{ m.money_k(u.amount) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# Why this month cost what it did #}
+  {% if ins.anomalies %}
+  <div class="section-h"><h2>Unusually large</h2></div>
+  <div class="card reveal stack" style="gap:12px">
+    {% for a in ins.anomalies %}
+    <div style="display:flex; gap:10px; align-items:flex-start">
+      <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;
+                              place-items:center;background:var(--expense-soft);
+                              color:var(--expense);flex:0 0 34px">{{ m.icon('income') }}</span>
+      <div style="flex:1; min-width:0">
+        <div style="font-size: var(--t-sm); font-weight:700">
+          {{ a.name|merchant }}
+          <span class="pill" style="margin-left:6px; background:var(--expense-soft);
+                                    color:var(--expense)">{{ a.multiple }}×</span>
+        </div>
+        <div class="faint" style="font-size: var(--t-xs); margin-top:2px">
+          {{ currency|symbol }}{{ m.money(a.amount) }} on {{ a.date[8:10] }}/{{ a.date[5:7] }}
+          against your usual {{ currency|symbol }}{{ m.money(a.usual) }} there.
+        </div>
+      </div>
+      <a class="btn-soft btn-sm" href="/transactions?tx={{ a.id }}">View</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Savings opportunities — each one carries the sum it is worth #}
+  {% if ins.savings %}
+  <div class="section-h"><h2>Where the money goes</h2></div>
+  <div class="card reveal stack" style="gap:14px">
+    {% for o in ins.savings %}
+    <div>
+      <div style="display:flex; align-items:baseline; gap:8px">
+        <span style="flex:1; font-size: var(--t-sm); font-weight:700">{{ o.title }}</span>
+        <span class="num" style="font-size: var(--t-sm); font-weight:800">
+          {{ currency|symbol }}{{ m.money_k(o.amount) }}</span>
+      </div>
+      <div class="faint" style="font-size: var(--t-xs); margin-top:3px">{{ o.detail }}</div>
+      {% if o['items'] %}
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px">
+        {% for it in o['items'] %}<span class="pill">{{ it|merchant }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Cash flow: per-month bars plus the running total the bars cannot show #}
+  {% set live_flow = ins.cash_flow | rejectattr('empty') | list %}
+  {% if live_flow | length > 1 %}
+  <div class="section-h"><h2>Cash flow</h2></div>
+  <div class="card reveal">
+    {% set fmax = [ins.cash_flow | map(attribute='income') | max,
+                   ins.cash_flow | map(attribute='expense') | max] | max %}
+    <div class="flow">
+      {% for f in ins.cash_flow %}
+      <div class="flow-m">
+        <div class="flow-bars">
+          <i class="in" style="height:{{ (f.income / fmax * 100)|round|int if fmax else 0 }}%"
+             title="{{ f.label }} in {{ m.money(f.income) }}"></i>
+          <i class="out" style="height:{{ (f.expense / fmax * 100)|round|int if fmax else 0 }}%"
+             title="{{ f.label }} out {{ m.money(f.expense) }}"></i>
+        </div>
+        <div class="flow-l">{{ f.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:14px; margin-top:10px; font-size: var(--t-micro)"
+         class="faint">
+      <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;
+                      background:var(--income);margin-right:5px"></i>In</span>
+      <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;
+                      background:var(--expense);margin-right:5px"></i>Out</span>
+    </div>
+    {% set last = live_flow[-1] %}
+    <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--hairline);
+                font-size: var(--t-xs)">
+      Over these {{ ins.cash_flow|length }} months you are
+      <b class="num" style="color:{{ 'var(--income)' if last.running >= 0 else 'var(--expense)' }}">
+        {{ currency|symbol }}{{ m.money_k(last.running|abs) }}
+        {{ 'ahead' if last.running >= 0 else 'behind' }}</b>.
+    </div>
+  </div>
+  {% endif %}
+
+  {# Category trends across months, not just versus last month #}
+  {% if ins.category_trends %}
+  <div class="section-h"><h2>Category trends</h2></div>
+  <div class="card reveal stack" style="gap:14px">
+    {% for c in ins.category_trends %}
+    {% set cmax2 = c.series | max %}
+    <div>
+      <div style="display:flex; align-items:baseline; gap:8px">
+        <span style="width:9px;height:9px;border-radius:50%;background:{{ c.color }};
+                     flex:0 0 9px;align-self:center"></span>
+        <span style="flex:1; font-size: var(--t-sm); font-weight:600">{{ c.name }}</span>
+        {% if c.direction == 'rising' %}
+        <span class="pill" style="background:var(--expense-soft); color:var(--expense)">
+          ▲ {{ c.change_pct }}%</span>
+        {% elif c.direction == 'falling' %}
+        <span class="pill" style="background:var(--income-soft); color:var(--income)">
+          ▼ {{ -c.change_pct }}%</span>
+        {% endif %}
+        <span class="num" style="font-size: var(--t-xs); font-weight:700">
+          {{ currency|symbol }}{{ m.money_k(c.avg) }}/mo</span>
+      </div>
+      <div class="spark spark-trend" style="height:34px; margin-top:6px">
+        {% for v in c.series %}
+        <i class="{{ 'zero' if v == 0 }}"
+           style="height:{{ [(v / cmax2 * 100)|round|int, 4]|max if cmax2 else 4 }}%;
+                  background:{{ c.color if v > 0 }}"
+           title="{{ c.labels[loop.index0] }} · {{ m.money(v) }}"></i>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Merchants, each compared against its own history #}
+  {% if ins.merchants %}
+  <div class="section-h"><h2>Merchants this month</h2></div>
+  <div class="card reveal stack" style="gap:12px">
+    {% for mi in ins.merchants %}
+    <div style="display:flex; align-items:center; gap:10px">
+      {{ m.avatar(mi.name|merchant) }}
+      <div style="flex:1; min-width:0">
+        <div style="font-size: var(--t-sm); font-weight:700; white-space:nowrap;
+                    overflow:hidden; text-overflow:ellipsis">{{ mi.name|merchant }}</div>
+        <div class="faint" style="font-size: var(--t-micro)">
+          {{ mi.visits }} visit{{ '' if mi.visits == 1 else 's' }}
+          {%- if mi.visits > 1 %} · {{ currency|symbol }}{{ m.money_k(mi.avg_ticket) }} each{% endif %}
+          {%- if mi.baseline %} · usually {{ currency|symbol }}{{ m.money_k(mi.baseline) }}/mo{% endif %}
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="num" style="font-size: var(--t-sm); font-weight:800">
+          {{ currency|symbol }}{{ m.money_k(mi.total) }}</div>
+        {% if mi.change_pct is not none and mi.change_pct|abs >= 15 %}
+        <div class="num" style="font-size: var(--t-micro); font-weight:700;
+                    color:{{ 'var(--expense)' if mi.change_pct > 0 else 'var(--income)' }}">
+          {% if mi.multiple %}▲ {{ mi.multiple }}×
+          {%- else %}{{ '▲' if mi.change_pct > 0 else '▼' }} {{ mi.change_pct|abs }}%{% endif %}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if r.tx_count == 0 %}
+  <div class="empty"><div class="ei">{{ m.icon('calendar') }}</div>
+    <h2 class="empty-h">Nothing in {{ r.label }}</h2><p>No transactions were recorded this month.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

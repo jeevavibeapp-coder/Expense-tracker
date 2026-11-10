@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The no-SMS flavour. Play Protect refuses to sideload any app declaring
+     READ_SMS or RECEIVE_SMS, and in India, Singapore, Thailand and Brazil its
+     enhanced fraud protection does so with no override. The block is about
+     the permission being present in the manifest — signing, the debuggable
+     flag and app behaviour make no difference — so the only build that
+     installs on those devices is one that never asks. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.RECEIVE_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_SMS" tools:node="remove" />
+    <application>
+        <receiver android:name=".sms.SmsIntakeReceiver" tools:node="remove" />
+    </application>
+</manifest>

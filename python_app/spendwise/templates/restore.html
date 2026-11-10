@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Restore · {{ app_name }}{% endblock %}
+{% block heading %}Restore{% endblock %}
+{% block subhead %}<div class="sub">From a SpendWise backup file</div>{% endblock %}
+{% block content %}
+<div class="screen stack">
+
+  {% if error %}
+  <div class="alert high">
+    <span class="ai" style="background:var(--expense)22; color:var(--expense)">{{ m.icon('shield') }}</span>
+    <div class="am"><div class="at">Nothing was changed</div>
+      <div class="ad">{{ error }}</div></div>
+  </div>
+  {% endif %}
+
+  {% if result %}
+  <div class="card stack" style="gap:10px">
+    <div style="font-weight:800; font-size: var(--t-sm)">Restored</div>
+    <div class="stat-strip" style="padding:12px 0">
+      <div class="stat"><div class="k">Transactions</div>
+        <div class="v num">{{ result.added.transactions }}</div></div>
+      <div class="stat"><div class="k">Categories</div>
+        <div class="v num">{{ result.added.categories }}</div></div>
+      <div class="stat"><div class="k">Merchants</div>
+        <div class="v num">{{ result.added.merchants }}</div></div>
+    </div>
+    {% if result.skipped.transactions %}
+    <div class="mut" style="font-size: var(--t-xs)">
+      {{ result.skipped.transactions }} transaction(s) were already here and
+      were left alone. Restoring the same file twice never duplicates
+      anything.
+    </div>
+    {% endif %}
+    <a class="btn" href="/dashboard" style="display:block; text-align:center">Done</a>
+  </div>
+  {% endif %}
+
+  {% if preview %}
+  {# Nobody should press a button called Restore without being told what is in
+     the file they picked. #}
+  <div class="card stack" style="gap:12px">
+    <div style="font-weight:800; font-size: var(--t-sm)">This backup contains</div>
+    <div class="stat-strip" style="padding:12px 0">
+      <div class="stat"><div class="k">Transactions</div>
+        <div class="v num">{{ preview.transactions }}</div></div>
+      <div class="stat"><div class="k">Categories</div>
+        <div class="v num">{{ preview.categories }}</div></div>
+      <div class="stat"><div class="k">Merchants</div>
+        <div class="v num">{{ preview.merchants }}</div></div>
+    </div>
+    <div class="mut" style="font-size: var(--t-xs)">
+      {% if preview.first %}Covering {{ preview.first }} to {{ preview.last }}.{% endif %}
+      {% if preview.created_at %} Written {{ preview.created_at[:10] }}.{% endif %}
+    </div>
+    <div class="mut" style="font-size: var(--t-xs)">
+      The file has to be chosen again — a browser will not let a page keep
+      hold of a file across a page load, and that is the right restriction.
+    </div>
+    <form method="post" action="/restore" enctype="multipart/form-data" class="stack">
+      <input type="file" name="backup" accept=".json,application/json" required
+             aria-label="Backup file">
+      <div class="field" style="margin:0"><label class="lbl">How to restore</label>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="merge" checked>
+            <span>Merge</span></label>
+          <label><input type="radio" name="mode" value="replace">
+            <span>Replace</span></label>
+        </div>
+      </div>
+      <input type="hidden" name="confirm" value="yes">
+      <button class="btn" type="submit" style="width:100%">Restore this backup</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if not result %}
+  <div class="card stack" style="gap:12px">
+    <div style="font-weight:700; font-size: var(--t-sm)">Choose a backup file</div>
+    <div class="mut" style="font-size: var(--t-xs)">
+      A <b>.json</b> file downloaded from SpendWise. A CSV export is a report
+      for a spreadsheet and cannot be restored — use <a href="/import">Import</a>
+      for that.
+    </div>
+    <form method="post" action="/restore" enctype="multipart/form-data" class="stack">
+      <input type="file" name="backup" accept=".json,application/json" required
+             aria-label="Backup file">
+      <button class="btn-soft" type="submit" style="width:100%">Check this file</button>
+    </form>
+  </div>
+
+  <div class="card stack" style="gap:10px; font-size: var(--t-xs)">
+    <div><b>Merge</b> keeps everything already on this phone and adds only what
+      is missing. Restoring the same file twice changes nothing the second
+      time.</div>
+    <div><b>Replace</b> clears this phone's ledger first. It is the new-phone
+      option, and the only one that can lose data.</div>
+    <div class="faint">Either way the restore happens in one step: if the file
+      turns out to be damaged, nothing is changed at all.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
