@@ -195,7 +195,25 @@ db_ok() { [ -n "$(dsh 'command -v sqlite3')" ] && db "SELECT 1" | grep -q '^1$';
 # uses: "₹400", not "₹400.0".
 money() { printf '₹%s' "${1%.0}"; }
 
-back() { dsh input keyevent KEYCODE_BACK; sleep 1; }
+# The system Back key, only ever to close a sheet. Pages are left by the top
+# bar's Back instead: on a tab the system key goes to Home, and on Home it
+# closes the app, so one press too many would end the run.
+close_sheet() { dsh input keyevent KEYCODE_BACK; sleep 1; }
+
+page_back() {  # page_back NAME: one page back, by the top bar's Back
+  dump "$1" && tap "$1" '^Back$' text && sleep 1
+}
+
+to_tabs() {  # to_tabs NAME: back through every open page to the tabs
+  local k
+  for k in 1 2 3 4; do
+    dump "$1" || return 1
+    on_screen "$1" '^Back$' || return 0
+    tap "$1" '^Back$' text
+    sleep 1
+  done
+  dump "$1" && ! on_screen "$1" '^Back$'
+}
 
 # --- another app's screen ---------------------------------------------------
 
@@ -547,11 +565,11 @@ if [ "$EMULATOR" != yes ]; then
 else
   day=$(dsh date +%d-%b-%y)
   PASTE_BODY="Rs.$PASTE_AMOUNT.00 debited from a/c **1234 on $day to SWIGGY Ref $PASTE_REF UPI"
-  PASTE_RX="SWIGGY Ref $PASTE_REF"
+  PASTE_SMS_RX="SWIGGY Ref $PASTE_REF"
   reply=$(adb emu sms send VM-HDFCBK "$PASTE_BODY" 2>&1 < /dev/null)
   echo "    emulator console: ${reply:-<no reply>}"
   sleep 3
-  copy_from_messages p01-messages VM-HDFCBK "$PASTE_RX"
+  copy_from_messages p01-messages VM-HDFCBK "$PASTE_SMS_RX"
   check $? "copied a bank debit SMS out of the Messages app (long-press, Copy text)"
   shot p01-messages-b
 
@@ -562,7 +580,7 @@ else
     fail "Settings > 'Paste a bank message' opens the paste page"; failed_here p02-open-c
   fi
 
-  paste_into p03-paste '^Bank message$' "$PASTE_RX"
+  paste_into p03-paste '^Bank message$' "$PASTE_SMS_RX"
   check $? "the copied SMS pastes into 'Bank message' from the clipboard"
 
   if read_paste p03-paste-in && on_screen p03-paste-in-card "^Here's what SpendWise read\$"; then
@@ -587,7 +605,7 @@ else
     fail "Save ₹$PASTE_AMOUNT files it and clears the card"; failed_here p04-saved
   fi
 
-  back; back
+  to_tabs p05-back
   if dump p05-activity && tap p05-activity '^Activity$' &&
      wait_for 15 p05-activity "(?i)^$PASTE_PAYEE\$"; then
     rows=$(ui count "$OUT/p05-activity.xml" "$PKG" "(?i)^$PASTE_PAYEE\$")
@@ -603,7 +621,7 @@ else
 
   # The clipboard still holds the same message.
   open_paste p06-open
-  paste_into p06-paste '^Bank message$' "$PASTE_RX"
+  paste_into p06-paste '^Bank message$' "$PASTE_SMS_RX"
   if read_paste p06-paste-in && on_screen p06-paste-in-card '^Already in your ledger$' &&
      on_screen p06-paste-in-card 'one bank message is one transaction'; then
     pass "pasting the same message again says 'Already in your ledger'"
@@ -649,7 +667,7 @@ else
     check $? "nothing filed for it, one masked miss stored (rows for ₹500: $n, parse_misses: $m)"
   fi
 
-  back
+  page_back p09-back
   if scroll_to p09-settings "^1 bank message couldn.t be read\$"; then
     pass "Settings > SMS capture says '1 bank message couldn't be read'"
   else
@@ -657,7 +675,7 @@ else
   fi
   texts p09-settings
   shot p09-settings
-  back
+  to_tabs p09-back
 fi
 
 # ============================================================================
@@ -893,7 +911,7 @@ if tap m06-learned "$FORGET_RX" desc && wait_for 10 m07-forgot '^Undo$'; then
 else
   fail "Forget offers Undo ('Forgot “$MERCHANT”…')"; failed_here m07-forgot
 fi
-back; back
+to_tabs m09-back
 
 # ============================================================================
 step "7. Deleting a category keeps what is filed under it; adding the name back restores it"
@@ -963,7 +981,7 @@ if add_sheet c07-new; then
 else
   fail "the add sheet no longer offers $CATEGORY (the sheet did not open)"
 fi
-back
+close_sheet
 
 # What is already filed there still says so where it is edited.
 dump c08-activity
@@ -977,7 +995,7 @@ if tap c08-activity "(?i)^$MERCHANT\$" && wait_for 10 c08-row '^Edit$' && tap c0
 else
   fail "an existing $MERCHANT payment still shows $CATEGORY, selected, on its edit sheet"; failed_here c09-edit
 fi
-back
+close_sheet
 
 dump c10-tabs && tap c10-tabs '^Budgets$'
 sleep 1
@@ -1014,7 +1032,7 @@ if wait_for 15 c14-activity '^Add a transaction$' && add_sheet c14-new; then
 else
   fail "the add sheet offers $CATEGORY again (the sheet did not open)"
 fi
-back
+close_sheet
 
 # ============================================================================
 step "8. A real database upgrade, version 3 -> 4, in place"
@@ -1097,7 +1115,7 @@ else
     launch > /dev/null
     if open_paste u07-open && paste_into u07-paste '^Bank message$' "$UNREAD_RX" &&
        read_paste u07-paste-in && on_screen u07-paste-in-card "^That doesn't read as a bank transaction\$" &&
-       back && scroll_to u08-settings "^1 bank message couldn.t be read\$"; then
+       page_back u08-back && scroll_to u08-settings "^1 bank message couldn.t be read\$"; then
       pass "Settings shows the unreadable-messages section after the update ('1 bank message couldn't be read')"
     else
       fail "Settings shows the unreadable-messages section after the update ('1 bank message couldn't be read')"
