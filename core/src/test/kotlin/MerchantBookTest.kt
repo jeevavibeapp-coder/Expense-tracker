@@ -137,6 +137,35 @@ fun main() {
     val empty = MerchantBook.filing(emptyList(), "Ghost", emptySet())
     check("a name with no raw names and no learning has nothing to change", !empty.canRelearn)
 
+    println("=== a deleted category files nothing new ===")
+    val cats = listOf(
+        Categories.Row("food", "Food"),
+        Categories.Row("transport", "Transport", isArchived = true),
+        Categories.Row("dining", "Food & Dining", isArchived = true),
+    )
+    val r = MerchantBook.refused(f, cats)
+    check("a live category is not refused", "food" !in r.learned, "learned=${r.learned}")
+    check("a deleted one another merchant's row points at is", r.learned == setOf("transport"),
+        "learned=${r.learned}")
+    check("a built-in category is refused by name when deleted",
+        r.builtIn == setOf("Food & Dining"), "builtIn=${r.builtIn}")
+    check("so the page has something to say", !r.isEmpty())
+    val live = MerchantBook.refused(f, cats.map { it.copy(isArchived = false) })
+    check("with every category back, nothing is refused", live.isEmpty(), "refused=$live")
+    check("refused exactly when the resolver refuses",
+        (f.own + f.elsewhere).mapNotNull { it.categoryId }.all { id ->
+            (id in r.learned) == (Categories.fileable(id, cats) == null)
+        })
+    check("a renamed built-in category is refused too: the resolver finds it by name",
+        MerchantBook.refused(f, listOf(Categories.Row("food", "Food"),
+            Categories.Row("dining", "Eating out"), Categories.Row("transport", "Transport")))
+            .builtIn == setOf("Food & Dining"))
+    check("an id no category holds is refused, as the resolver refuses it",
+        MerchantBook.refused(f, listOf(Categories.Row("dining", "Food & Dining")))
+            .learned == setOf("food", "transport"))
+    check("a learned name with no category is not refused",
+        MerchantBook.refused(split, emptyList()).learned == setOf("x"))
+
     println("=== changing the learned category ===")
     val mature = learned("SWIGGY", "Swiggy", cat = "groceries", confirmations = 12, samples = 12)
     val moved = MerchantBook.recategorise(mature, "food")

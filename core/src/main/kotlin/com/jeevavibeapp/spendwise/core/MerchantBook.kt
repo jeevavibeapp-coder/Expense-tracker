@@ -187,6 +187,38 @@ object MerchantBook {
         )
     }
 
+    /**
+     * The categories [f] names that a new payment can no longer be filed
+     * under.
+     *
+     * A learned row outlives the category it points at: delete the category
+     * and the row is kept, so adding it back brings its payees back too. While
+     * it is gone the row files nothing — `Repo.resolveMerchant` passes every
+     * source through [Categories.fileable], and the payment asks for a
+     * category instead. A page that kept saying "filed under Entertainment"
+     * would describe something that stopped happening when the user deleted
+     * it. The built-in table is looked up by category NAME, as the resolver
+     * looks it up, so a seeded category the user renamed or deleted is
+     * refused here exactly when it is refused there.
+     *
+     * @property learned category ids of [Filing.own] and [Filing.elsewhere]
+     *   rows; null is never in it, because "no category" is not refused.
+     * @property builtIn [BuiltIn.categoryName]s with no category to file under.
+     */
+    data class Refused(val learned: Set<String>, val builtIn: Set<String>) {
+        fun isEmpty(): Boolean = learned.isEmpty() && builtIn.isEmpty()
+    }
+
+    /** @param rows every category, deleted ones included. */
+    fun refused(f: Filing, rows: List<Categories.Row>): Refused = Refused(
+        learned = (f.own + f.elsewhere).mapNotNull { it.categoryId }
+            .filterTo(LinkedHashSet()) { Categories.fileable(it, rows) == null },
+        builtIn = f.builtIn.map { it.categoryName }
+            .filterTo(LinkedHashSet()) { name ->
+                Categories.fileable(rows.firstOrNull { it.name == name }?.id, rows) == null
+            },
+    )
+
     private fun mapping(row: LearningRow) = Mapping(
         rawName = row.rawName,
         merchantName = row.merchantName,
