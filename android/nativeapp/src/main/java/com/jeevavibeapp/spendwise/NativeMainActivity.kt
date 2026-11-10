@@ -372,9 +372,13 @@ class NativeMainActivity : ComponentActivity() {
         // octet-stream would otherwise grey out the only file that works.
         val onRestore: () -> Unit = { openBackup.launch(arrayOf("*/*")) }
         val onAllowSms: () -> Unit = { requestSms() }
+        // From the report's merchant rows and from any payment's edit sheet.
+        // At most one merchant page is on the stack: `merchant` is a single
+        // name, so a second entry would show the same merchant as the first,
+        // and Back from it would appear to do nothing.
         val openMerchant: (String) -> Unit = { name ->
             merchant = name
-            stack = stack + Page.MERCHANT
+            stack = stack.filterNot { it == Page.MERCHANT } + Page.MERCHANT
         }
         // From Home, Activity, the add sheet, Settings and Help alike, so
         // every route to the page leaves the same back stack: Back from it
@@ -872,6 +876,12 @@ class NativeMainActivity : ComponentActivity() {
                 // capture missed, which is where the web app's import page was
                 // reachable from too.
                 onPaste = onPaste,
+                // Not over the merchant page, whose every payment is already
+                // that merchant's: the link would reopen the page beneath it.
+                onMerchant = if (page == Page.MERCHANT) null else { name ->
+                    sheet = null
+                    openMerchant(name)
+                },
             )
         }
 

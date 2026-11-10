@@ -61,6 +61,10 @@ private val DateLabel: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yy
  * @param onPaste leave the form for the paste page. Offered only when adding:
  *   it is how the SMS build reaches a message capture missed, and the host
  *   closes the sheet itself on the way.
+ * @param onMerchant open the page of every payment to this one's payee,
+ *   given the name the report groups it under. Offered only when editing,
+ *   and the host closes the sheet itself on the way. Null where that page is
+ *   already the one underneath.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +77,7 @@ fun AddEditSheet(
     onDelete: ((TransactionEntity) -> Unit)? = null,
     onRestore: ((TransactionEntity) -> Unit)? = null,
     onPaste: (() -> Unit)? = null,
+    onMerchant: ((String) -> Unit)? = null,
 ) {
     // A form whose amount field starts below the fold cannot be focused into
     // usefully, and this one is taller than a partial sheet.
@@ -114,6 +119,10 @@ fun AddEditSheet(
     }
 
     val payee = merchant.trim()
+    // As saved, not as typed: the page groups by the stored name, exactly as
+    // the ledger handed to :core names the row, and a half-typed rename would
+    // open a page with nothing on it.
+    val payeeName = existing?.let { it.merchantName ?: it.rawMerchant }?.takeIf { it.isNotBlank() }
 
     // The answer is kept next to the question it answers. Without that pairing
     // a resolution for "swig" is still on screen — and still what Save would
@@ -179,6 +188,20 @@ fun AddEditSheet(
                     contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
                     modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
                 ) { Text("${ManualEntry.Route.PASTE.label} instead") }
+                Spacer(Modifier.height(8.dp))
+            } else if (payeeName != null && onMerchant != null) {
+                // From a payment to the payee behind it, and so to what
+                // SpendWise has learned about that payee. Without it the
+                // merchant page opens only from the report's list of one
+                // month's merchants.
+                TextButton(
+                    onClick = { onMerchant(payeeName) },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                ) {
+                    Text(if (existing?.type == "income") "See all payments from $payeeName"
+                         else "See all payments to $payeeName")
+                }
                 Spacer(Modifier.height(8.dp))
             } else {
                 Spacer(Modifier.height(18.dp))

@@ -995,7 +995,40 @@ if tap c08-activity "(?i)^$MERCHANT\$" && wait_for 10 c08-row '^Edit$' && tap c0
 else
   fail "an existing $MERCHANT payment still shows $CATEGORY, selected, on its edit sheet"; failed_here c09-edit
 fi
-close_sheet
+
+# From one payment to the rest of its payee's, by the edit sheet's link. Opened
+# while $CATEGORY is deleted, so the page has to name it rather than call it
+# "a category that no longer exists", and has to say new payments now ask.
+SEE_ALL_RX="^See all payments to $MERCHANT\$"
+GONE_RX="^New payments from $MERCHANT were filed under $CATEGORY, which is deleted, so each one now asks you for a category\\.\$"
+ROW_RX="(^|· )$CATEGORY( ·|\$)"
+if dump c09m-edit && tap c09m-edit "$SEE_ALL_RX" text && wait_for 15 c09n-merchant '^SPENT HERE$'; then
+  pass "the edit sheet's 'See all payments to $MERCHANT' opens its merchant page"
+  texts c09n-merchant
+  got=$(ui next "$OUT/c09n-merchant.xml" "$PKG" '^SPENT HERE$')
+  [ "$got" = "$(money "$want_total")" ]
+  check $? "it is $MERCHANT's page, with its $(money "$want_total") (shows '$got')"
+  if scroll_to c09o-learned "$GONE_RX"; then
+    pass "with $CATEGORY deleted, the learning card says new $MERCHANT payments ask for a category"
+  else
+    fail "with $CATEGORY deleted, the learning card says new $MERCHANT payments ask for a category"
+    texts c09o-learned
+  fi
+  shot c09o-learned
+  if scroll_to c09p-rows "$ROW_RX" && ! on_screen c09p-rows '(?i)no longer exists'; then
+    pass "its payments are listed under $CATEGORY by name, not as a category that no longer exists"
+  else
+    fail "its payments are listed under $CATEGORY by name, not as a category that no longer exists"
+    texts c09p-rows
+  fi
+  shot c09p-rows
+else
+  fail "the edit sheet's 'See all payments to $MERCHANT' opens its merchant page"; failed_here c09n-merchant
+  # The link closes the sheet itself, so the system key is pressed only if
+  # the sheet is still up: on a tab it would leave the tab instead.
+  dump c09q-sheet && on_screen c09q-sheet '^Edit transaction$' && close_sheet
+fi
+to_tabs c09q-back
 
 dump c10-tabs && tap c10-tabs '^Budgets$'
 sleep 1
