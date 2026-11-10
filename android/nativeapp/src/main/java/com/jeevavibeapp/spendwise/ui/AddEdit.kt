@@ -15,6 +15,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.jeevavibeapp.spendwise.core.Insights
+import com.jeevavibeapp.spendwise.core.ManualEntry
 import com.jeevavibeapp.spendwise.data.CategoryEntity
 import com.jeevavibeapp.spendwise.data.Repo
 import com.jeevavibeapp.spendwise.data.TransactionEntity
@@ -57,6 +58,9 @@ private val DateLabel: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yy
  *   here — the sheet stays up to offer the undo.
  * @param onRestore clear the soft delete. [onDelete] and [onRestore] are a
  *   pair: the delete control appears only when editing and both are supplied.
+ * @param onPaste leave the form for the paste page. Offered only when adding:
+ *   it is how the SMS build reaches a message capture missed, and the host
+ *   closes the sheet itself on the way.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +72,7 @@ fun AddEditSheet(
     existing: TransactionEntity? = null,
     onDelete: ((TransactionEntity) -> Unit)? = null,
     onRestore: ((TransactionEntity) -> Unit)? = null,
+    onPaste: (() -> Unit)? = null,
 ) {
     // A form whose amount field starts below the fold cannot be focused into
     // usefully, and this one is taller than a partial sheet.
@@ -164,7 +169,20 @@ fun AddEditSheet(
                 if (existing == null) "Add transaction" else "Edit transaction",
                 style = MaterialTheme.typography.headlineLarge,
             )
-            Spacer(Modifier.height(18.dp))
+            // Under the title rather than under Save, where the web app had
+            // it: the amount field takes focus as the sheet opens, and on a
+            // phone the keyboard that brings up covers the bottom of the form.
+            // Above the fields, it is also what TalkBack reads before them.
+            if (existing == null && onPaste != null) {
+                TextButton(
+                    onClick = onPaste,
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                    modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+                ) { Text("${ManualEntry.Route.PASTE.label} instead") }
+                Spacer(Modifier.height(8.dp))
+            } else {
+                Spacer(Modifier.height(18.dp))
+            }
 
             AmountField(
                 value = amount,

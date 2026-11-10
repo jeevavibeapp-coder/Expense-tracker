@@ -58,7 +58,9 @@ private fun SectionHeader(text: String) {
 fun DashboardScreen(
     balance: Double, income: Double, expense: Double,
     insights: List<String>, recurring: List<Recurring>,
+    capture: ManualEntry.Capture,
     onAdd: () -> Unit,
+    onPaste: () -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 96.dp),
@@ -101,23 +103,30 @@ fun DashboardScreen(
         // rather than a new one, and the only manual entry point is a "+" the
         // first-run user has no reason to have found yet.
         if (income == 0.0 && expense == 0.0 && recurring.isEmpty()) {
+            val empty = ManualEntry.emptyLedger(capture)
             item {
                 ScreenCard {
                     Text("Nothing recorded yet",
                         style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Bank messages are read on this device and filed here as " +
-                        "they arrive. You can also enter one yourself.",
+                        empty.body,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        onClick = onAdd,
-                        modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
-                    ) { Text("Add a transaction") }
+                    EntryRoutes(empty.routes, onAdd = onAdd, onPaste = onPaste)
                 }
+            }
+        } else if (ManualEntry.pasteOnHome(capture)) {
+            // Under the balance, ahead of everything else, because in this
+            // build it is how the balance changes at all. The empty card
+            // leads with paste instead, so the two never show together.
+            item {
+                OutlinedButton(
+                    onClick = onPaste,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+                ) { Text(ManualEntry.Route.PASTE.label) }
             }
         }
 
@@ -221,6 +230,9 @@ fun TransactionsScreen(
     onEdit: (TransactionEntity) -> Unit,
     onDelete: (String) -> Unit,
     onConfirm: (String, String) -> Unit,
+    capture: ManualEntry.Capture,
+    onAdd: () -> Unit,
+    onPaste: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         // Nothing to search until there is something in the ledger, and a
@@ -241,11 +253,16 @@ fun TransactionsScreen(
             // Two different situations, two different messages. Telling
             // someone with a full ledger "no transactions yet" because their
             // search missed claims their data is gone.
-            EmptyState(
-                title = if (query.isBlank()) "No transactions yet" else "No matches",
-                body = if (query.isBlank())
-                    "Bank messages are captured automatically — or add one yourself."
-                else "Nothing matches “$query”. Your other transactions are still there.",
+            // The empty ledger says what Home's empty card says: "captured
+            // automatically" used to be said here to the no-SMS build too.
+            if (query.isBlank()) {
+                val empty = ManualEntry.emptyLedger(capture)
+                EmptyState(title = "No transactions yet", body = empty.body) {
+                    EntryRoutes(empty.routes, onAdd = onAdd, onPaste = onPaste)
+                }
+            } else EmptyState(
+                title = "No matches",
+                body = "Nothing matches “$query”. Your other transactions are still there.",
             )
         } else {
             LazyColumn(
@@ -687,7 +704,11 @@ private fun HeldCard(
 }
 
 @Composable
-fun EmptyState(title: String, body: String) {
+fun EmptyState(
+    title: String,
+    body: String,
+    actions: (@Composable ColumnScope.() -> Unit)? = null,
+) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -701,5 +722,40 @@ fun EmptyState(title: String, body: String) {
         Text(body, style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center)
+        if (actions != null) {
+            Spacer(Modifier.height(16.dp))
+            actions()
+        }
+    }
+}
+
+/**
+ * The ways in an empty ledger offers, in the order :core put them, which is
+ * also the order TalkBack reads them in.
+ *
+ * A lone route stays the text button it always was: it is the form, and the
+ * "+" on the same screen is already the loud way to it. With a choice, the
+ * first is filled and both span the width, so the one that suits this build
+ * is the one the eye lands on and neither is a small target beside the other.
+ */
+@Composable
+private fun EntryRoutes(
+    routes: List<ManualEntry.Route>,
+    onAdd: () -> Unit,
+    onPaste: () -> Unit,
+) {
+    val choice = routes.size > 1
+    val size = (if (choice) Modifier.fillMaxWidth() else Modifier)
+        .heightIn(min = Tokens.minTouchTarget)
+    routes.forEachIndexed { i, route ->
+        val go = when (route) {
+            ManualEntry.Route.PASTE -> onPaste
+            ManualEntry.Route.BY_HAND -> onAdd
+        }
+        if (i == 0 && choice) {
+            Button(onClick = go, modifier = size) { Text(route.label) }
+        } else {
+            TextButton(onClick = go, modifier = size) { Text(route.label) }
+        }
     }
 }

@@ -43,8 +43,9 @@ object ManualEntry {
 
     /**
      * What a ledger with nothing in it says, and the ways in it offers.
-     * The first route is the primary one; the screen draws it as the filled
-     * button and the rest as quieter ones under it.
+     * Where there is a choice, the first route is the primary one; the
+     * screen draws it as the filled button and the rest as quieter ones
+     * under it.
      */
     data class Empty(val body: String, val routes: List<Route>)
 

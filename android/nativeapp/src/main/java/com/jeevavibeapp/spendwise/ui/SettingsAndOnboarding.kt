@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.jeevavibeapp.spendwise.core.Insights
+import com.jeevavibeapp.spendwise.core.ManualEntry
 import com.jeevavibeapp.spendwise.core.ParseMisses
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -53,6 +54,14 @@ import kotlin.math.roundToInt
  * front of a user who has nothing to allow.
  */
 enum class SmsAccess { GRANTED, DENIED, UNAVAILABLE }
+
+/** The same three states in :core's terms, for asking it what to offer. */
+val SmsAccess.capture: ManualEntry.Capture
+    get() = when (this) {
+        SmsAccess.GRANTED -> ManualEntry.Capture.AUTOMATIC
+        SmsAccess.DENIED -> ManualEntry.Capture.OFF
+        SmsAccess.UNAVAILABLE -> ManualEntry.Capture.NONE
+    }
 
 /** Everything the settings and help screens need to say about capture. */
 data class SmsStatus(
@@ -361,6 +370,16 @@ fun SettingsScreen(
                     else -> Note(
                         "Bank and UPI messages are captured automatically and parsed on " +
                         "this device — they never leave your phone.")
+                }
+
+                // Here as well as under "+", because this card is where someone
+                // comes looking when a message did not arrive. A row, not a
+                // button: in this build it is the exception, and Allow above
+                // is the thing this card most wants tapped.
+                if (sms.access != SmsAccess.UNAVAILABLE) onImport?.let {
+                    Spacer(Modifier.height(6.dp))
+                    NavRow(ManualEntry.Route.PASTE.label,
+                        "For one it missed: an older message, or one forwarded to you", it)
                 }
 
                 if (sms.unreadableKinds > 0) {
@@ -851,6 +870,9 @@ private val HELP_TOPICS: List<HelpTopic> = listOf(
                 "many bank messages could not be read; you can see their masked " +
                 "wording there and share it, so the format can be supported.",
         )),
+        Para("A message missed while capture was off, or one older than the inbox " +
+             "scan reaches, can still go in: tap + on Home, then Paste a bank " +
+             "message instead."),
     )),
 
     HelpTopic("A message was held instead of being added", listOf(

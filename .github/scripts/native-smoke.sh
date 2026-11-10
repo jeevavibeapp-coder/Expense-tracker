@@ -38,6 +38,12 @@ MANUAL_PAYEE=Chaayos
 SMS_AMOUNT=450
 SMS_PAYEE=Zomato
 
+# The paste page's own words. Its title is the same text as the buttons that
+# open it, so the title alone cannot tell "arrived" from "still on Home".
+PASTE_PAGE_RX='same parser that reads captured'
+PASTE_RX='^Paste a bank message$'
+SHEET_PASTE_RX='^Paste a bank message instead$'
+
 mkdir -p "$OUT"
 FAILS=0
 RESULTS=()
@@ -128,6 +134,12 @@ failed_here() {  # failed_here NAME: leave evidence in the log at a failure
   echo "  -- screen at this failure --"
   dump "$1" && texts "$1"
   shot "$1"
+}
+
+leave_page() {  # leave_page NAME: the top bar's Back, then wait for Home
+  # The app's own Back rather than the system key: on Home the system key
+  # closes the app, so a second press after a slow first one would end the run.
+  dump "$1" && tap "$1" '^Back$' text && wait_for 15 "$1" '^TOTAL BALANCE$'
 }
 
 # --- the app ----------------------------------------------------------------
@@ -247,14 +259,32 @@ else
 fi
 texts 02b-home
 
+# In this build pasting is how bank data arrives at all, so it is one tap
+# from Home: the empty ledger's first button.
+if tap 02b-home "$PASTE_RX" text && wait_for 15 02b1-paste "$PASTE_PAGE_RX"; then
+  pass "nosms: Home -> 'Paste a bank message' opens the paste page (one tap)"
+else
+  fail "nosms: Home -> 'Paste a bank message' opens the paste page (one tap)"
+  failed_here 02b1-paste
+fi
+texts 02b1-paste
+shot 02b1-paste
+if leave_page 02b-home; then
+  pass "Back from the paste page returns to Home"
+else
+  fail "Back from the paste page returns to Home"; failed_here 02b-home
+fi
+
 # The FAB first (it is on every list screen); the empty-state button second.
-if { tap 02b-home '^Add a transaction$' desc || tap 02b-home '^Add a transaction$' text; } &&
+if { tap 02b-home '^Add a transaction$' desc || tap 02b-home '^Enter by hand$' text; } &&
    wait_for 15 02c-sheet '^Add transaction$'; then
   pass "'+' opens the Add transaction sheet"
 else
   fail "'+' opens the Add transaction sheet"; failed_here 02c-sheet
 fi
 texts 02c-sheet
+on_screen 02c-sheet "$SHEET_PASTE_RX"
+check $? "the add sheet offers 'Paste a bank message instead'"
 
 xy=$(ui field "$OUT/02c-sheet.xml" "$PKG" '^Amount$' 0) && dsh input tap $xy
 sleep 1
@@ -282,6 +312,9 @@ else
   fail "Home shows ₹$MANUAL_AMOUNT spent after saving"; failed_here 02f-home-after
 fi
 texts 02f-home-after
+# Not only while the ledger is empty: it stays the build's way in.
+on_screen 02f-home-after "$PASTE_RX"
+check $? "nosms: Home keeps 'Paste a bank message' once the ledger has a row"
 
 if tap 02f-home-after '^Activity$' && wait_for 15 02-after-add "(?i)^$MANUAL_PAYEE\$" &&
    on_screen 02-after-add "₹$MANUAL_AMOUNT\$"; then
@@ -328,6 +361,28 @@ if wait_for 30 03a-home '^TOTAL BALANCE$'; then
   pass "after the update the app opens on Home (introduction already done)"
 else
   fail "after the update the app opens on Home (introduction already done)"; failed_here 03a-home
+fi
+
+# Capture is on here, so Home stays as it was and pasting — for a message
+# capture missed — is under "+" instead.
+if on_screen 03a-home "$PASTE_RX"; then
+  fail "sms: Home carries no paste control of its own"
+else
+  pass "sms: Home carries no paste control of its own"
+fi
+if tap 03a-home '^Add a transaction$' desc &&
+   wait_for 15 03a1-sheet "$SHEET_PASTE_RX" && tap 03a1-sheet "$SHEET_PASTE_RX" text &&
+   wait_for 15 03a2-paste "$PASTE_PAGE_RX"; then
+  pass "sms: '+' -> 'Paste a bank message instead' opens the paste page (two taps)"
+else
+  fail "sms: '+' -> 'Paste a bank message instead' opens the paste page (two taps)"
+  failed_here 03a2-paste
+fi
+texts 03a2-paste
+if leave_page 03a-home; then
+  pass "sms: Back from the paste page returns to Home"
+else
+  fail "sms: Back from the paste page returns to Home"; failed_here 03a-home
 fi
 
 dsh input keyevent KEYCODE_HOME

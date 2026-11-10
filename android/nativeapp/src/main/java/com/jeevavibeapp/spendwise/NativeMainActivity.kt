@@ -375,6 +375,13 @@ class NativeMainActivity : ComponentActivity() {
             merchant = name
             stack = stack + Page.MERCHANT
         }
+        // From Home, Activity, the add sheet, Settings and Help alike, so
+        // every route to the page leaves the same back stack: Back from it
+        // returns to whatever it was opened over.
+        val onPaste: () -> Unit = {
+            sheet = null
+            stack = stack + Page.PASTE
+        }
 
         // Back never exits from a page or an inner tab: it unwinds the stack,
         // then returns to Home, and only then falls through to the system.
@@ -492,7 +499,9 @@ class NativeMainActivity : ComponentActivity() {
                             balance = flow.income - flow.expense,
                             income = flow.income, expense = flow.expense,
                             insights = insights, recurring = recurring,
+                            capture = access.capture,
                             onAdd = { sheet = Sheet.New },
+                            onPaste = onPaste,
                         )
 
                         Tab.ACTIVITY -> {
@@ -532,6 +541,9 @@ class NativeMainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                capture = access.capture,
+                                onAdd = { sheet = Sheet.New },
+                                onPaste = onPaste,
                             )
                         }
 
@@ -784,7 +796,7 @@ class NativeMainActivity : ComponentActivity() {
                         onPrivacy = { stack = stack + Page.PRIVACY },
                         onHelp = { stack = stack + Page.HELP },
                         onHowItWorks = { stack = stack + Page.WELCOME },
-                        onImport = { stack = stack + Page.PASTE },
+                        onImport = onPaste,
                         flash = flash,
                     )
 
@@ -797,7 +809,7 @@ class NativeMainActivity : ComponentActivity() {
                         sms = sms,
                         onAllowSms = onAllowSms,
                         onExportUnreadable = onShareUnreadable,
-                        onImport = { stack = stack + Page.PASTE },
+                        onImport = onPaste,
                     )
 
                     // Read, shown, corrected, and only then written. The
@@ -854,6 +866,10 @@ class NativeMainActivity : ComponentActivity() {
                 existing = existing,
                 onDelete = { tx -> lifecycleScope.launch { repo.delete(tx.id) } },
                 onRestore = { tx -> lifecycleScope.launch { repo.undelete(tx.id) } },
+                // In every build: in the SMS one this is the way to a message
+                // capture missed, which is where the web app's import page was
+                // reachable from too.
+                onPaste = onPaste,
             )
         }
 
