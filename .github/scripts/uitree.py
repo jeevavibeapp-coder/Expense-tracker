@@ -40,6 +40,7 @@ BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 # bigger makes the log itself the problem.
 THUMB_WIDTH = 320
 MAX_BASE64 = 60_000
+B64_LINE = 4000
 
 
 def nodes(path, pkg):
@@ -245,8 +246,13 @@ def thumb(png, name):
     if data is None:
         print(f"SCREENSHOT-UNAVAILABLE {name}: {why}")
         return 0
+    # Long lines: the log is read back through tools that keep only its last
+    # few thousand LINES, and at 76 characters a line each screenshot cost
+    # about 800 of them, pushing the start of the run out of reach.
+    b64 = base64.b64encode(data).decode("ascii")
     print(f"SCREENSHOT-BEGIN {name}")
-    sys.stdout.write(base64.encodebytes(data).decode("ascii"))
+    for i in range(0, len(b64), B64_LINE):
+        print(b64[i:i + B64_LINE])
     print(f"SCREENSHOT-END {name}")
     return 0
 

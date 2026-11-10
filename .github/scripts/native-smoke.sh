@@ -195,10 +195,23 @@ db_ok() { [ -n "$(dsh 'command -v sqlite3')" ] && db "SELECT 1" | grep -q '^1$';
 # uses: "₹400", not "₹400.0".
 money() { printf '₹%s' "${1%.0}"; }
 
-# The system Back key, only ever to close a sheet. Pages are left by the top
-# bar's Back instead: on a tab the system key goes to Home, and on Home it
-# closes the app, so one press too many would end the run.
-close_sheet() { dsh input keyevent KEYCODE_BACK; sleep 1; }
+# The system Back key, only ever to close a sheet, and only while one is
+# open. Pages are left by the top bar's Back instead: on a tab the system key
+# goes to Home, and on Home it closes the app, so one press too many would
+# end the run. The sheet's focused amount field can take the first press
+# without the sheet closing, so it is pressed until the sheet is gone, and
+# the scrim above the sheet is tapped as a last resort.
+close_sheet() {  # close_sheet NAME
+  local k
+  for k in 1 2 3; do
+    dump "$1" || return 1
+    on_screen "$1" '^(Add|Edit) transaction$' || return 0
+    if [ "$k" -lt 3 ]; then dsh input keyevent KEYCODE_BACK
+    else dsh input tap $((W / 2)) $((H / 10)); fi
+    sleep 1
+  done
+  dump "$1" && ! on_screen "$1" '^(Add|Edit) transaction$'
+}
 
 page_back() {  # page_back NAME: one page back, by the top bar's Back
   dump "$1" && tap "$1" '^Back$' text && sleep 1
@@ -253,25 +266,31 @@ texts_in() {  # texts_in NAME PKG
 # `cmd clipboard`), `input text` cannot type everything a bank sends, and a
 # broadcast or a debug-only hook into the app would test a path no user has.
 SMS_APP=
-sms_app() {
-  if [ -z "$SMS_APP" ]; then
-    SMS_APP=$(dsh cmd role get-role-holders android.app.role.SMS 2>/dev/null |
-              tr ';' '\n' | tr -d ' ' | grep -m1 .)
-    [ -n "$SMS_APP" ] || SMS_APP=com.android.messaging
-    # Its first run otherwise opens on a permissions screen. A grant the app
-    # never asks for is refused, harmlessly.
-    for p in READ_SMS SEND_SMS RECEIVE_SMS RECEIVE_MMS READ_PHONE_STATE READ_CONTACTS; do
-      dsh pm grant "$SMS_APP" "android.permission.$p" > /dev/null 2>&1
-    done
-  fi
-  echo "$SMS_APP"
+sms_app() {  # the default SMS app's package; sets SMS_APP (call it outside $(...))
+  local c
+  [ -n "$SMS_APP" ] && return 0
+  # The role holder where `cmd role` can say (API 31+), the legacy setting,
+  # then AOSP's Messaging. Only a name the package manager knows is taken:
+  # API 30 answers the role query with an error message on stdout.
+  for c in $(dsh cmd role get-role-holders android.app.role.SMS 2>/dev/null | tr ';' ' ') \
+           "$(dsh settings get secure sms_default_application)" com.android.messaging; do
+    case "$c" in *[!A-Za-z0-9._]*|'') continue ;; esac
+    if dsh pm path "$c" | grep -q '^package:'; then SMS_APP=$c; break; fi
+  done
+  [ -n "$SMS_APP" ] || return 1
+  # Its first run otherwise opens on a permissions screen. A grant the app
+  # never asks for is refused, harmlessly.
+  for c in READ_SMS SEND_SMS RECEIVE_SMS RECEIVE_MMS READ_PHONE_STATE READ_CONTACTS; do
+    dsh pm grant "$SMS_APP" "android.permission.$c" > /dev/null 2>&1
+  done
 }
 
 resumed() { dsh dumpsys activity activities | grep -m1 -E 'mResumedActivity|ResumedActivity'; }
 
 copy_from_messages() {  # copy_from_messages NAME SENDER BODY_REGEX: copy that message's text
   local name=$1 sender=$2 rx=$3 app comp
-  app=$(sms_app)
+  sms_app || { echo "  no SMS app on this device"; return 1; }
+  app=$SMS_APP
   dsh cmd statusbar collapse > /dev/null 2>&1
   # Straight into the sender's conversation, as tapping its notification
   # would. Never a tap on the bubble itself: banks' reference numbers are
@@ -280,10 +299,18 @@ copy_from_messages() {  # copy_from_messages NAME SENDER BODY_REGEX: copy that m
   sleep 2
   echo "  messages app: $app; $(resumed | sed 's/^ *//')"
   if ! wait_in 15 "$name-a" "$app" "$rx" || resumed | grep -qi 'conversationlist'; then
-    # Not the conversation: the list, then the bank's row in it.
-    comp=$(dsh cmd package resolve-activity --brief -a android.intent.action.MAIN \
-           -c android.intent.category.LAUNCHER "$app" | tail -n 1)
-    dsh am start -W -n "$comp" > /dev/null 2>&1
+    echo "  not the bank's conversation yet:"
+    texts_in "$name-a" ""
+    # Back to the list (Back from a new, empty thread lands there), else the
+    # app from its launcher icon; then the bank's row in the list.
+    resumed | grep -qi 'conversationlist' || { dsh input keyevent KEYCODE_BACK; sleep 2; }
+    if ! resumed | grep -qi 'conversationlist'; then
+      comp=$(dsh cmd package resolve-activity --brief -a android.intent.action.MAIN \
+             -c android.intent.category.LAUNCHER "$app" | tail -n 1)
+      dsh am start -W -n "$comp" > /dev/null 2>&1
+      sleep 2
+    fi
+    echo "  now: $(resumed | sed 's/^ *//')"
     wait_in 15 "$name-a" "$app" "$sender" && tap_in "$name-a" "$app" "$sender" && sleep 2 &&
       wait_in 15 "$name-a" "$app" "$rx" ||
       { echo "  the message is not on screen:"; texts_in "$name-a" ""; shot "$name-a"; return 1; }
@@ -879,8 +906,8 @@ got=$(ui next "$OUT/m05-merchant.xml" "$PKG" '^Payments$')
 [ "$got" = "$want_n" ]
 check $? "merchant page payment count is $want_n (shows '$got')"
 
-learned_before=$(db "SELECT confirmationCount FROM learning WHERE merchantName = '$MERCHANT'")
-FORGET_RX="^Forget .$MERCHANT.\$"
+learned_before=$(db "SELECT confirmationCount FROM learning WHERE lower(merchantName) = lower('$MERCHANT')")
+FORGET_RX="(?i)^Forget .$MERCHANT.\$"
 if scroll_to m06-learned "$FORGET_RX" && on_screen m06-learned "^New payments from $MERCHANT are filed under $CATEGORY\\.\$"; then
   pass "the learning card says new $MERCHANT payments are filed under $CATEGORY, with a Forget button"
 else
@@ -896,13 +923,13 @@ if tap m06-learned "$FORGET_RX" desc && wait_for 10 m07-forgot '^Undo$'; then
     dump m07-forgot && ! on_screen m07-forgot "$FORGET_RX" && { gone=0; break; }
     sleep 1
   done
-  rows=$(db "SELECT count(*) FROM learning WHERE merchantName = '$MERCHANT'")
+  rows=$(db "SELECT count(*) FROM learning WHERE lower(merchantName) = lower('$MERCHANT')")
   [ "$gone" = 0 ] && { [ "$HAVE_SQLITE" != yes ] || [ "$rows" = 0 ]; }
   check $? "after Forget the mapping is gone from the card and the ledger (learning rows: $rows)"
   shot m07-forgot
   tap m07-forgot '^Undo$'
   if wait_for 10 m08-undone "$FORGET_RX"; then
-    learned_after=$(db "SELECT confirmationCount FROM learning WHERE merchantName = '$MERCHANT'")
+    learned_after=$(db "SELECT confirmationCount FROM learning WHERE lower(merchantName) = lower('$MERCHANT')")
     [ "$HAVE_SQLITE" != yes ] || [ "$learned_after" = "$learned_before" ]
     check $? "Undo puts the mapping back as it was (confirmations $learned_before -> $learned_after)"
   else
@@ -969,6 +996,25 @@ else
   pass "Budgets no longer lists $CATEGORY"
 fi
 
+# The report names categories from every row, deleted ones too, so what was
+# spent there stays under its own name rather than turning Uncategorised.
+dump c05-tabs && tap c05-tabs '^Home$'
+sleep 1
+named=no
+if dump c05-home && tap c05-home '^Report$' && wait_for 15 c05-report '^Back$'; then
+  for k in 1 2 3 4 5 6; do
+    if dump c05-report && ui after "$OUT/c05-report.xml" "$PKG" '(?i)^by category$' "^$CATEGORY\$" > /dev/null; then
+      named=yes; break
+    fi
+    dsh input swipe $((W / 2)) $((H * 7 / 10)) $((W / 2)) $((H * 3 / 10)) 600
+    sleep 1
+  done
+fi
+[ "$named" = yes ]
+check $? "the report still lists the spending under $CATEGORY in 'By category'"
+shot c05-report
+to_tabs c05-back
+
 dump c06-tabs && tap c06-tabs '^Activity$'
 wait_for 15 c06-activity "(?i)^$MERCHANT\$"
 if add_sheet c07-new; then
@@ -981,7 +1027,7 @@ if add_sheet c07-new; then
 else
   fail "the add sheet no longer offers $CATEGORY (the sheet did not open)"
 fi
-close_sheet
+close_sheet c07-close
 
 # What is already filed there still says so where it is edited.
 dump c08-activity
@@ -1026,7 +1072,7 @@ else
   fail "the edit sheet's 'See all payments to $MERCHANT' opens its merchant page"; failed_here c09n-merchant
   # The link closes the sheet itself, so the system key is pressed only if
   # the sheet is still up: on a tab it would leave the tab instead.
-  dump c09q-sheet && on_screen c09q-sheet '^Edit transaction$' && close_sheet
+  close_sheet c09q-sheet
 fi
 to_tabs c09q-back
 
@@ -1065,7 +1111,7 @@ if wait_for 15 c14-activity '^Add a transaction$' && add_sheet c14-new; then
 else
   fail "the add sheet offers $CATEGORY again (the sheet did not open)"
 fi
-close_sheet
+close_sheet c14-close
 
 # ============================================================================
 step "8. A real database upgrade, version 3 -> 4, in place"
