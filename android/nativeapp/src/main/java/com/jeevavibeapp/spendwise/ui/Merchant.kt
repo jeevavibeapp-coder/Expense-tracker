@@ -54,6 +54,7 @@ import com.jeevavibeapp.spendwise.core.Tx
 import com.jeevavibeapp.spendwise.data.CategoryEntity
 import com.jeevavibeapp.spendwise.data.Repo
 import com.jeevavibeapp.spendwise.data.TransactionEntity
+import com.jeevavibeapp.spendwise.data.asRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -89,6 +90,11 @@ private val LongDate: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyy
  *   merchant out of it rather than querying again, so it lists exactly the
  *   payments the report row that opened it summed.
  * @param transactions the same rows as stored, for the list and the editor.
+ * @param categories the ones new payments may be filed under, which is all
+ *   the picker offers. Deleted categories are not among them.
+ * @param everyCategory deleted ones included. What is already filed under a
+ *   deleted category keeps its name here, as it does on the report, and the
+ *   learning card can say that such a category files nothing new.
  * @param filingFor the live learning for this merchant's raw spellings,
  *   normally `{ repo.merchantFiling(name, it) }`.
  * @param onTransaction open one payment in the editor.
@@ -102,6 +108,7 @@ fun MerchantScreen(
     ledger: List<Tx>,
     transactions: List<TransactionEntity>,
     categories: List<CategoryEntity>,
+    everyCategory: List<CategoryEntity>,
     today: LocalDate,
     filingFor: (Set<String>) -> Flow<MerchantBook.Filing>,
     onTransaction: (TransactionEntity) -> Unit,
@@ -121,7 +128,13 @@ fun MerchantScreen(
         if (keys == null) flowOf(null) else filingFor(keys)
     }
     val filing by source.collectAsState(initial = null)
-    val names = remember(categories) { categories.associateBy({ it.id }, { it.name }) }
+    val names = remember(everyCategory) { everyCategory.associateBy({ it.id }, { it.name }) }
+    // Worked out here rather than in the learning flow: that flow watches the
+    // learning table only, and deleting or restoring a category while the
+    // page is open has to change what the card says.
+    val refused = remember(filing, everyCategory) {
+        filing?.let { MerchantBook.refused(it, everyCategory.map { c -> c.asRow() }) }
+    }
     var choosing by remember(name) { mutableStateOf(false) }
 
     if (p == null) {
@@ -148,6 +161,7 @@ fun MerchantScreen(
             LearningCard(
                 name = name,
                 filing = filing,
+                refused = refused,
                 names = names,
                 onChange = { choosing = true },
                 onForget = onForget,
@@ -331,19 +345,20 @@ private fun MonthBars(s: MerchantBook.Summary) {
 private fun LearningCard(
     name: String,
     filing: MerchantBook.Filing?,
+    refused: MerchantBook.Refused?,
     names: Map<String, String>,
     onChange: () -> Unit,
     onForget: (MerchantBook.Mapping) -> Unit,
 ) {
     MerchantCard {
-        if (filing == null) {
+        if (filing == null || refused == null) {
             Text("Reading what SpendWise has learned…",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             return@MerchantCard
         }
 
-        Text(filedSentence(name, filing, names), style = MaterialTheme.typography.bodyMedium)
+        Text(filedSentence(name, filing, refused, names), style = MaterialTheme.typography.bodyMedium)
 
         if (filing.canRelearn) {
             Spacer(Modifier.height(12.dp))
@@ -351,7 +366,10 @@ private fun LearningCard(
                 onClick = onChange,
                 modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
             ) {
-                Text(if (filing.own.isEmpty()) "Choose a category for new payments"
+                // "Change" only when something is being changed: rows that
+                // all point at deleted categories file nothing to change from.
+                Text(if (filing.own.all { it.categoryId in refused.learned })
+                         "Choose a category for new payments"
                      else "Change category for new payments")
             }
         }
@@ -360,7 +378,7 @@ private fun LearningCard(
             MappingDivider()
             MappingRow(
                 title = "“${m.rawName}”",
-                detail = mappingDetail(m, names),
+                detail = mappingDetail(m, names, refused),
                 onForget = { onForget(m) },
             )
         }
@@ -371,7 +389,11 @@ private fun LearningCard(
             MappingRow(
                 title = "“${m.rawName}” is now named ${m.merchantName}",
                 detail = "Some payments here arrived as “${m.rawName}”. New ones are filed " +
-                    "as ${m.merchantName}, under ${categoryLabel(m.categoryId, names)}.",
+                    "as ${m.merchantName}, " + (
+                        if (m.categoryId in refused.learned)
+                            "and ask you for a category: ${categoryLabel(m.categoryId, names)} " +
+                            "is deleted."
+                        else "under ${categoryLabel(m.categoryId, names)}."),
                 onForget = { onForget(m) },
             )
         }
@@ -379,8 +401,12 @@ private fun LearningCard(
         if (filing.builtIn.isNotEmpty() || filing.unlearned.isNotEmpty()) {
             MappingDivider()
             filing.builtIn.take(SPELLINGS_SHOWN).forEach { b ->
-                Text("“${b.rawName}” isn't learned yet. SpendWise's built-in list files it " +
-                     "as ${b.display}, under ${b.categoryName}.",
+                Text("“${b.rawName}” isn't learned yet. SpendWise's built-in list names it " +
+                     "${b.display}, " + (
+                         if (b.categoryName in refused.builtIn)
+                             "but its category, ${b.categoryName}, isn't one of yours now, so " +
+                             "each new one asks you for a category."
+                         else "under ${b.categoryName}."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 6.dp))
@@ -435,23 +461,57 @@ private fun MappingRow(title: String, detail: String, onForget: () -> Unit) {
     ) { Text("Forget") }
 }
 
-/** How new payments are filed, in one sentence, from whichever evidence decides it. */
-private fun filedSentence(name: String, f: MerchantBook.Filing, names: Map<String, String>): String {
-    val cats = f.categories.map { categoryLabel(it, names) }.distinct()
+/**
+ * How new payments are filed, from whichever evidence decides it.
+ *
+ * A deleted category is named as deleted rather than as where payments go:
+ * its rows are kept, but the resolver files nothing under it, so each new
+ * payment asks for a category instead.
+ */
+private fun filedSentence(
+    name: String,
+    f: MerchantBook.Filing,
+    refused: MerchantBook.Refused,
+    names: Map<String, String>,
+): String {
+    val filed = f.categories.filter { id -> id == null || id !in refused.learned }
+        .map { categoryLabel(it, names) }.distinct()
+    val gone = f.categories.filterNotNull().filter { it in refused.learned }
+        .map { categoryLabel(it, names) }.distinct()
+    val goneList = gone.joinToString(" or ")
+    val isAre = if (gone.size == 1) "is" else "are"
+    val seeded = f.builtIn.map { it.categoryName }.distinct()
+    val seededLive = seeded.filter { it !in refused.builtIn }
     return when {
-        cats.size == 1 -> "New payments from $name are filed under ${cats[0]}."
-        cats.size > 1 -> "New payments from $name are filed under ${cats.joinToString(" or ")}, " +
-            "depending on how the bank spells the name."
-        f.builtIn.isNotEmpty() -> "Nothing learned yet. SpendWise's built-in list files new " +
-            "payments under ${f.builtIn.map { it.categoryName }.distinct().joinToString(" or ")}."
+        filed.isNotEmpty() -> {
+            val head = if (filed.size == 1) "New payments from $name are filed under ${filed[0]}."
+                else "New payments from $name are filed under ${filed.joinToString(" or ")}, " +
+                    "depending on how the bank spells the name."
+            if (gone.isEmpty()) head
+            else "$head Spellings learned under $goneList, which $isAre deleted, ask you for " +
+                "a category instead."
+        }
+        gone.isNotEmpty() -> "New payments from $name were filed under $goneList, which " +
+            "$isAre deleted, so each one now asks you for a category."
+        seededLive.isNotEmpty() -> "Nothing learned yet. SpendWise's built-in list files new " +
+            "payments under ${seededLive.joinToString(" or ")}."
+        seeded.isNotEmpty() -> "Nothing learned yet, and the category SpendWise's built-in " +
+            "list would use isn't one of yours now, so each new payment asks you for one."
         f.unlearned.isNotEmpty() -> "Nothing learned yet, so each new payment is a guess until " +
             "you confirm or edit one."
         else -> "Nothing has been learned for this name."
     }
 }
 
-private fun mappingDetail(m: MerchantBook.Mapping, names: Map<String, String>): String = buildString {
+private fun mappingDetail(
+    m: MerchantBook.Mapping,
+    names: Map<String, String>,
+    refused: MerchantBook.Refused,
+): String = buildString {
     append(categoryLabel(m.categoryId, names))
+    // Kept so that restoring the category restores the payee with it. Until
+    // then the row names the payee and files nothing.
+    if (m.categoryId in refused.learned) append(" (deleted)")
     append(" · confirmed ").append(times(m.confirmations))
     if (m.corrections > 0) append(" · corrected ").append(times(m.corrections))
     val lo = m.usualMin
@@ -472,8 +532,9 @@ private fun spellings(raw: List<String>): String {
     return if (rest > 0) "$shown and $rest more" else shown
 }
 
-/** Null is a real answer, not a missing one, and an id the category list no
- *  longer holds still has to be nameable. */
+/** Null is a real answer, not a missing one. A deleted category is in [names]
+ *  and keeps its own; an id no category row holds at all, from a backup
+ *  edited by hand say, still has to be nameable. */
 private fun categoryLabel(id: String?, names: Map<String, String>): String =
     if (id == null) "no category" else names[id] ?: "a category that no longer exists"
 

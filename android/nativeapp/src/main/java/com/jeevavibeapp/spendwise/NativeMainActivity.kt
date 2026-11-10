@@ -248,8 +248,9 @@ class NativeMainActivity : ComponentActivity() {
         val senderRows by remember(repo) { repo.senders() }.collectAsState(initial = emptyList())
         val categories by remember(repo) { repo.categories() }.collectAsState(initial = emptyList())
         // Deleted categories as well: what is already filed under one keeps
-        // its name on the report and on its own edit sheet, which is what the
-        // delete confirmation promises. Nothing new is offered from this list.
+        // its name on the report, the merchant page and its own edit sheet,
+        // which is what the delete confirmation promises. Nothing new is
+        // offered from this list.
         val everyCategory by remember(repo) { repo.everyCategory() }
             .collectAsState(initial = emptyList())
         val q by query.collectAsState()
@@ -690,6 +691,7 @@ class NativeMainActivity : ComponentActivity() {
                             ledger = ledger,
                             transactions = transactions,
                             categories = categories,
+                            everyCategory = everyCategory,
                             today = today,
                             filingFor = { keys -> repo.merchantFiling(name, keys) },
                             onTransaction = { tx -> sheet = Sheet.Edit(tx) },
@@ -1392,7 +1394,7 @@ private fun sorted(rows: Int, category: String?): String = when {
 /** What the merchant page wrote, in the two halves the user decided
  *  separately: where new payments go, and whether any past ones moved. */
 private fun filedUnder(name: String, result: Repo.Refiled?): String {
-    if (result == null) return "That category no longer exists, so nothing was changed."
+    if (result == null) return "That category has been deleted, so nothing was changed."
     val head = if (result.mappings == 0)
         "New payments from $name were already filed under ${result.categoryName}."
     else "New payments from $name will be filed under ${result.categoryName}."

@@ -726,7 +726,10 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
      * Every write is one transaction, so a mapping never changes while the
      * history the user asked to move with it stays where it was.
      *
-     * @return null when the category no longer exists, so nothing was written.
+     * @return null when the category no longer exists or has been deleted, so
+     *   nothing was written. The picker offers only live ones, but it can
+     *   have been deleted while the dialog was open, and moving payments
+     *   into a category no screen offers is not what the user chose.
      */
     suspend fun fileMerchantUnder(
         name: String,
@@ -734,8 +737,9 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
         categoryId: String,
         moveIds: List<String>,
     ): Refiled? = withContext(Dispatchers.IO) {
-        val category = dao.allCategories().firstOrNull { it.id == categoryId }
-            ?: return@withContext null
+        val all = dao.allCategories()
+        Categories.fileable(categoryId, all.map { it.asRow() }) ?: return@withContext null
+        val category = all.first { it.id == categoryId }
         val rows = dao.learningAboutNow(name, rawNames.toList())
         val plan = MerchantBook.relearn(rows.map { learningRow(it) }, name, rawNames, categoryId)
         val byRaw = rows.associateBy { it.rawName }
