@@ -8,9 +8,18 @@ pulls crashes out of logcat.
 
     uitree.py texts   DUMP PKG               what is on screen, in layout order
     uitree.py has     DUMP PKG REGEX         exit 0 if any node's text/desc matches
+    uitree.py count   DUMP PKG REGEX         how many nodes' text/desc match
     uitree.py center  DUMP PKG REGEX [ATTR]  "x y" of the first match (ATTR text|desc|any)
+    uitree.py after   DUMP PKG ANCHOR REGEX  "x y" of the first REGEX match below the
+                                             first ANCHOR match, in layout order
+    uitree.py next    DUMP PKG ANCHOR        the text of the first text node after ANCHOR
+    uitree.py checked DUMP PKG REGEX         exit 0 if the first match, or the control
+                                             holding it, is checked/selected; 1 if not;
+                                             2 if nothing matches
     uitree.py field   DUMP PKG REGEX INDEX   "x y" of a text field found by its label,
                                              else the INDEX-th text field on screen
+    uitree.py value   DUMP PKG REGEX INDEX   the text in that field
+    uitree.py words   DUMP PKG               every text/desc on screen, one per line
     uitree.py thumb   PNG NAME               small JPEG, base64, between SCREENSHOT markers
     uitree.py crashes PKG LOGFILE...         print crash/ANR evidence; exit 0 if any
 
@@ -91,22 +100,110 @@ def center_of(path, pkg, pattern, attr="any"):
     return 1
 
 
-def field(path, pkg, pattern, index):
+def count(path, pkg, pattern):
+    rx = re.compile(pattern)
+    print(sum(1 for n in nodes(path, pkg) if any(rx.search(w) for w in words(n) if w)))
+    return 0
+
+
+def after(path, pkg, anchor, pattern):
+    """The same words can be on screen twice — a payee in "Unusually large"
+    and again under "Merchants this month" — and only one of them opens the
+    page being tested."""
+    arx, rx = re.compile(anchor), re.compile(pattern)
+    seen = False
+    for n in nodes(path, pkg):
+        if not seen:
+            seen = any(arx.search(w) for w in words(n) if w)
+            continue
+        if any(rx.search(w) for w in words(n) if w):
+            c = center(n)
+            if c:
+                print(c[0], c[1])
+                return 0
+    return 1
+
+
+def next_text(path, pkg, anchor):
+    """A label and its value are two text nodes side by side ("Payments",
+    "2"), so the value is whatever text follows the label."""
+    rx = re.compile(anchor)
+    seen = False
+    for n in nodes(path, pkg):
+        text = n.get("text") or ""
+        if seen and text:
+            print(text)
+            return 0
+        if any(rx.search(w) for w in words(n) if w):
+            seen = True
+    return 1
+
+
+def checked(path, pkg, pattern):
+    """A chip's label is a text node inside the control that carries the
+    state, and Compose reports a selected chip as checked (or, for some
+    roles, selected) on that control rather than on the label."""
+    try:
+        root = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return 2
+    parent = {c: p for p in root.iter("node") for c in p}
+    rx = re.compile(pattern)
+    for n in root.iter("node"):
+        if pkg and n.get("package") != pkg:
+            continue
+        if not any(rx.search(w) for w in words(n) if w):
+            continue
+        hop = n
+        for _ in range(4):
+            if hop is None or hop.tag != "node":
+                break
+            if hop.get("checked") == "true" or hop.get("selected") == "true":
+                print("checked")
+                return 0
+            hop = parent.get(hop)
+        print("not checked")
+        return 1
+    print("not on screen")
+    return 2
+
+
+def _field(path, pkg, pattern, index):
     """Compose reports a text field's label as text inside the field, or not
     at all once there is a value, so the position on screen is the fallback."""
     rx = re.compile(pattern)
     fields = [n for n in nodes(path, pkg) if (n.get("class") or "").endswith("EditText")]
     for f in fields:
         inside = [w for d in f.iter("node") for w in words(d)] + [f.get("hint") or ""]
-        if any(rx.search(w) for w in inside if w):
-            c = center(f)
-            if c:
-                print(c[0], c[1])
-                return 0
+        if any(rx.search(w) for w in inside if w) and center(f):
+            return f
     if 0 <= index < len(fields) and center(fields[index]):
-        print(*center(fields[index]))
-        return 0
-    return 1
+        return fields[index]
+    return None
+
+
+def field(path, pkg, pattern, index):
+    f = _field(path, pkg, pattern, index)
+    if f is None:
+        return 1
+    print(*center(f))
+    return 0
+
+
+def value(path, pkg, pattern, index):
+    f = _field(path, pkg, pattern, index)
+    if f is None:
+        return 1
+    print(f.get("text") or "")
+    return 0
+
+
+def all_words(path, pkg):
+    for n in nodes(path, pkg):
+        for w in words(n):
+            if w:
+                print(w.replace("\n", "\\n"))
+    return 0
 
 
 def jpeg(png):
@@ -206,10 +303,22 @@ def main(argv):
         return texts(args[0], args[1])
     if cmd == "has":
         return has(args[0], args[1], args[2])
+    if cmd == "count":
+        return count(args[0], args[1], args[2])
     if cmd == "center":
         return center_of(args[0], args[1], args[2], args[3] if len(args) > 3 else "any")
+    if cmd == "after":
+        return after(args[0], args[1], args[2], args[3])
+    if cmd == "next":
+        return next_text(args[0], args[1], args[2])
+    if cmd == "checked":
+        return checked(args[0], args[1], args[2])
     if cmd == "field":
         return field(args[0], args[1], args[2], int(args[3]))
+    if cmd == "value":
+        return value(args[0], args[1], args[2], int(args[3]))
+    if cmd == "words":
+        return all_words(args[0], args[1])
     if cmd == "thumb":
         return thumb(args[0], args[1])
     if cmd == "crashes":

@@ -4,8 +4,10 @@ name: Native app smoke test (emulator)
 # JVM, the type check is declarations against hand-written stubs, and
 # android.yml only compiles. This boots an emulator, installs the debug
 # builds and drives them as a person would — first launch, an expense typed
-# in by hand, a bank SMS arriving while the app is in the background — so
-# "it compiles" stops being the strongest thing anyone can say about it.
+# in by hand, a bank message copied out of Messages and pasted in, a bank SMS
+# arriving while the app is in the background, a merchant's page, a category
+# deleted and brought back, and an update from the last version-3 database —
+# so "it compiles" stops being the strongest thing anyone can say about it.
 #
 # Separate from android.yml so the shipping APK never waits on an emulator.
 # Everything the test finds is printed into the job log, screenshots
@@ -88,6 +90,53 @@ jobs:
           ./gradlew :nativeapp:assembleSmsDebug
           ls -l nativeapp/build/outputs/apk/*/debug/*.apk
 
+      # Every phone that already has the app holds a version-3 ledger, and the
+      # only thing standing between it and a crash on the first open after
+      # an update is MIGRATION_3_4. 2b0e3c1e is the last commit whose
+      # database is version 3, so the smoke test installs this build of it,
+      # makes a ledger, and updates it in place to the build above.
+      #
+      # A worktree beside this checkout. Its build files and package.json
+      # are the same as this commit's, so the Capacitor projects `cap sync`
+      # generated above are what it needs. If this step fails, the smoke
+      # test still runs and reports the upgrade as not done.
+      - name: Build the version-3 APK to upgrade from (2b0e3c1e)
+        id: v3
+        continue-on-error: true
+        env:
+          V3_COMMIT: 2b0e3c1ecc27d16b8965e9c575c716ddbff32904
+        run: |
+          git fetch --no-tags --depth=1 origin "$V3_COMMIT"
+          git worktree add --detach "$RUNNER_TEMP/v3" "$V3_COMMIT"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/v3/node_modules"
+          cp -a android/capacitor-cordova-android-plugins "$RUNNER_TEMP/v3/android/"
+          mkdir -p "$RUNNER_TEMP/v3/android/app/src/main/assets"
+          cp -a android/app/src/main/assets/. "$RUNNER_TEMP/v3/android/app/src/main/assets/"
+          (cd "$RUNNER_TEMP/v3/android" && chmod +x gradlew && ./gradlew :nativeapp:assembleNosmsDebug)
+          mkdir -p native-smoke-v3
+          cp "$RUNNER_TEMP/v3/android/nativeapp/build/outputs/apk/nosms/debug/nativeapp-nosms-debug.apk" \
+             native-smoke-v3/nativeapp-v3-nosms-debug.apk
+          ls -l native-smoke-v3
+
+      # An in-place update needs the same signing key on both builds; a
+      # mismatch would fail `adb install -r`, and the only way past that on a
+      # phone is an uninstall, which deletes the ledger.
+      - name: Signers of the APKs under test
+        continue-on-error: true
+        run: |
+          signer() { "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$1" | grep -m1 'SHA-256 digest' | sed 's/.*: //'; }
+          cur=$(signer android/nativeapp/build/outputs/apk/nosms/debug/nativeapp-nosms-debug.apk)
+          echo "nosms (this commit): $cur"
+          echo "sms   (this commit): $(signer android/nativeapp/build/outputs/apk/sms/debug/nativeapp-sms-debug.apk)"
+          if [ -f native-smoke-v3/nativeapp-v3-nosms-debug.apk ]; then
+            old=$(signer native-smoke-v3/nativeapp-v3-nosms-debug.apk)
+            echo "nosms (2b0e3c1e):    $old"
+            if [ "$old" = "$cur" ]; then echo "same key: the update installs in place"
+            else echo "::warning::the version-3 APK is signed with a different key"; fi
+          else
+            echo "::warning::no version-3 APK was built"
+          fi
+
       - name: Pillow, for the screenshots printed into the log
         run: python -m pip install --quiet pillow
 
@@ -116,7 +165,7 @@ jobs:
           enable-hw-keyboard: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           # One line: the action runs each line of `script` as its own sh -c.
-          script: bash .github/scripts/native-smoke.sh android/nativeapp/build/outputs/apk/nosms/debug/nativeapp-nosms-debug.apk android/nativeapp/build/outputs/apk/sms/debug/nativeapp-sms-debug.apk native-smoke-out
+          script: bash .github/scripts/native-smoke.sh android/nativeapp/build/outputs/apk/nosms/debug/nativeapp-nosms-debug.apk android/nativeapp/build/outputs/apk/sms/debug/nativeapp-sms-debug.apk native-smoke-out native-smoke-v3/nativeapp-v3-nosms-debug.apk
 
       - name: Upload screenshots, UI dumps and logcat
         if: always()
