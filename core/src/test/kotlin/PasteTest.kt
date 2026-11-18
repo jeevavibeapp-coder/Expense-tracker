@@ -177,20 +177,50 @@ fun main() {
     check("with the time of day the message had", moved.occurredAt.toLocalTime() == d.occurredAt.toLocalTime())
     check("a dated message keeps its own key when the date is corrected",
         moved.identity.key == d.identity.key)
-    // Before K3 every key held a day, so an undated paste took the day the user
-    // chose. UNDATED carries a reference, and since K3 a referenced message is
-    // identified by that reference (with its account and direction), which no
-    // day is part of: choosing another day cannot make it another payment. The
-    // pre-K3 key is still answered to, and it still takes the chosen day,
-    // because a row pasted before the upgrade was stored under exactly that.
+    // An undated message's day is not in the message, so the day the user
+    // picks is the day it is filed under. The SMS arrived on that day, and the
+    // inbox scan will compute that day's keys, so the commit is keyed by the
+    // CHOSEN day (pre-K3 pastes were stored under it too). It also answers to
+    // every key the preview showed for the paste day, so a row banked under
+    // any of them (the same SMS captured on the paste day, before or after
+    // K3) refuses it. Since K3-b a reference key holds a day as well.
+    val chosenAt = LocalDateTime.of(2026, 6, 15, 12, 34)
+    fun bankedUnder(key: String) = FakeLedger().apply {
+        rows[key] = Paste.Banked("pre-k3", 450.0, "expense", "Zomato", NOW, deleted = false)
+    }
+    check("an untouched undated commit keeps the preview's key",
+        Paste.commit(undated)!!.identity.key == undated.identity.key,
+        "commit=${Paste.commit(undated)!!.identity.key} preview=${undated.identity.key}")
+    // Today: "v2|ref|expense|1234|883120114455|450.00", no day.
+    check("the preview of UNDATED is keyed by its reference on the paste day",
+        undated.identity.key == "v2|ref|expense|1234|883120114455|450.00|2026-06-17",
+        "got=${undated.identity.key}")
     val undatedMoved = Paste.commit(undated, Paste.fields(undated).copy(date = LocalDate.of(2026, 6, 15)))!!
-    check("an undated message with a reference keeps its identity when the day is changed",
-        undatedMoved.identity.key == undated.identity.key,
-        "moved=${undatedMoved.identity.key} pasted=${undated.identity.key}")
-    check("and still answers to the pre-K3 key for the day the user chose",
-        Dedup.legacyKey(undated.parsed, LocalDateTime.of(2026, 6, 15, 12, 34)) in undatedMoved.identity.aliases,
-        "got=${undatedMoved.identity.aliases}")
-    check("and keeps the paste's time of day", undatedMoved.occurredAt == LocalDateTime.of(2026, 6, 15, 12, 34))
+    check("moved to another day, an undated message with a reference is keyed by the chosen day",
+        undatedMoved.identity.key == "v2|ref|expense|1234|883120114455|450.00|2026-06-15",
+        "got=${undatedMoved.identity.key}")
+    check("and answers to every key the preview showed for the paste day",
+        undated.identity.all.all { it in undatedMoved.identity.aliases },
+        "preview=${undated.identity.all} moved=${undatedMoved.identity.aliases}")
+    // UNDATED's 6bd77fb5 keys for the paste day and the chosen day, computed
+    // at that commit.
+    val preK3PasteDay = "450.0|ZOMATO|883120114455|2026-06-17"
+    val preK3ChosenDay = "450.0|ZOMATO|883120114455|2026-06-15"
+    check("precondition: those are legacyKey for the two days",
+        Dedup.legacyKey(undated.parsed, NOW) == preK3PasteDay &&
+        Dedup.legacyKey(undated.parsed, chosenAt) == preK3ChosenDay,
+        "paste day=${Dedup.legacyKey(undated.parsed, NOW)} chosen=${Dedup.legacyKey(undated.parsed, chosenAt)}")
+    check("it answers to the pre-K3 key for the day the user chose",
+        preK3ChosenDay in undatedMoved.identity.aliases, "got=${undatedMoved.identity.aliases}")
+    check("and to the pre-K3 key for the day it was pasted",
+        preK3PasteDay in undatedMoved.identity.all, "got=${undatedMoved.identity.all}")
+    check("so a row banked before the upgrade under the paste day refuses the moved commit",
+        !bankedUnder(preK3PasteDay).store(undatedMoved), "all=${undatedMoved.identity.all}")
+    check("as does one banked under the chosen day",
+        !bankedUnder(preK3ChosenDay).store(undatedMoved), "all=${undatedMoved.identity.all}")
+    check("and one banked under the paste day's reference key",
+        !bankedUnder(undated.identity.key).store(undatedMoved), "all=${undatedMoved.identity.all}")
+    check("and keeps the paste's time of day", undatedMoved.occurredAt == chosenAt)
     // With no reference the message is its own identity, and a paste has no
     // sender or SMS timestamp, so the day is what places it: the chosen day IS
     // in the key (v2|paste|<hash>|<day>).
@@ -204,8 +234,25 @@ fun main() {
         "pasted=${bare.identity.key} moved=${bareMoved.identity.key}")
     check("the key a paste of it filed on that day has",
         bareMoved.identity.key ==
-            Dedup.identity(bare.parsed, UNDATED_NO_REF, null, null, LocalDateTime.of(2026, 6, 15, 12, 34)).key,
+            Dedup.identity(bare.parsed, UNDATED_NO_REF, null, null, chosenAt).key,
         "got=${bareMoved.identity.key}")
+    check("and it answers to every key the preview showed for the paste day",
+        bare.identity.all.all { it in bareMoved.identity.aliases },
+        "preview=${bare.identity.all} moved=${bareMoved.identity.aliases}")
+    check("the paste-day paste key among them", bare.identity.key in bareMoved.identity.aliases,
+        "pasted=${bare.identity.key} moved=${bareMoved.identity.aliases}")
+    // UNDATED_NO_REF's 6bd77fb5 keys for the two days, computed at that commit.
+    val bareK3PasteDay = "20.0|CHAIPOINT||2026-06-17"
+    val bareK3ChosenDay = "20.0|CHAIPOINT||2026-06-15"
+    check("precondition: those are legacyKey for the two days",
+        Dedup.legacyKey(bare.parsed, NOW) == bareK3PasteDay &&
+        Dedup.legacyKey(bare.parsed, chosenAt) == bareK3ChosenDay,
+        "paste day=${Dedup.legacyKey(bare.parsed, NOW)} chosen=${Dedup.legacyKey(bare.parsed, chosenAt)}")
+    check("and the pre-K3 keys for both days",
+        bareK3PasteDay in bareMoved.identity.aliases && bareK3ChosenDay in bareMoved.identity.aliases,
+        "got=${bareMoved.identity.aliases}")
+    check("so a row banked before the upgrade under the paste day refuses it",
+        !bankedUnder(bareK3PasteDay).store(bareMoved), "all=${bareMoved.identity.all}")
 
     println("=== naming the payee on the card is the confirmation ===")
     val unknown = ledger.preview(GENUINE, Pipeline.Resolution(null, null, 5)).tx()!!.draft
