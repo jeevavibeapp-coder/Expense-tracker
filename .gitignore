@@ -21,3 +21,6 @@ keystore.properties
 
 # Agents work in private git worktrees here; those are never committed.
 .claude/worktrees/
+# Local Claude Code hooks: machine-specific paths and toolchain locations.
+.claude/settings.local.json
+.claude/hooks/
