@@ -47,12 +47,34 @@ fun main() {
         Mask("INR 2,300.00 debited from YES BANK A/c XX3344 on 08-Jul-26 towards MYNTRA. Ref 883120114455", 2300.0, "MYNTRA"),
         Mask("Rs 899 debited from A/c ending 7788 on 08-07-26 to NETFLIX UPI Ref 519023481234", 899.0, "NETFLIX"),
         Mask("Rs.340.00 spent using Card xx5566 at DMART on 08-07-26", 340.0, "DMART"),
+        // No payee in the message at all. The payer side ("from A/c XX1234")
+        // or the payee side ("to your A/c") must not stand in for one: every
+        // payee-less debit from the account would share that name, and one
+        // confirmation would teach the engine to file all of them the same way.
+        Mask("Rs.100.00 debited from A/c XX1234 on 08-07-26. UPI Ref 512345678901", 100.0, null),
+        Mask("Rs.5,000.00 credited to your A/c XX9012 on 08-07-26. UPI Ref 512345678901", 5000.0, null),
+        Mask("INR 62,500.00 credited to A/c XX1234 on 01-07-26 towards SALARY JUL26. Ref 998877665544", 62500.0, null),
+        Mask("Rs.750.00 debited from Acct **4321 on 08-07-26. Ref 512345678901", 750.0, null),
     )
     for (m in masks) {
         val p = Parsing.parse(m.sms)
         check("amount from: ${m.sms.take(45)}", p.amount == m.amount, "want=${m.amount} got=${p.amount}")
         check("payee from: ${m.sms.take(45)}", p.rawMerchant == m.merchant,
             "want=${m.merchant} got=${p.rawMerchant}")
+    }
+    // Keys these messages were banked under before the payee fix, computed
+    // with the parser at 6bd77fb5. The launch scan finds banked rows by
+    // recomputing exactly this string, so it must not move.
+    val bankedBefore = listOf(
+        "Rs.100.00 debited from A/c XX1234 on 08-07-26. UPI Ref 512345678901" to
+            "100.0|A C XX1234|512345678901|2026-07-08",
+        "Rs.5,000.00 credited to your A/c XX9012 on 08-07-26. UPI Ref 512345678901" to
+            "5000.0|YOUR|512345678901|2026-07-08",
+        "INR 62,500.00 credited to A/c XX1234 on 01-07-26 towards SALARY JUL26. Ref 998877665544" to
+            "62500.0|A C XX1234|998877665544|2026-07-01",
+    )
+    for ((sms, want) in bankedBefore) {
+        check("dedup key unchanged: ${sms.take(45)}", key(sms) == want, "want=$want got=${key(sms)}")
     }
 
     println("=== #11: times are the bank's wall clock, never shifted to UTC ===")

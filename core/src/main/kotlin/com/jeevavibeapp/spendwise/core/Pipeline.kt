@@ -172,7 +172,7 @@ object Pipeline {
      */
     fun dedupKey(parsed: ParsedSms, at: LocalDateTime): String = listOf(
         parsed.amount?.toString().orEmpty(),
-        Engine.normalizeMerchant(parsed.rawMerchant),
+        Engine.normalizeMerchant(parsed.keyMerchant),
         parsed.referenceNumber.orEmpty(),
         at.toLocalDate().toString(),
     ).joinToString("|")

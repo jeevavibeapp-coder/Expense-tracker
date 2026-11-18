@@ -118,6 +118,15 @@ object Parsing {
         "low interest|no documents|improve.*|your .*score.*|avail.*|get .*)" +
         ")$D", I)
 
+    /** The account the money moved through, standing where a payee should be:
+     *  "debited from A/c XX1234 on …", "credited to your A/c XX9012". A
+     *  message like that names no payee, and filing it under "A/c XX1234"
+     *  would put every payee-less debit from that account under one merchant,
+     *  so a single confirmation would teach the engine to file all of them
+     *  the same way. */
+    private val ACCOUNT_REF = Regex(
+        "^(?:your|a/c|acct|account)\\b|(?:^|\\s)[xX*]+\\d{3,}\\b", I)
+
     // "ref\\w*" rather than a bare "ref": the original stopped only at the exact
     // word "ref", so "trf to SWIGGY Refno 553201998877" yielded the merchant
     // name "SWIGGY Refno 553201998877" — reference digits and all — which then
@@ -260,25 +269,28 @@ object Parsing {
     private fun safeDate(y: Int, m: Int, d: Int): LocalDate? =
         try { LocalDate.of(y, m, d) } catch (e: Exception) { null }
 
-    private fun cleanMerchant(raw: String): String? {
+    /** @param forKey read the payee the way the dedup key always has — see
+     *  [ParsedSms.keyMerchant]. */
+    private fun cleanMerchant(raw: String, forKey: Boolean = false): String? {
         var name = raw.trim(' ', '.', ',', '-', '/').substringBefore('@').trim()
         if (name.isEmpty()) return null
         // Reject pure digits and account fragments ("X1234", "919…").
         if (!Regex("[A-Za-z]{2}").containsMatchIn(name)) return null
         if (BAD_MERCHANT.matches(name)) return null
+        if (!forKey && ACCOUNT_REF.containsMatchIn(name)) return null
         // A real payee is short. Anything sentence-like is scraped prose.
         if (name.split(Regex("\\s+")).size > 4) return null
         return name
     }
 
-    private fun parseMerchant(text: String, type: String): String? {
+    private fun parseMerchant(text: String, type: String, forKey: Boolean = false): String? {
         val strategies = if (type == "expense")
             listOf(TO, UPI_PATH, PAYEE_CREDITED, FROM)
         else
             listOf(FROM, TO, UPI_PATH)
         for (rx in strategies) {
             val m = rx.find(text) ?: continue
-            cleanMerchant(m.groupValues[1])?.let { return it }
+            cleanMerchant(m.groupValues[1], forKey)?.let { return it }
         }
         return null
     }
@@ -316,6 +328,7 @@ object Parsing {
             // pre-debit and scam language.
             matched = looksTransactional && !NON_TXN.containsMatchIn(normalized),
             looksTransactional = looksTransactional,
+            keyMerchant = parseMerchant(normalized, type, forKey = true),
         )
     }
 }
@@ -337,4 +350,12 @@ data class ParsedSms(
      * A promo with an amount and no verb has neither flag and is simply
      * noise. */
     val looksTransactional: Boolean = false,
+    /** The payee as the dedup key reads it: parser 2026.1.0-kt's reading,
+     *  kept even where [rawMerchant] has since been corrected.
+     *
+     * The inbox scan re-parses ninety days of messages on every launch and
+     * recognises what is already banked by recomputing its dedup key. A key
+     * that moved with every payee fix would stop matching the rows a phone
+     * already holds, and the next scan would file each of them again. */
+    val keyMerchant: String? = rawMerchant,
 )
