@@ -1,0 +1,11 @@
+{
+  "command": [
+    "C:\\Program Files\\Python314\\python.exe",
+    "-X",
+    "utf8",
+    "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\verify_schema_and_keys.py",
+    "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw"
+  ],
+  "exit_code": 0,
+  "output": "{\n  \"trials\": {\n    \"identical\": {\n      \"keys\": [\n        \"500.0|AMAZON||2026-11-18\",\n        \"500.0|AMAZON||2026-11-18\"\n      ],\n      \"inserted\": [\n        1,\n        0\n      ],\n      \"rows\": 1\n    },\n    \"distinct_purchases\": {\n      \"keys\": [\n        \"500.0|AMAZON||2026-11-18\",\n        \"500.0|AMAZON||2026-11-18\"\n      ],\n      \"inserted\": [\n        1,\n        0\n      ],\n      \"rows\": 1\n    },\n    \"debit_credit\": {\n      \"keys\": [\n        \"500.0|AMAZON||2026-11-18\",\n        \"500.0|AMAZON||2026-11-18\"\n      ],\n      \"inserted\": [\n        1,\n        0\n      ],\n      \"rows\": 1\n    }\n  },\n  \"migration_3_to_4_matches_schema\": true,\n  \"legacy_cases\": [\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    },\n    {\n      \"same_key\": true,\n      \"inserted\": [\n        1,\n        0\n      ]\n    }\n  ]\n}\n"
+}

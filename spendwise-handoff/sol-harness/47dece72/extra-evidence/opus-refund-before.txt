@@ -1,0 +1,11 @@
+=== OTP / failed / reversed / declined: money that did not move ===
+=== account masks are never the amount or the payee ===
+=== #9: a refund that also says 'paid' is money coming in ===
+  FAIL  income: Refund of Rs.500.00 for your order paid via UPI ha  [got=expense]
+  FAIL  income: Rs.250.00 credited to A/c XX1234 on 08-07-26 as re  [got=expense]
+  FAIL  income: You have received a refund of Rs.120 for the bill   [got=expense]
+=== #11: times are the bank's wall clock, never shifted to UTC ===
+=== #12: one payee name, one answer ===
+
+============================================================
+43 passed, 3 failed

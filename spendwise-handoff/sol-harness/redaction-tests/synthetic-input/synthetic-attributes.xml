@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<smses count="2">
+  <sms address="VM-HDFCBK" date="1795000000000" body="INR 1,200.50 debited from A/c XX1234 to AMAZON on 18-Nov-2026 12:30. Ref 123456789012. Avl Bal Rs 9,876.54." contact_name="Rahul Sharma" service_center="+919876543210" />
+  <sms address="+919876543210" date="1795000010000" body="Rs 500 sent to Rahul Sharma at rahul.sharma@okicici. Ref 223456789012." contact_name="Priya Rao" />
+</smses>

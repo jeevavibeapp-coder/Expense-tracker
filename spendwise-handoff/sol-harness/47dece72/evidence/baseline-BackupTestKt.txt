@@ -1,0 +1,14 @@
+=== a backup carries the ledger, never the inbox ===
+=== a backup round-trips ===
+=== a damaged file is refused, and no plan is produced ===
+=== nothing in the file is trusted ===
+=== preferences are clamped, not obeyed ===
+=== merging is idempotent ===
+=== what counts as already here ===
+=== replacing is the new-phone path ===
+=== a row never points at a category that is not there ===
+=== the confirmation screen has something to show ===
+=== a file written by the Python build still restores ===
+
+============================================================
+94 passed, 0 failed

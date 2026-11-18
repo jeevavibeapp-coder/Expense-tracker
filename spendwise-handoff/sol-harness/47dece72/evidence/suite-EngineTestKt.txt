@@ -1,0 +1,13 @@
+=== merchant normalisation: every spelling folds to one key ===
+=== seeds: a fresh install already knows the obvious ones ===
+=== scoring ===
+=== decisions ===
+=== token overlap finds learning done under another spelling ===
+=== explanations are for a person, not a log ===
+=== sender identity ===
+=== phishing: the toll-free false positive that broke real alerts ===
+=== verdicts ===
+=== categoriser ===
+
+============================================================
+58 passed, 0 failed

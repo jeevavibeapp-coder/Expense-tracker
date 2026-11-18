@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<backup xmlns:s="urn:synthetic:sms">
+ <s:message><s:sender>AD-ICICIB</s:sender><s:timestamp>2026-11-18T14:20:00+05:30</s:timestamp><s:body>Rs 750 paid to SWIGGY at swiggy8@ybl. UTR 423456789012.</s:body><s:contact>Rahul Sharma</s:contact></s:message>
+</backup>

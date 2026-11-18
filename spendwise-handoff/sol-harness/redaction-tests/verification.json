@@ -1,0 +1,31 @@
+{
+  "label": "VERIFIED: executed synthetic end-to-end checks; no real SMS",
+  "message_count": 13,
+  "output_count": 4,
+  "checks": {
+    "same_state_rerun_byte_identical": true,
+    "cli_rerun_exit_zero": true,
+    "four_shareable_outputs": true,
+    "people_removed": true,
+    "references_removed": true,
+    "accounts_removed": true,
+    "phones_removed": true,
+    "balances_removed": true,
+    "upi_handles_removed": true,
+    "known_merchants_preserved": true,
+    "transaction_amounts_preserved": true,
+    "text_dates_preserved": true,
+    "times_preserved": true,
+    "xml_metadata_omitted": true,
+    "sender_ids_preserved": true,
+    "no_private_markers_in_output": true
+  },
+  "sha256": {
+    "sms-27435b20cf.redacted.xml": "a9607da6efe82b05d0b291ef85fcb2854e82c86a9f08f0718c85f38f3a65cbf3",
+    "sms-6760731ca3.redacted.xml": "26954ef9431c27b203d9cd4e2181197f984db0826317d57ff1d0a07d1205b7a5",
+    "sms-69cd912425.redacted.xml": "142f08f57908db87cd407b843d407bebddd9c0592f281a740c43afec8670ef28",
+    "sms-ae3563d105.redacted.txt": "d6a093b5faf37d2efbdb2d613bcfcc4f55e72b5e874f5a0d6a8bb2252ce8961c"
+  },
+  "implementation_sha256": "6e43820eff9b6df3be16c4fffc261627722b78b526b40742b9b8c63897edb2f4",
+  "unit_tests": 52
+}

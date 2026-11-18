@@ -1,0 +1,14 @@
+=== the ledger half: totals ===
+=== the ledger half: month by month ===
+=== the ledger half: nothing there ===
+=== which side of the ledger ===
+=== the keys the next payment is looked up under ===
+=== what decides the next payment ===
+=== a deleted category files nothing new ===
+=== changing the learned category ===
+=== the plan for 'file new payments under…' ===
+=== a taught row claims no evidence it does not have ===
+=== moving past payments is an offer, grouped ===
+
+============================================================
+72 passed, 0 failed

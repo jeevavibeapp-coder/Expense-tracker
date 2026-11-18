@@ -1,0 +1,20 @@
+=== a damaged ledger with a good snapshot ends restored ===
+=== a lock leaves the ledger exactly as it was ===
+=== a migration that fails once is retried from the copy taken before it ===
+=== a migration that always fails stops, with the ledger readable ===
+=== a failed migration is never rolled back onto an older copy ===
+=== damage with no snapshot starts an empty ledger and keeps the old one ===
+=== a snapshot that does not verify is never restored ===
+=== a restore that cannot be written leaves the ledger where it was ===
+=== two files set aside in one run do not overwrite each other ===
+=== a ledger that cannot be moved aside ===
+=== a move that fails halfway is not reported as nothing happening ===
+=== a failure nothing recognises never touches the file ===
+=== a check that SQLite refused to run is not a verdict of damage ===
+=== a first launch has nothing to check or copy ===
+=== when a snapshot is taken ===
+=== old snapshots are pruned, the new one never ===
+=== every run ends, and only damage ever moves a file ===
+
+============================================================
+124 passed, 0 failed

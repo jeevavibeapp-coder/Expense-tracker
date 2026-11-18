@@ -1,0 +1,11 @@
+=== a genuine bank message ===
+=== what must never reach the ledger ===
+=== a spoofed header cannot inject a transaction ===
+=== user decisions win ===
+=== an unverified sender makes the app ask more, not less ===
+=== low confidence asks instead of burying ===
+=== confirming closes the loop a pending capture opened ===
+=== dedup: one purchase, one row ===
+
+============================================================
+37 passed, 0 failed

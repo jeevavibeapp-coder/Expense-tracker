@@ -1,0 +1,23 @@
+{
+  "repeat_same_reference": {
+    "rowsInsertedPerAttempt": [
+      1,
+      0
+    ],
+    "rowCount": 1
+  },
+  "distinct_purchases_same_day": {
+    "rowsInsertedPerAttempt": [
+      1,
+      0
+    ],
+    "rowCount": 1
+  },
+  "expense_then_credit": {
+    "rowsInsertedPerAttempt": [
+      1,
+      0
+    ],
+    "rowCount": 1
+  }
+}

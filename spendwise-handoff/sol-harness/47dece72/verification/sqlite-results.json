@@ -1,0 +1,50 @@
+[
+  {
+    "case": "identical",
+    "inputs": [
+      "dedup_no_ref_noon",
+      "dedup_no_ref_noon"
+    ],
+    "raw_keys": [
+      "500.0|AMAZON||2026-11-18",
+      "500.0|AMAZON||2026-11-18"
+    ],
+    "insert_rowcounts": [
+      1,
+      0
+    ],
+    "rows": 1
+  },
+  {
+    "case": "separate_purchases",
+    "inputs": [
+      "dedup_no_ref_noon",
+      "dedup_no_ref_evening"
+    ],
+    "raw_keys": [
+      "500.0|AMAZON||2026-11-18",
+      "500.0|AMAZON||2026-11-18"
+    ],
+    "insert_rowcounts": [
+      1,
+      0
+    ],
+    "rows": 1
+  },
+  {
+    "case": "debit_credit",
+    "inputs": [
+      "dedup_no_ref_noon",
+      "dedup_credit"
+    ],
+    "raw_keys": [
+      "500.0|AMAZON||2026-11-18",
+      "500.0|AMAZON||2026-11-18"
+    ],
+    "insert_rowcounts": [
+      1,
+      0
+    ],
+    "rows": 1
+  }
+]

@@ -1,0 +1,10 @@
+=== OTP / failed / reversed / declined: money that did not move ===
+=== account masks are never the amount or the payee ===
+  FAIL  payee from: Rs.100.00 debited from A/c XX1234 on 08-07-26  [want=null got=A/c XX1234]
+  FAIL  payee from: Rs.5,000.00 credited to your A/c XX9012 on 08  [want=null got=your]
+  FAIL  payee from: INR 62,500.00 credited to A/c XX1234 on 01-07  [want=null got=A/c XX1234]
+=== #11: times are the bank's wall clock, never shifted to UTC ===
+=== #12: one payee name, one answer ===
+
+============================================================
+29 passed, 3 failed

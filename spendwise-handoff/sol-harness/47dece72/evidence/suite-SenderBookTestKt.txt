@@ -1,0 +1,8 @@
+=== the list puts the decisions worth revisiting first ===
+=== a row says who the sender is, in words ===
+=== the pill names the state a user can act on ===
+=== what a tap stores ===
+=== the stored decision is the one assess obeys ===
+
+============================================================
+39 passed, 0 failed

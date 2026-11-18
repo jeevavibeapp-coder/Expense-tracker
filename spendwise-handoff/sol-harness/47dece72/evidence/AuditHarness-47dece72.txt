@@ -1,0 +1,29 @@
+old9_otp	5000.0	expense	AMAZON	null	null	false	false	accept	0	NotFinancial
+old9_failed	500.0	expense	AMAZON has failed	null	null	false	true	accept	0	NotFinancial
+old9_refunded	500.0	expense	null	null	2026-11-18T00:00	false	false	accept	0	NotFinancial
+old9_mixed_refund	500.0	income	null	null	null	false	false	accept	0	NotFinancial
+old10_account	450.0	expense	ZOMATO	883120114455	2024-01-05T00:00	true	true	accept	0	Capture;merchant=Zomato;status=confirmed;confidence=90;key=450.0|ZOMATO|883120114455|2024-01-05
+old11_time	100.0	expense	KFC	123456789012	2026-11-18T23:30	true	true	accept	0	Capture;merchant=KFC;status=confirmed;confidence=90;key=100.0|KFC|123456789012|2026-11-18
+old11_bad_time	100.0	expense	KFC	123456789012	2026-11-18T23:59	true	true	accept	0	Capture;merchant=KFC;status=confirmed;confidence=90;key=100.0|KFC|123456789012|2026-11-18
+refund_with_evidence	500.0	income	null	123456789012	null	true	true	accept	0	Capture;merchant=;status=needs_review;confidence=0;key=500.0|ACCOUNT XX1234 AS|123456789012|2026-11-18
+cashback_credit	100.0	income	null	123456789012	null	false	true	accept	0	NotFinancial
+completed_recharge	399.0	expense	null	123456789012	null	false	true	accept	0	NotFinancial
+completed_reversal	500.0	income	null	123456789012	null	false	true	accept	0	NotFinancial
+false_seed	450.0	expense	AMAZON CAFE	123456789012	2026-11-18T00:00	true	true	accept	0	Capture;merchant=Amazon;status=confirmed;confidence=90;key=450.0|AMAZON CAFE|123456789012|2026-11-18
+dedup_no_ref_noon	500.0	expense	AMAZON	null	2026-11-18T12:00	true	true	accept	0	Capture;merchant=Amazon;status=confirmed;confidence=90;key=500.0|AMAZON||2026-11-18
+dedup_no_ref_evening	500.0	expense	AMAZON	null	2026-11-18T18:00	true	true	accept	0	Capture;merchant=Amazon;status=confirmed;confidence=90;key=500.0|AMAZON||2026-11-18
+dedup_credit	500.0	income	AMAZON	null	2026-11-18T12:05	true	true	accept	0	Capture;merchant=Amazon;status=confirmed;confidence=90;key=500.0|AMAZON||2026-11-18
+sbi	199.0	expense	SWIGGY	553201998877	2026-07-08T00:00	true	true	accept	0	Capture;merchant=Swiggy;status=confirmed;confidence=90;key=199.0|SWIGGY|553201998877|2026-07-08
+icici	499.0	expense	SWIGGY	123456789012	2026-11-18T00:00	true	true	accept	0	Capture;merchant=Swiggy;status=confirmed;confidence=90;key=499.0|SWIGGY|123456789012|2026-11-18
+axis	500.0	expense	ZOMATO	null	2026-11-18T00:00	true	true	accept	0	Capture;merchant=Zomato;status=confirmed;confidence=90;key=500.0|ZOMATO||2026-11-18
+kotak	20.0	expense	swiggy8	null	2026-11-18T00:00	true	true	accept	0	Capture;merchant=Swiggy;status=confirmed;confidence=90;key=20.0|SWIGGY||2026-11-18
+SENDER	VM-HDFCBK	RiskAssessment(sender=SenderIdentity(raw=VM-HDFCBK, normalized=VM-HDFCBK, kind=dlt, entity=HDFCBK, bank=HDFC Bank, base=90, reasons=[dlt_known_entity]), risk=0, indicators=[], trust=known, action=accept, confidenceDelta=0, reasons=[dlt_known_entity])
+SENDER	AD-NEWBNK	RiskAssessment(sender=SenderIdentity(raw=AD-NEWBNK, normalized=AD-NEWBNK, kind=dlt, entity=NEWBNK, bank=null, base=75, reasons=[dlt_unknown_entity]), risk=0, indicators=[], trust=unknown, action=accept, confidenceDelta=0, reasons=[dlt_unknown_entity])
+SENDER	+919812345678	RiskAssessment(sender=SenderIdentity(raw=+919812345678, normalized=9812345678, kind=mobile, entity=null, bank=null, base=10, reasons=[personal_mobile_number]), risk=35, indicators=[bank_claim_from_mobile], trust=suspicious, action=quarantine, confidenceDelta=-100, reasons=[personal_mobile_number, low_sender_trust])
+SENDER	null	RiskAssessment(sender=SenderIdentity(raw=, normalized=, kind=missing, entity=null, bank=null, base=70, reasons=[sender_missing]), risk=0, indicators=[], trust=unknown, action=accept, confidenceDelta=0, reasons=[sender_missing])
+OLD_TIE_SCORE	Kumar Cafe	Breakdown(pastMapping=40.0, amountPattern=20.0, categoryPattern=15.0, correctionHistory=15.0, timePattern=10.0, total=100)
+OLD_TIE_SCORE	Kumar Canteen	Breakdown(pastMapping=40.0, amountPattern=20.0, categoryPattern=15.0, correctionHistory=15.0, timePattern=10.0, total=100)
+OLD_FRAUD_CREDIT	[]
+FRAUD_UNRESOLVED	[FraudAlert(key=duplicate:purchase, txId=purchase, kind=duplicate, severity=medium, message=Possible duplicate: ₹500, twice within 10 minutes.)]
+FRAUD_ZERO_VARIANCE	[]
+BACKUP_OFFSETS	[utc:2026-11-18T00:30, positive:2026-11-18T00:30]	dropped={categories=0, merchants=0, learning=0, transactions=1, sms_senders=0}

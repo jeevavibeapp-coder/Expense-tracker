@@ -1,0 +1,7 @@
+FAIL fuzz[0] input=INR ౧౦౦ paid to KFC on ౧౮-Nov-౨౦౨౬ ౨౪:౬౫ Ref ౧౨౩౪౫౬౭౮౯౦౧౨ result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)
+FAIL fuzz[5] input=INR १०० paid to KFC on १८-Nov-२०२६ २८:६२ Ref १२३४५६७८९०१२ result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)
+FAIL fuzz[10] input=INR १०० paid to KFC on १८-Nov-२०२६ २६:६४ Ref १२३४५६७८९०१२ result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)
+FAIL fuzz[15] input=INR 100 paid to KFC on 18-Nov-2026 28:62 Ref 123456789012 result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)
+FAIL fuzz[20] input=INR ౧౦౦ paid to KFC on ౧౮-Nov-౨౦౨౬ ౨౬:౬౨ Ref ౧౨౩౪౫౬౭౮౯౦౧౨ result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)
+seed=20261118 inputs=10000 crashes=0 negative_or_nonfinite=0 invented_times=2000
+SolFuzzTest: 8000 passed, 2000 failed

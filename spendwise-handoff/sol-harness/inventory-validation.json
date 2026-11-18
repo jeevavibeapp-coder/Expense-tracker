@@ -1,0 +1,33 @@
+{
+  "label": "VERIFIED file-structure checks only; feature content is TRACED",
+  "counts": {
+    "R": {
+      "rows": 35,
+      "unique": 35,
+      "missing": []
+    },
+    "FL-": {
+      "rows": 96,
+      "unique": 96,
+      "missing": []
+    },
+    "N": {
+      "rows": 61,
+      "unique": 61,
+      "missing": []
+    }
+  },
+  "ratings": {
+    "R": {
+      "Full": 17,
+      "Partly": 11,
+      "Not at all": 7
+    },
+    "FL-": {
+      "Full": 60,
+      "Partly": 25,
+      "Not at all": 11
+    }
+  },
+  "inventory_sha256": "a2577a4774bb9131b95091b941779c37a29271d8891fa97f598a641ff5268f63"
+}

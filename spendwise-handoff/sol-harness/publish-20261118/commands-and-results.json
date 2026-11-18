@@ -1,0 +1,378 @@
+[
+  {
+    "name": "core-main-compile",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\annotations.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\trove4j.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-nowarn",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Analytics.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Backup.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Budgets.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Categories.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Categorizer.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Dedup.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Engine.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Fraud.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Insights.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\ManualEntry.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\MerchantBook.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\ParseMisses.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Parsing.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Paste.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Pipeline.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Prompts.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Recovery.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\RecoverySequence.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Review.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\main\\kotlin\\com\\jeevavibeapp\\spendwise\\core\\Senders.kt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "core-committed-tests-compile",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\annotations.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\trove4j.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-nowarn",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\AuditTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\BackupTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\BudgetsTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\CategoriesTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\DedupTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\EngineTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\FraudTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\InsightsTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ManualEntryTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\MerchantBookTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ParseMissesTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ParsingTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\PasteTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\PipelineTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\PromptsTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\RecoverySequenceTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\RecoveryTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ReviewTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\SenderBookTest.kt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "AuditTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "AuditTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== OTP / failed / reversed / declined: money that did not move ===\n=== account masks are never the amount or the payee ===\n=== #9: a refund that also says 'paid' is money coming in ===\n=== #11: times are the bank's wall clock, never shifted to UTC ===\n=== #12: one payee name, one answer ===\n\n============================================================\n52 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "BackupTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "BackupTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== a backup carries the ledger, never the inbox ===\n=== a backup round-trips ===\n=== a damaged file is refused, and no plan is produced ===\n=== nothing in the file is trusted ===\n=== preferences are clamped, not obeyed ===\n=== merging is idempotent ===\n=== what counts as already here ===\n=== replacing is the new-phone path ===\n=== a row never points at a category that is not there ===\n=== the confirmation screen has something to show ===\n=== a file written by the Python build still restores ===\n\n============================================================\n94 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "BudgetsTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "BudgetsTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== month boundaries ===\n=== budget progress ===\n=== a category with no budget makes no claim ===\n=== daily series is zero-filled ===\n=== a streak has to be earned ===\n=== the monthly report ===\n\n============================================================\n70 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "CategoriesTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "CategoriesTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== deleting keeps the row, archived ===\n=== adding a name ===\n=== renaming ===\n=== nothing new is filed under a deleted category ===\n=== pickers ===\n=== the confirmation says what will happen ===\n=== and the report keeps the promise ===\n\n============================================================\n53 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "DedupTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "DedupTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== Sol K3: same-day payments and a debit/credit pair each get a row ===\n=== no reference: the message itself, within a two-minute window ===\n=== with a reference: scoped by account and direction ===\n=== Axis UPI paths carry the reference (K3-axis-reference) ===\n=== the account a payment moved through ===\n=== a paste, then the inbox scan of the same message ===\n=== INVARIANT: rows banked under the 6bd77fb5 key are found after the upgrade ===\n  invariant: 80 messages checked against 45 banked 6bd77fb5 keys, 0 new rows\n\n============================================================\n203 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "EngineTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "EngineTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== merchant normalisation: every spelling folds to one key ===\n=== seeds: a fresh install already knows the obvious ones ===\n=== scoring ===\n=== decisions ===\n=== token overlap finds learning done under another spelling ===\n=== explanations are for a person, not a log ===\n=== sender identity ===\n=== phishing: the toll-free false positive that broke real alerts ===\n=== verdicts ===\n=== categoriser ===\n\n============================================================\n58 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "FraudTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "FraudTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== a quiet ledger raises nothing ===\n=== duplicate charges ===\n=== high-value outliers against the user's own distribution ===\n=== the high-value amount the user typed ===\n=== abnormally heavy days ===\n=== payees never seen before ===\n=== keys, ordering and re-evaluation ===\n=== an alert nobody can act on is not raised ===\n\n============================================================\n46 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "InsightsTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "InsightsTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== forecast ===\n=== cash flow ===\n=== category trends ===\n=== merchants are compared against themselves ===\n=== anomalies ===\n=== savings opportunities ===\n=== recurring, transfers, refunds ===\n=== money formatting is Indian ===\n\n============================================================\n50 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "ManualEntryTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "ManualEntryTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== Home keeps a paste control only where pasting is the capture ===\n=== an empty ledger never promises capture that is not happening ===\n=== the sentence and the buttons under it agree ===\n=== paste leads wherever nothing is captured for you ===\n=== each route has one label, and the two cannot be confused ===\n=== in the no-SMS build paste is one tap from Home, empty or not ===\n\n============================================================\n27 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "MerchantBookTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "MerchantBookTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== the ledger half: totals ===\n=== the ledger half: month by month ===\n=== the ledger half: nothing there ===\n=== which side of the ledger ===\n=== the keys the next payment is looked up under ===\n=== what decides the next payment ===\n=== a deleted category files nothing new ===\n=== changing the learned category ===\n=== the plan for 'file new payments under\ufffd' ===\n=== a taught row claims no evidence it does not have ===\n=== moving past payments is an offer, grouped ===\n\n============================================================\n72 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "ParseMissesTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "ParseMissesTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== a bank message the parser cannot read is a miss ===\n=== an unlisted bank still counts ===\n=== what is never a miss ===\n=== pasted: the person pasting vouches for the sender ===\n=== redaction keeps the format ===\n=== redaction under attack ===\n=== every shape a miss stores is clean ===\n=== the de-duplication key ===\n=== storage stays bounded ===\n=== what the screen shows ===\n=== what sharing sends ===\n\n============================================================\n538 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "ParsingTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "ParsingTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== bank corpus: every one must be captured ===\n=== junk corpus: none may reach the ledger ===\n=== amounts ===\n=== safeAmount rejects what is not money ===\n=== direction ===\n=== merchants ===\n=== references and dates ===\n=== normalisation ===\n=== never captured ===\n\n============================================================\n70 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "PasteTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "PasteTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== a clean message previews as the row Save would write ===\n=== the suggestion must be a chip the card can show ===\n=== previewing writes nothing ===\n=== committing stores exactly what was shown ===\n=== corrections are stored, the message keeps its identity ===\n=== naming the payee on the card is the confirmation ===\n=== the last check before storage ===\n=== a suspicious message is shown with the reason, never held ===\n=== not a transaction, and why ===\n\n============================================================\n99 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "PipelineTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "PipelineTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== a genuine bank message ===\n=== what must never reach the ledger ===\n=== a spoofed header cannot inject a transaction ===\n=== user decisions win ===\n=== an unverified sender makes the app ask more, not less ===\n=== low confidence asks instead of burying ===\n=== confirming closes the loop a pending capture opened ===\n=== dedup: one purchase, one row ===\n\n============================================================\n37 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "PromptsTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "PromptsTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== only captures the app filed by itself are asked about ===\n=== the queue is a nudge, not a backlog ===\n=== answering files the row and teaches the engine ===\n=== declining is an answer ===\n=== a category typed into the prompt ===\n\n============================================================\n25 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "RecoverySequenceTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "RecoverySequenceTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== a damaged ledger with a good snapshot ends restored ===\n=== a lock leaves the ledger exactly as it was ===\n=== a migration that fails once is retried from the copy taken before it ===\n=== a migration that always fails stops, with the ledger readable ===\n=== a failed migration is never rolled back onto an older copy ===\n=== damage with no snapshot starts an empty ledger and keeps the old one ===\n=== a snapshot that does not verify is never restored ===\n=== a restore that cannot be written leaves the ledger where it was ===\n=== two files set aside in one run do not overwrite each other ===\n=== a ledger that cannot be moved aside ===\n=== a move that fails halfway is not reported as nothing happening ===\n=== a failure nothing recognises never touches the file ===\n=== a check that SQLite refused to run is not a verdict of damage ===\n=== a first launch has nothing to check or copy ===\n=== when a snapshot is taken ===\n=== old snapshots are pruned, the new one never ===\n=== every run ends, and only damage ever moves a file ===\n\n============================================================\n124 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "RecoveryTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "RecoveryTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== reading what went wrong ===\n=== reading integrity_check ===\n=== what may be opened as it stands ===\n=== the policy, failure by failure ===\n=== the rule that cost a ledger the last time it was broken ===\n=== the policy always ends ===\n=== what the user is told ===\n=== naming and ordering snapshots ===\n=== when another snapshot is due ===\n=== a snapshot is verified, never trusted ===\n=== nothing is ever deleted ===\n\n============================================================\n92 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "ReviewTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "ReviewTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== one decision per payee ===\n=== groups the same tap must not merge ===\n=== rows that resolved to no payee ===\n=== the raw payee string survives grouping ===\n=== ordering: the tap that clears the most comes first ===\n=== suggestions pre-fill, they never decide ===\n=== a suggestion the picker cannot show is no suggestion ===\n=== confirming a group teaches the engine ===\n\n============================================================\n31 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "SenderBookTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\tests;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar",
+      "SenderBookTestKt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "=== the list puts the decisions worth revisiting first ===\n=== a row says who the sender is, in words ===\n=== the pill names the state a user can act on ===\n=== what a tap stores ===\n=== the stored decision is the one assess obeys ===\n\n============================================================\n39 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "name": "redactor-52-tests",
+    "command": [
+      "C:\\Program Files\\Python314\\python.exe",
+      "-B",
+      "-X",
+      "utf8",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\spendwise-handoff\\sol-harness\\test_redact_sms.py"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "test_bank_word_does_not_hide_person (__main__.CounterpartyReviewRegression.test_bank_word_does_not_hide_person) ... ok\ntest_unknown_at_counterparty_and_merchants (__main__.CounterpartyReviewRegression.test_unknown_at_counterparty_and_merchants) ... ok\ntest_one_character_upi_handle (__main__.EmbeddedIdentifierRegression.test_one_character_upi_handle) ... ok\ntest_p2m_embedded_phone_is_masked (__main__.EmbeddedIdentifierRegression.test_p2m_embedded_phone_is_masked) ... ok\ntest_upi_path_vpa_keeps_shape_and_is_masked (__main__.EmbeddedIdentifierRegression.test_upi_path_vpa_keeps_shape_and_is_masked) ... ok\ntest_person_before_vpa_and_phone (__main__.EndToEndPrivacyRegression.test_person_before_vpa_and_phone) ... ok\ntest_upi_path_preserves_trailing_date (__main__.EndToEndPrivacyRegression.test_upi_path_preserves_trailing_date) ... ok\ntest_account_and_card_holder_names (__main__.ExplicitHolderAndXmlConflict.test_account_and_card_holder_names) ... ok\ntest_conflicting_xml_body_is_flagged (__main__.ExplicitHolderAndXmlConflict.test_conflicting_xml_body_is_flagged) ... ok\ntest_balance_sign_before_currency (__main__.FinalPrivacyEdgeCases.test_balance_sign_before_currency) ... ok\ntest_greeting_case_variations (__main__.FinalPrivacyEdgeCases.test_greeting_case_variations) ... ok\ntest_schemeless_urls_are_masked_and_reviewed (__main__.FinalPrivacyEdgeCases.test_schemeless_urls_are_masked_and_reviewed) ... ok\ntest_account_and_vpa_labels_are_not_names (__main__.GrammarPreservationRegression.test_account_and_vpa_labels_are_not_names) ... ok\ntest_account_shape_and_repeated_suffix (__main__.RedactionTests.test_account_shape_and_repeated_suffix) ... ok\ntest_amount_and_balance (__main__.RedactionTests.test_amount_and_balance) ... ok\ntest_bad_timestamp_is_omitted_for_review (__main__.RedactionTests.test_bad_timestamp_is_omitted_for_review) ... ok\ntest_business_names_reviewed (__main__.RedactionTests.test_business_names_reviewed) ... ok\ntest_by_and_precredit_person (__main__.RedactionTests.test_by_and_precredit_person) ... ok\ntest_dates_times_and_bank_header (__main__.RedactionTests.test_dates_times_and_bank_header) ... ok\ntest_different_people_get_different_ids (__main__.RedactionTests.test_different_people_get_different_ids) ... ok\ntest_distinct_accounts (__main__.RedactionTests.test_distinct_accounts) ... ok\ntest_explicit_person_paths (__main__.RedactionTests.test_explicit_person_paths) ... ok\ntest_generic_upi_path (__main__.RedactionTests.test_generic_upi_path) ... ok\ntest_greeting (__main__.RedactionTests.test_greeting) ... ok\ntest_large_amount_not_phone (__main__.RedactionTests.test_large_amount_not_phone) ... ok\ntest_merchant_paths (__main__.RedactionTests.test_merchant_paths) ... ok\ntest_names_and_known_merchants (__main__.RedactionTests.test_names_and_known_merchants) ... ok\ntest_number_mapping_no_collisions (__main__.RedactionTests.test_number_mapping_no_collisions) ... ok\ntest_output_filename_does_not_expose_input_name (__main__.RedactionTests.test_output_filename_does_not_expose_input_name) ... ok\ntest_output_separates_review_and_drops_metadata (__main__.RedactionTests.test_output_separates_review_and_drops_metadata) ... ok\ntest_phone_prefix_and_shape (__main__.RedactionTests.test_phone_prefix_and_shape) ... ok\ntest_plaintext_process_and_utf16_xml (__main__.RedactionTests.test_plaintext_process_and_utf16_xml) ... ok\ntest_reference_shared_between_messages (__main__.RedactionTests.test_reference_shared_between_messages) ... ok\ntest_refno_and_alphanumeric_shape (__main__.RedactionTests.test_refno_and_alphanumeric_shape) ... ok\ntest_same_alphanumeric_id_different_case (__main__.RedactionTests.test_same_alphanumeric_id_different_case) ... ok\ntest_sbi_currency_free_amount (__main__.RedactionTests.test_sbi_currency_free_amount) ... ok\ntest_state_persistence_without_original_values (__main__.RedactionTests.test_state_persistence_without_original_values) ... ok\ntest_synthetic_mutations_keep_financial_shape (__main__.RedactionTests.test_synthetic_mutations_keep_financial_shape) ... ok\ntest_unicode_digits (__main__.RedactionTests.test_unicode_digits) ... ok\ntest_unknown_email_is_masked_and_reviewed (__main__.RedactionTests.test_unknown_email_is_masked_and_reviewed) ... ok\ntest_unknown_merchant_conservative_then_allowlist (__main__.RedactionTests.test_unknown_merchant_conservative_then_allowlist) ... ok\ntest_unknown_numeric_identifier (__main__.RedactionTests.test_unknown_numeric_identifier) ... ok\ntest_upi_handles_consistent (__main__.RedactionTests.test_upi_handles_consistent) ... ok\ntest_url_redacted (__main__.RedactionTests.test_url_redacted) ... ok\ntest_xml_attributes_sms_backup_restore_layout (__main__.RedactionTests.test_xml_attributes_sms_backup_restore_layout) ... ok\ntest_xml_child_elements_and_namespace (__main__.RedactionTests.test_xml_child_elements_and_namespace) ... ok\ntest_xml_direct_text_body (__main__.RedactionTests.test_xml_direct_text_body) ... ok\ntest_xml_entities_rejected (__main__.RedactionTests.test_xml_entities_rejected) ... ok\ntest_xml_unknown_layout_fails_closed (__main__.RedactionTests.test_xml_unknown_layout_fails_closed) ... ok\ntest_date_cannot_carry_extra_phone (__main__.XmlMetadataPrivacyRegression.test_date_cannot_carry_extra_phone) ... ok\ntest_sender_cannot_hide_pii_behind_bank_substring (__main__.XmlMetadataPrivacyRegression.test_sender_cannot_hide_pii_behind_bank_substring) ... ok\ntest_valid_timestamp_layouts (__main__.XmlMetadataPrivacyRegression.test_valid_timestamp_layouts) ... ok\n\n----------------------------------------------------------------------\nRan 52 tests in 1.084s\n\nOK\n"
+  },
+  {
+    "name": "WIP-tests-compile-expected-to-fail",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\jdk\\jdk-17.0.21+9\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\annotations.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\trove4j.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-nowarn",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\claude\\c--Users-2299004-Downloads-Jeevs-fun-Expense-tracker\\15b759e7-47ad-4fbf-9980-49a0ddc63980\\scratchpad\\kotlin\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\checks\\wip-tests",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\AuditTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\BackupTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\BudgetsTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\CategoriesTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\pending\\core\\src\\test\\kotlin\\DedupTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\EngineTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\FraudTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\InsightsTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ManualEntryTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\MerchantBookTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ParseMissesTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ParsingTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\pending\\core\\src\\test\\kotlin\\PasteTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\PipelineTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\PromptsTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\RecoverySequenceTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\RecoveryTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\ReviewTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree\\core\\src\\test\\kotlin\\SenderBookTest.kt"
+    ],
+    "cwd": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\tree",
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\pending\\core\\src\\test\\kotlin\\DedupTest.kt:44:44: error: argument type mismatch: actual type is 'kotlin.Long', but 'java.time.LocalDateTime?' was expected.\n    return Dedup.identity(p, body, sender, receivedAtMs, p.occurredAt ?: local)\n                                           ^^^^^^^^^^^^\nC:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\pending\\core\\src\\test\\kotlin\\DedupTest.kt:71:9: error: no parameter with name 'receivedAtMs' found.\n        receivedAtMs = receivedAtMs,\n        ^^^^^^^^^^^^\nC:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\pending\\core\\src\\test\\kotlin\\DedupTest.kt:343:60: error: argument type mismatch: actual type is 'kotlin.Long', but 'java.time.LocalDateTime?' was expected.\n    val scanned = Dedup.identity(bareParsed, bare, SENDER, ms(\"2026-07-08T12:00\"), t(\"2026-07-08T12:00\"))\n                                                           ^^^^^^^^^^^^^^^^^^^^^^\nC:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-publish-c6ez4yde\\pending\\core\\src\\test\\kotlin\\DedupTest.kt:365:53: error: argument type mismatch: actual type is 'kotlin.Long', but 'java.time.LocalDateTime?' was expected.\n        val all = Dedup.identity(p, c.body, SENDER, receivedAtMs, p.occurredAt ?: c.receivedAt).all\n                                                    ^^^^^^^^^^^^\n"
+  }
+]

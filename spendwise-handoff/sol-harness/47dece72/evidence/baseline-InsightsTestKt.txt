@@ -1,0 +1,11 @@
+=== forecast ===
+=== cash flow ===
+=== category trends ===
+=== merchants are compared against themselves ===
+=== anomalies ===
+=== savings opportunities ===
+=== recurring, transfers, refunds ===
+=== money formatting is Indian ===
+
+============================================================
+50 passed, 0 failed

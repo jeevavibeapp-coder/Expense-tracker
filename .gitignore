@@ -24,3 +24,6 @@ keystore.properties
 # Local Claude Code hooks: machine-specific paths and toolchain locations.
 .claude/settings.local.json
 .claude/hooks/
+
+# Local original SMS, private review notes and redaction secrets stay on device.
+spendwise-handoff/real-sms/

@@ -1,0 +1,9 @@
+=== Home keeps a paste control only where pasting is the capture ===
+=== an empty ledger never promises capture that is not happening ===
+=== the sentence and the buttons under it agree ===
+=== paste leads wherever nothing is captured for you ===
+=== each route has one label, and the two cannot be confused ===
+=== in the no-SMS build paste is one tap from Home, empty or not ===
+
+============================================================
+27 passed, 0 failed

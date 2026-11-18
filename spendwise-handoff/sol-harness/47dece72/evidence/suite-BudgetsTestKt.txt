@@ -1,0 +1,9 @@
+=== month boundaries ===
+=== budget progress ===
+=== a category with no budget makes no claim ===
+=== daily series is zero-filled ===
+=== a streak has to be earned ===
+=== the monthly report ===
+
+============================================================
+70 passed, 0 failed

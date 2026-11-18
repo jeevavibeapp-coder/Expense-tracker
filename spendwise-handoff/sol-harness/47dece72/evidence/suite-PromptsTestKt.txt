@@ -1,0 +1,8 @@
+=== only captures the app filed by itself are asked about ===
+=== the queue is a nudge, not a backlog ===
+=== answering files the row and teaches the engine ===
+=== declining is an answer ===
+=== a category typed into the prompt ===
+
+============================================================
+25 passed, 0 failed

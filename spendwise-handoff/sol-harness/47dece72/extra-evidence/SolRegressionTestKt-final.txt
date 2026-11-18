@@ -1,0 +1,18 @@
+FAIL K1-0 actual=NotFinancial
+FAIL K1-1 actual=NotFinancial
+FAIL K1-2 actual=NotFinancial
+FAIL K1-3 actual=NotFinancial
+FAIL K2-merchant actual=ParsedSms(amount=500.0, type=income, rawMerchant=null, referenceNumber=123456789012, occurredAt=null, matched=true, looksTransactional=true, keyMerchant=account XX1234 as)
+FAIL K2-historical-debit actual=ParsedSms(amount=500.0, type=expense, rawMerchant=null, referenceNumber=123456789012, occurredAt=null, matched=true, looksTransactional=true, keyMerchant=account XX1234 as)
+FAIL K3-two-purchases actual=[500.0|AMAZON||2026-11-18, 500.0|AMAZON||2026-11-18]
+FAIL K3-debit-credit actual=[500.0|AMAZON||2026-11-18, 500.0|AMAZON||2026-11-18]
+FAIL K3-axis-reference actual=ParsedSms(amount=500.0, type=expense, rawMerchant=ZOMATO, referenceNumber=null, occurredAt=2026-11-18T00:00, matched=true, looksTransactional=true, keyMerchant=ZOMATO)
+FAIL K4-prefix actual=(Amazon, Shopping)
+FAIL K4-instamart actual=(Swiggy, Food & Dining)
+FAIL K5-unresolved actual=[FraudAlert(key=duplicate:purchase, txId=purchase, kind=duplicate, severity=medium, message=Possible duplicate: ₹500, twice within 10 minutes.)]
+FAIL K7-utc actual=Ok(doc=Document(createdAt=, categories=[], merchants=[], learning=[], transactions=[Txn(id=utc, amount=100.0, type=expense, occurredAt=2026-11-18T00:30, createdAt=2026-11-18T00:30, categoryId=null, rawMerchant=null, merchantName=null, notes=null, referenceNumber=null, source=restore, confidence=null, status=confirmed, categoryPrompted=false, dedupKey=null, isDeleted=false)], senders=[], prefs=null, dropped={categories=0, merchants=0, learning=0, transactions=0, sms_senders=0}), summary=Summary(createdAt=, transactions=1, categories=0, merchants=0, learning=0, senders=0, first=2026-11-18, last=2026-11-18, dropped=0))
+FAIL K7-negative actual=Ok(doc=Document(createdAt=, categories=[], merchants=[], learning=[], transactions=[], senders=[], prefs=null, dropped={categories=0, merchants=0, learning=0, transactions=1, sms_senders=0}), summary=Summary(createdAt=, transactions=0, categories=0, merchants=0, learning=0, senders=0, first=null, last=null, dropped=1))
+FAIL T1-seconds actual=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:30, matched=true, looksTransactional=true, keyMerchant=KFC)
+FAIL T1-invalid actual=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)
+FAIL S-001-your-merchant actual=ParsedSms(amount=600.0, type=expense, rawMerchant=null, referenceNumber=123456789012, occurredAt=2026-11-18T00:00, matched=true, looksTransactional=true, keyMerchant=YOUR SALON)
+SolRegressionTest: 4 passed, 17 failed

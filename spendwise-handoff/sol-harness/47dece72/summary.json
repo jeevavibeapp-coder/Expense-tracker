@@ -1,0 +1,18 @@
+{
+  "suite-": {
+    "suites": 18,
+    "passed": 1567,
+    "failed": 0
+  },
+  "baseline-": {
+    "suites": 17,
+    "passed": 1521,
+    "failed": 0
+  },
+  "legacy_keys": {
+    "cases": 10,
+    "equal": 10,
+    "all_single_row": true
+  },
+  "instructions_byte_identical": true
+}

@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<messages redacted="true" format="SpendWise-review-v1">
+  <message sender="VM-HDFCBK" date="1795000000000">
+    <body>INR 1,200.50 debited from A/c XX1944 to AMAZON on 18-Nov-2026 12:30. Ref 876656584459. Avl Bal Rs 1,088.22.</body>
+  </message>
+  <message sender="+917896573208" date="1795000010000">
+    <body>Rs 500 sent to PERSON_2 at oevrs.yxaboc@okicici. Ref 655785142335.</body>
+  </message>
+</messages>

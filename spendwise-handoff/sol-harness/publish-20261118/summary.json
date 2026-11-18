@@ -1,0 +1,7 @@
+{
+  "base": "78958255ec44cc9e96a3a2dbbb53dcb12522bb0c",
+  "core_suites": 19,
+  "completed_failures": [],
+  "wip_compilation_exit": 1,
+  "note": "WIP tests preserved separately; production K3-b implementation is absent. No Android Gradle or device build performed."
+}

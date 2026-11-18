@@ -1,0 +1,8 @@
+=== OTP / failed / reversed / declined: money that did not move ===
+=== account masks are never the amount or the payee ===
+=== #9: a refund that also says 'paid' is money coming in ===
+=== #11: times are the bank's wall clock, never shifted to UTC ===
+=== #12: one payee name, one answer ===
+
+============================================================
+46 passed, 0 failed

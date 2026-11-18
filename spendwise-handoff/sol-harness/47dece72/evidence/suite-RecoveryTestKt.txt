@@ -1,0 +1,14 @@
+=== reading what went wrong ===
+=== reading integrity_check ===
+=== what may be opened as it stands ===
+=== the policy, failure by failure ===
+=== the rule that cost a ledger the last time it was broken ===
+=== the policy always ends ===
+=== what the user is told ===
+=== naming and ordering snapshots ===
+=== when another snapshot is due ===
+=== a snapshot is verified, never trusted ===
+=== nothing is ever deleted ===
+
+============================================================
+92 passed, 0 failed

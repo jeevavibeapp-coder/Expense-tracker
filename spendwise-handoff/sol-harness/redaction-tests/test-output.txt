@@ -1,0 +1,57 @@
+test_bank_word_does_not_hide_person (__main__.CounterpartyReviewRegression.test_bank_word_does_not_hide_person) ... ok
+test_unknown_at_counterparty_and_merchants (__main__.CounterpartyReviewRegression.test_unknown_at_counterparty_and_merchants) ... ok
+test_one_character_upi_handle (__main__.EmbeddedIdentifierRegression.test_one_character_upi_handle) ... ok
+test_p2m_embedded_phone_is_masked (__main__.EmbeddedIdentifierRegression.test_p2m_embedded_phone_is_masked) ... ok
+test_upi_path_vpa_keeps_shape_and_is_masked (__main__.EmbeddedIdentifierRegression.test_upi_path_vpa_keeps_shape_and_is_masked) ... ok
+test_person_before_vpa_and_phone (__main__.EndToEndPrivacyRegression.test_person_before_vpa_and_phone) ... ok
+test_upi_path_preserves_trailing_date (__main__.EndToEndPrivacyRegression.test_upi_path_preserves_trailing_date) ... ok
+test_account_and_card_holder_names (__main__.ExplicitHolderAndXmlConflict.test_account_and_card_holder_names) ... ok
+test_conflicting_xml_body_is_flagged (__main__.ExplicitHolderAndXmlConflict.test_conflicting_xml_body_is_flagged) ... ok
+test_balance_sign_before_currency (__main__.FinalPrivacyEdgeCases.test_balance_sign_before_currency) ... ok
+test_greeting_case_variations (__main__.FinalPrivacyEdgeCases.test_greeting_case_variations) ... ok
+test_schemeless_urls_are_masked_and_reviewed (__main__.FinalPrivacyEdgeCases.test_schemeless_urls_are_masked_and_reviewed) ... ok
+test_account_and_vpa_labels_are_not_names (__main__.GrammarPreservationRegression.test_account_and_vpa_labels_are_not_names) ... ok
+test_account_shape_and_repeated_suffix (__main__.RedactionTests.test_account_shape_and_repeated_suffix) ... ok
+test_amount_and_balance (__main__.RedactionTests.test_amount_and_balance) ... ok
+test_bad_timestamp_is_omitted_for_review (__main__.RedactionTests.test_bad_timestamp_is_omitted_for_review) ... ok
+test_business_names_reviewed (__main__.RedactionTests.test_business_names_reviewed) ... ok
+test_by_and_precredit_person (__main__.RedactionTests.test_by_and_precredit_person) ... ok
+test_dates_times_and_bank_header (__main__.RedactionTests.test_dates_times_and_bank_header) ... ok
+test_different_people_get_different_ids (__main__.RedactionTests.test_different_people_get_different_ids) ... ok
+test_distinct_accounts (__main__.RedactionTests.test_distinct_accounts) ... ok
+test_explicit_person_paths (__main__.RedactionTests.test_explicit_person_paths) ... ok
+test_generic_upi_path (__main__.RedactionTests.test_generic_upi_path) ... ok
+test_greeting (__main__.RedactionTests.test_greeting) ... ok
+test_large_amount_not_phone (__main__.RedactionTests.test_large_amount_not_phone) ... ok
+test_merchant_paths (__main__.RedactionTests.test_merchant_paths) ... ok
+test_names_and_known_merchants (__main__.RedactionTests.test_names_and_known_merchants) ... ok
+test_number_mapping_no_collisions (__main__.RedactionTests.test_number_mapping_no_collisions) ... ok
+test_output_filename_does_not_expose_input_name (__main__.RedactionTests.test_output_filename_does_not_expose_input_name) ... ok
+test_output_separates_review_and_drops_metadata (__main__.RedactionTests.test_output_separates_review_and_drops_metadata) ... ok
+test_phone_prefix_and_shape (__main__.RedactionTests.test_phone_prefix_and_shape) ... ok
+test_plaintext_process_and_utf16_xml (__main__.RedactionTests.test_plaintext_process_and_utf16_xml) ... ok
+test_reference_shared_between_messages (__main__.RedactionTests.test_reference_shared_between_messages) ... ok
+test_refno_and_alphanumeric_shape (__main__.RedactionTests.test_refno_and_alphanumeric_shape) ... ok
+test_same_alphanumeric_id_different_case (__main__.RedactionTests.test_same_alphanumeric_id_different_case) ... ok
+test_sbi_currency_free_amount (__main__.RedactionTests.test_sbi_currency_free_amount) ... ok
+test_state_persistence_without_original_values (__main__.RedactionTests.test_state_persistence_without_original_values) ... ok
+test_synthetic_mutations_keep_financial_shape (__main__.RedactionTests.test_synthetic_mutations_keep_financial_shape) ... ok
+test_unicode_digits (__main__.RedactionTests.test_unicode_digits) ... ok
+test_unknown_email_is_masked_and_reviewed (__main__.RedactionTests.test_unknown_email_is_masked_and_reviewed) ... ok
+test_unknown_merchant_conservative_then_allowlist (__main__.RedactionTests.test_unknown_merchant_conservative_then_allowlist) ... ok
+test_unknown_numeric_identifier (__main__.RedactionTests.test_unknown_numeric_identifier) ... ok
+test_upi_handles_consistent (__main__.RedactionTests.test_upi_handles_consistent) ... ok
+test_url_redacted (__main__.RedactionTests.test_url_redacted) ... ok
+test_xml_attributes_sms_backup_restore_layout (__main__.RedactionTests.test_xml_attributes_sms_backup_restore_layout) ... ok
+test_xml_child_elements_and_namespace (__main__.RedactionTests.test_xml_child_elements_and_namespace) ... ok
+test_xml_direct_text_body (__main__.RedactionTests.test_xml_direct_text_body) ... ok
+test_xml_entities_rejected (__main__.RedactionTests.test_xml_entities_rejected) ... ok
+test_xml_unknown_layout_fails_closed (__main__.RedactionTests.test_xml_unknown_layout_fails_closed) ... ok
+test_date_cannot_carry_extra_phone (__main__.XmlMetadataPrivacyRegression.test_date_cannot_carry_extra_phone) ... ok
+test_sender_cannot_hide_pii_behind_bank_substring (__main__.XmlMetadataPrivacyRegression.test_sender_cannot_hide_pii_behind_bank_substring) ... ok
+test_valid_timestamp_layouts (__main__.XmlMetadataPrivacyRegression.test_valid_timestamp_layouts) ... ok
+
+----------------------------------------------------------------------
+Ran 52 tests in 2.457s
+
+OK

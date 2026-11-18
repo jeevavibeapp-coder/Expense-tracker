@@ -1,0 +1,114 @@
+1: package com.jeevavibeapp.spendwise.ui
+2: 
+3: import androidx.compose.foundation.isSystemInDarkTheme
+4: import androidx.compose.material3.*
+5: import androidx.compose.runtime.Composable
+6: import androidx.compose.ui.graphics.Brush
+7: import androidx.compose.ui.graphics.Color
+8: import androidx.compose.ui.text.TextStyle
+9: import androidx.compose.ui.text.font.FontWeight
+10: import androidx.compose.ui.text.style.TextAlign
+11: import androidx.compose.ui.unit.dp
+12: import androidx.compose.ui.unit.sp
+13: 
+14: /**
+15:  * The design system, carried over from the web build.
+16:  *
+17:  * The rule that produced it: premium in this category is restraint plus
+18:  * hierarchy, not decoration. One thing per screen is loud — the balance —
+19:  * and everything else is whispered until you look at it directly. Money is
+20:  * set large with tight tracking; labels shrink to uppercase micro-type with
+21:  * wide tracking. The contrast between those two does most of the work.
+22:  */
+23: 
+24: private val Ink = Color(0xFF07070B)
+25: private val Surface1 = Color(0xFF101017)
+26: private val Surface2 = Color(0xFF17171F)
+27: private val Surface3 = Color(0xFF1F1F29)
+28: private val TextHi = Color(0xFFF6F6F9)
+29: private val TextMid = Color(0xFF9A9AAB)
+30: private val TextLow = Color(0xFF63636F)
+31: 
+32: private val LightBg = Color(0xFFF4F4F7)
+33: private val LightSurface = Color(0xFFFFFFFF)
+34: private val LightSurface2 = Color(0xFFF7F7FA)
+35: private val LightTextHi = Color(0xFF0D0D14)
+36: private val LightTextMid = Color(0xFF5F5F70)
+37: private val LightTextLow = Color(0xFF8B8B9C)
+38: 
+39: val Primary = Color(0xFF7C5CFF)
+40: val PrimaryBright = Color(0xFF9B86FF)
+41: val Income = Color(0xFF36D39A)
+42: val Expense = Color(0xFFFF6B81)
+43: val Warn = Color(0xFFFBBF24)
+44: 
+45: val BrandGradient = Brush.linearGradient(listOf(Color(0xFF8B5CFF), Color(0xFF5B8CFF)))
+46: 
+47: private val DarkScheme = darkColorScheme(
+48:     primary = Primary, onPrimary = Color.White,
+49:     secondary = PrimaryBright, background = Ink, onBackground = TextHi,
+50:     surface = Surface1, onSurface = TextHi,
+51:     surfaceVariant = Surface2, onSurfaceVariant = TextMid,
+52:     outline = Color(0x14FFFFFF), error = Expense,
+53: )
+54: 
+55: private val LightScheme = lightColorScheme(
+56:     primary = Primary, onPrimary = Color.White,
+57:     secondary = PrimaryBright, background = LightBg, onBackground = LightTextHi,
+58:     surface = LightSurface, onSurface = LightTextHi,
+59:     surfaceVariant = LightSurface2, onSurfaceVariant = LightTextMid,
+60:     outline = Color(0x120C0C14), error = Expense,
+61: )
+62: 
+63: /** Money is always tabular — `tnum`, not a promise in a comment. Roboto's
+64:  *  default figures are proportional, so a column of amounts whose digits do
+65:  *  not line up is the fastest way for an app to look unfinished, and the
+66:  *  ledger is a column of amounts. */
+67: private const val TABULAR = "tnum"
+68: 
+69: val MoneyLarge = TextStyle(
+70:     fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.4).sp,
+71:     fontFeatureSettings = TABULAR)
+72: val MoneyMedium = TextStyle(
+73:     fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp,
+74:     fontFeatureSettings = TABULAR)
+75: val MoneyRow = TextStyle(
+76:     fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.15).sp,
+77:     fontFeatureSettings = TABULAR)
+78: 
+79: /** Uppercase micro-type with wide tracking. This is what turns a small label
+80:  *  into a considered one, and it is half the reason the screens read as
+81:  *  organised rather than as more content. */
+82: val MicroLabel = TextStyle(
+83:     fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.3.sp)
+84: 
+85: val SectionHeading = MicroLabel.copy(textAlign = TextAlign.Start)
+86: 
+87: object Tokens {
+88:     val screenPadding = 18.dp
+89:     val cardRadius = 26.dp
+90:     val rowRadius = 13.dp
+91:     /** Material and WCAG 2.5.5 both put the floor here, and every control in
+92:      *  the app is held to it. */
+93:     val minTouchTarget = 48.dp
+94:     val gutter = 16.dp
+95: }
+96: 
+97: @Composable
+98: fun SpendWiseTheme(
+99:     dark: Boolean = isSystemInDarkTheme(),
+100:     content: @Composable () -> Unit,
+101: ) {
+102:     MaterialTheme(
+103:         colorScheme = if (dark) DarkScheme else LightScheme,
+104:         typography = Typography(
+105:             headlineLarge = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.ExtraBold,
+106:                 letterSpacing = (-0.6).sp),
+107:             titleMedium = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+108:             bodyMedium = TextStyle(fontSize = 14.sp),
+109:             bodySmall = TextStyle(fontSize = 12.sp),
+110:             labelSmall = MicroLabel,
+111:         ),
+112:         content = content,
+113:     )
+114: }

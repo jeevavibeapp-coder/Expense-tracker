@@ -1,0 +1,217 @@
+[
+  {
+    "label": "compile-sol-tests",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\trove4j.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\annotations.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-nowarn",
+      "-classpath",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-sol",
+      "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\SolFuzzTest.kt",
+      "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\SolLegacyKeyProbe.kt",
+      "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\SolRegressionTest.kt"
+    ],
+    "exit_code": 0,
+    "seconds": 27.848,
+    "output": ""
+  },
+  {
+    "label": "SolRegressionTestKt-47dece72",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-Duser.timezone=Asia/Kolkata",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-sol;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "SolRegressionTestKt"
+    ],
+    "exit_code": 1,
+    "seconds": 1.867,
+    "output": "FAIL K1-0 actual=NotFinancial\nFAIL K1-1 actual=NotFinancial\nFAIL K1-2 actual=NotFinancial\nFAIL K1-3 actual=NotFinancial\nFAIL K2-merchant actual=ParsedSms(amount=500.0, type=income, rawMerchant=null, referenceNumber=123456789012, occurredAt=null, matched=true, looksTransactional=true, keyMerchant=account XX1234 as)\nFAIL K2-historical-debit actual=ParsedSms(amount=500.0, type=expense, rawMerchant=null, referenceNumber=123456789012, occurredAt=null, matched=true, looksTransactional=true, keyMerchant=account XX1234 as)\nFAIL K3-two-purchases actual=[500.0|AMAZON||2026-11-18, 500.0|AMAZON||2026-11-18]\nFAIL K3-debit-credit actual=[500.0|AMAZON||2026-11-18, 500.0|AMAZON||2026-11-18]\nFAIL K3-axis-reference actual=ParsedSms(amount=500.0, type=expense, rawMerchant=ZOMATO, referenceNumber=null, occurredAt=2026-11-18T00:00, matched=true, looksTransactional=true, keyMerchant=ZOMATO)\nFAIL K4-prefix actual=(Amazon, Shopping)\nFAIL K4-instamart actual=(Swiggy, Food & Dining)\nFAIL K5-unresolved actual=[FraudAlert(key=duplicate:purchase, txId=purchase, kind=duplicate, severity=medium, message=Possible duplicate: \u20b9500, twice within 10 minutes.)]\nFAIL K7-utc actual=Ok(doc=Document(createdAt=, categories=[], merchants=[], learning=[], transactions=[Txn(id=utc, amount=100.0, type=expense, occurredAt=2026-11-18T00:30, createdAt=2026-11-18T00:30, categoryId=null, rawMerchant=null, merchantName=null, notes=null, referenceNumber=null, source=restore, confidence=null, status=confirmed, categoryPrompted=false, dedupKey=null, isDeleted=false)], senders=[], prefs=null, dropped={categories=0, merchants=0, learning=0, transactions=0, sms_senders=0}), summary=Summary(createdAt=, transactions=1, categories=0, merchants=0, learning=0, senders=0, first=2026-11-18, last=2026-11-18, dropped=0))\nFAIL K7-negative actual=Ok(doc=Document(createdAt=, categories=[], merchants=[], learning=[], transactions=[], senders=[], prefs=null, dropped={categories=0, merchants=0, learning=0, transactions=1, sms_senders=0}), summary=Summary(createdAt=, transactions=0, categories=0, merchants=0, learning=0, senders=0, first=null, last=null, dropped=1))\nFAIL T1-seconds actual=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:30, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL T1-invalid actual=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL S-001-your-merchant actual=ParsedSms(amount=600.0, type=expense, rawMerchant=null, referenceNumber=123456789012, occurredAt=2026-11-18T00:00, matched=true, looksTransactional=true, keyMerchant=YOUR SALON)\nSolRegressionTest: 4 passed, 17 failed\n"
+  },
+  {
+    "label": "SolFuzzTestKt-47dece72",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-Duser.timezone=Asia/Kolkata",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-sol;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "SolFuzzTestKt"
+    ],
+    "exit_code": 1,
+    "seconds": 6.24,
+    "output": "FAIL fuzz[0] input=INR \u0c67\u0c66\u0c66 paid to KFC on \u0c67\u0c6e-Nov-\u0c68\u0c66\u0c68\u0c6c \u0c68\u0c6a:\u0c6c\u0c6b Ref \u0c67\u0c68\u0c69\u0c6a\u0c6b\u0c6c\u0c6d\u0c6e\u0c6f\u0c66\u0c67\u0c68 result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL fuzz[5] input=INR \u0967\u0966\u0966 paid to KFC on \u0967\u096e-Nov-\u0968\u0966\u0968\u096c \u0968\u096e:\u096c\u0968 Ref \u0967\u0968\u0969\u096a\u096b\u096c\u096d\u096e\u096f\u0966\u0967\u0968 result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL fuzz[10] input=INR \u0967\u0966\u0966 paid to KFC on \u0967\u096e-Nov-\u0968\u0966\u0968\u096c \u0968\u096c:\u096c\u096a Ref \u0967\u0968\u0969\u096a\u096b\u096c\u096d\u096e\u096f\u0966\u0967\u0968 result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL fuzz[15] input=INR 100 paid to KFC on 18-Nov-2026 28:62 Ref 123456789012 result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL fuzz[20] input=INR \u0c67\u0c66\u0c66 paid to KFC on \u0c67\u0c6e-Nov-\u0c68\u0c66\u0c68\u0c6c \u0c68\u0c6c:\u0c6c\u0c68 Ref \u0c67\u0c68\u0c69\u0c6a\u0c6b\u0c6c\u0c6d\u0c6e\u0c6f\u0c66\u0c67\u0c68 result=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)\nseed=20261118 inputs=10000 crashes=0 negative_or_nonfinite=0 invented_times=2000\nSolFuzzTest: 8000 passed, 2000 failed\n"
+  },
+  {
+    "label": "SolLegacyKeyProbeKt-47dece72",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-Duser.timezone=Asia/Kolkata",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-sol;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "SolLegacyKeyProbeKt"
+    ],
+    "exit_code": 0,
+    "seconds": 0.978,
+    "output": "0\tRs.100.00 debited from A/c XX1234 on 08-07-26. UPI Ref 512345678901\t100.0|A C XX1234|512345678901|2026-07-08\texpense\tnull\n1\tRs.5,000.00 credited to your A/c XX9012 on 08-07-26. UPI Ref 512345678901\t5000.0|YOUR|512345678901|2026-07-08\tincome\tnull\n2\tINR 62,500.00 credited to A/c XX1234 on 01-07-26 towards SALARY JUL26. Ref 998877665544\t62500.0|A C XX1234|998877665544|2026-07-01\tincome\tnull\n3\tRefund of Rs.500.00 for your order paid via UPI has been credited to your A/c XX1234 on 08-07-26. Ref 512345678901\t500.0|YOUR|512345678901|2026-07-08\tincome\tnull\n4\tRs.250.00 credited to A/c XX1234 on 08-07-26 as refund of the amount paid to AMAZON. UPI Ref 512345678901\t250.0|A C XX1234|512345678901|2026-07-08\tincome\tnull\n5\tYou have received a refund of Rs.120 for the bill paid at DMART. Credited to A/c XX1234 UPI Ref 512345678901\t120.0|DMART|512345678901|2026-07-08\tincome\tDMART\n6\tINR 500.00 credited to account XX1234 as refund for the amount paid to AMAZON. UTR 123456789012.\t500.0|ACCOUNT XX1234 AS|123456789012|2026-07-08\tincome\tnull\n7\tINR 500.00 credited to account XX1234 on 18-Nov-2026 as refund for an item purchased from AMAZON. UTR 123456789012.\t500.0|ACCOUNT XX1234|123456789012|2026-11-18\tincome\tAMAZON\n8\tINR 600.00 paid to YOUR SALON on 18-Nov-2026 from account XX1234. UTR 123456789012.\t600.0|YOUR SALON|123456789012|2026-11-18\texpense\tnull\n9\tINR 500.00 debited from A/C XX1234 on 18-Nov-2026 UPI/P2M/519023481234/ZOMATO/UPI\t500.0|ZOMATO||2026-11-18\texpense\tZOMATO\n"
+  },
+  {
+    "label": "compile-legacy-probe",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\trove4j.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\annotations.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-nowarn",
+      "-classpath",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-legacy-probe",
+      "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\SolLegacyKeyProbe.kt"
+    ],
+    "exit_code": 0,
+    "seconds": 48.586,
+    "output": ""
+  },
+  {
+    "label": "SolLegacyKeyProbeKt-6bd77fb5",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-legacy-probe;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "SolLegacyKeyProbeKt"
+    ],
+    "exit_code": 0,
+    "seconds": 3.163,
+    "output": "0\tRs.100.00 debited from A/c XX1234 on 08-07-26. UPI Ref 512345678901\t100.0|A C XX1234|512345678901|2026-07-08\texpense\tA/c XX1234\n1\tRs.5,000.00 credited to your A/c XX9012 on 08-07-26. UPI Ref 512345678901\t5000.0|YOUR|512345678901|2026-07-08\tincome\tyour\n2\tINR 62,500.00 credited to A/c XX1234 on 01-07-26 towards SALARY JUL26. Ref 998877665544\t62500.0|A C XX1234|998877665544|2026-07-01\tincome\tA/c XX1234\n3\tRefund of Rs.500.00 for your order paid via UPI has been credited to your A/c XX1234 on 08-07-26. Ref 512345678901\t500.0|YOUR|512345678901|2026-07-08\texpense\tyour\n4\tRs.250.00 credited to A/c XX1234 on 08-07-26 as refund of the amount paid to AMAZON. UPI Ref 512345678901\t250.0|A C XX1234|512345678901|2026-07-08\texpense\tA/c XX1234\n5\tYou have received a refund of Rs.120 for the bill paid at DMART. Credited to A/c XX1234 UPI Ref 512345678901\t120.0|DMART|512345678901|2026-07-08\texpense\tDMART\n6\tINR 500.00 credited to account XX1234 as refund for the amount paid to AMAZON. UTR 123456789012.\t500.0|ACCOUNT XX1234 AS|123456789012|2026-07-08\texpense\taccount XX1234 as\n7\tINR 500.00 credited to account XX1234 on 18-Nov-2026 as refund for an item purchased from AMAZON. UTR 123456789012.\t500.0|ACCOUNT XX1234|123456789012|2026-11-18\texpense\taccount XX1234\n8\tINR 600.00 paid to YOUR SALON on 18-Nov-2026 from account XX1234. UTR 123456789012.\t600.0|YOUR SALON|123456789012|2026-11-18\texpense\tYOUR SALON\n9\tINR 500.00 debited from A/C XX1234 on 18-Nov-2026 UPI/P2M/519023481234/ZOMATO/UPI\t500.0|ZOMATO||2026-11-18\texpense\tZOMATO\n"
+  },
+  {
+    "label": "compile-opus-account-before",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\trove4j.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\annotations.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-nowarn",
+      "-classpath",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-opus-account-before",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\extra-evidence\\OpusAccountBefore.kt"
+    ],
+    "exit_code": 0,
+    "seconds": 66.783,
+    "output": ""
+  },
+  {
+    "label": "opus-account-before",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-opus-account-before;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "OpusAccountBeforeKt"
+    ],
+    "exit_code": 1,
+    "seconds": 1.203,
+    "output": "=== OTP / failed / reversed / declined: money that did not move ===\n=== account masks are never the amount or the payee ===\n  FAIL  payee from: Rs.100.00 debited from A/c XX1234 on 08-07-26  [want=null got=A/c XX1234]\n  FAIL  payee from: Rs.5,000.00 credited to your A/c XX9012 on 08  [want=null got=your]\n  FAIL  payee from: INR 62,500.00 credited to A/c XX1234 on 01-07  [want=null got=A/c XX1234]\n=== #11: times are the bank's wall clock, never shifted to UTC ===\n=== #12: one payee name, one answer ===\n\n============================================================\n29 passed, 3 failed\n"
+  },
+  {
+    "label": "compile-parsing-424413a0",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\trove4j.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\annotations.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-nowarn",
+      "-classpath",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-parsing-424413a0",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\extra-evidence\\Parsing.kt"
+    ],
+    "exit_code": 0,
+    "seconds": 92.34,
+    "output": ""
+  },
+  {
+    "label": "compile-opus-refund-before",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\trove4j.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\annotations.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-nowarn",
+      "-classpath",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-opus-refund-before",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\extra-evidence\\OpusRefundBefore.kt"
+    ],
+    "exit_code": 0,
+    "seconds": 58.858,
+    "output": ""
+  },
+  {
+    "label": "opus-refund-before",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-parsing-424413a0;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-opus-refund-before;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "OpusRefundBeforeKt"
+    ],
+    "exit_code": 1,
+    "seconds": 1.208,
+    "output": "=== OTP / failed / reversed / declined: money that did not move ===\n=== account masks are never the amount or the payee ===\n=== #9: a refund that also says 'paid' is money coming in ===\n  FAIL  income: Refund of Rs.500.00 for your order paid via UPI ha  [got=expense]\n  FAIL  income: Rs.250.00 credited to A/c XX1234 on 08-07-26 as re  [got=expense]\n  FAIL  income: You have received a refund of Rs.120 for the bill   [got=expense]\n=== #11: times are the bank's wall clock, never shifted to UTC ===\n=== #12: one payee name, one answer ===\n\n============================================================\n43 passed, 3 failed\n"
+  },
+  {
+    "label": "compile-final-regression",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\trove4j.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\annotations.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-nowarn",
+      "-classpath",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-final-regression",
+      "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\SolRegressionTest.kt"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "label": "SolRegressionTestKt-final",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-Duser.timezone=Asia/Kolkata",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-final-regression;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "SolRegressionTestKt"
+    ],
+    "exit_code": 1,
+    "output": "FAIL K1-0 actual=NotFinancial\nFAIL K1-1 actual=NotFinancial\nFAIL K1-2 actual=NotFinancial\nFAIL K1-3 actual=NotFinancial\nFAIL K2-merchant actual=ParsedSms(amount=500.0, type=income, rawMerchant=null, referenceNumber=123456789012, occurredAt=null, matched=true, looksTransactional=true, keyMerchant=account XX1234 as)\nFAIL K2-historical-debit actual=ParsedSms(amount=500.0, type=expense, rawMerchant=null, referenceNumber=123456789012, occurredAt=null, matched=true, looksTransactional=true, keyMerchant=account XX1234 as)\nFAIL K3-two-purchases actual=[500.0|AMAZON||2026-11-18, 500.0|AMAZON||2026-11-18]\nFAIL K3-debit-credit actual=[500.0|AMAZON||2026-11-18, 500.0|AMAZON||2026-11-18]\nFAIL K3-axis-reference actual=ParsedSms(amount=500.0, type=expense, rawMerchant=ZOMATO, referenceNumber=null, occurredAt=2026-11-18T00:00, matched=true, looksTransactional=true, keyMerchant=ZOMATO)\nFAIL K4-prefix actual=(Amazon, Shopping)\nFAIL K4-instamart actual=(Swiggy, Food & Dining)\nFAIL K5-unresolved actual=[FraudAlert(key=duplicate:purchase, txId=purchase, kind=duplicate, severity=medium, message=Possible duplicate: \u20b9500, twice within 10 minutes.)]\nFAIL K7-utc actual=Ok(doc=Document(createdAt=, categories=[], merchants=[], learning=[], transactions=[Txn(id=utc, amount=100.0, type=expense, occurredAt=2026-11-18T00:30, createdAt=2026-11-18T00:30, categoryId=null, rawMerchant=null, merchantName=null, notes=null, referenceNumber=null, source=restore, confidence=null, status=confirmed, categoryPrompted=false, dedupKey=null, isDeleted=false)], senders=[], prefs=null, dropped={categories=0, merchants=0, learning=0, transactions=0, sms_senders=0}), summary=Summary(createdAt=, transactions=1, categories=0, merchants=0, learning=0, senders=0, first=2026-11-18, last=2026-11-18, dropped=0))\nFAIL K7-negative actual=Ok(doc=Document(createdAt=, categories=[], merchants=[], learning=[], transactions=[], senders=[], prefs=null, dropped={categories=0, merchants=0, learning=0, transactions=1, sms_senders=0}), summary=Summary(createdAt=, transactions=0, categories=0, merchants=0, learning=0, senders=0, first=null, last=null, dropped=1))\nFAIL T1-seconds actual=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:30, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL T1-invalid actual=ParsedSms(amount=100.0, type=expense, rawMerchant=KFC, referenceNumber=123456789012, occurredAt=2026-11-18T23:59, matched=true, looksTransactional=true, keyMerchant=KFC)\nFAIL S-001-your-merchant actual=ParsedSms(amount=600.0, type=expense, rawMerchant=null, referenceNumber=123456789012, occurredAt=2026-11-18T00:00, matched=true, looksTransactional=true, keyMerchant=YOUR SALON)\nSolRegressionTest: 4 passed, 17 failed\n"
+  }
+]

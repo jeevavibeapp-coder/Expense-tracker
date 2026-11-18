@@ -1,0 +1,10 @@
+=== deleting keeps the row, archived ===
+=== adding a name ===
+=== renaming ===
+=== nothing new is filed under a deleted category ===
+=== pickers ===
+=== the confirmation says what will happen ===
+=== and the report keeps the promise ===
+
+============================================================
+53 passed, 0 failed

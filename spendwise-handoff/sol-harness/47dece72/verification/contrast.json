@@ -1,0 +1,26 @@
+[
+  {
+    "foreground": "#36D39A",
+    "background": "#FFFFFF",
+    "name": "Income",
+    "contrast": 1.9193543994230982
+  },
+  {
+    "foreground": "#FBBF24",
+    "background": "#FFFFFF",
+    "name": "Warn",
+    "contrast": 1.669363936486175
+  },
+  {
+    "foreground": "#FF6B81",
+    "background": "#FFFFFF",
+    "name": "Expense",
+    "contrast": 2.7371999284725703
+  },
+  {
+    "foreground": "#7C5CFF",
+    "background": "#FFFFFF",
+    "name": "Primary",
+    "contrast": 4.346138331050967
+  }
+]

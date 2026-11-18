@@ -1,0 +1,47 @@
+[
+  {
+    "label": "compile-contrast",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-compiler.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-reflect.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\coroutines.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\trove4j.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\annotations.jar",
+      "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+      "-no-stdlib",
+      "-no-reflect",
+      "-nowarn",
+      "-classpath",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main",
+      "-d",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-contrast",
+      "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\SolContrastTest.kt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\MoneyPrecisionProbe.kt"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "label": "SolContrastTestKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-contrast;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "SolContrastTestKt",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\android\\nativeapp\\src\\main\\java\\com\\jeevavibeapp\\spendwise\\ui\\Theme.kt"
+    ],
+    "exit_code": 1,
+    "output": "FAIL S-002 Income normal-text contrast=1.9193543994230982 required>=4.5\nFAIL S-002 Warn normal-text contrast=1.669363936486175 required>=4.5\nSolContrastTest: 0 passed, 2 failed\n"
+  },
+  {
+    "label": "MoneyPrecisionProbeKt",
+    "command": [
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\zulu17.70.201-ca-jre17.0.21.1-win_x64\\bin\\java.exe",
+      "-Dfile.encoding=UTF-8",
+      "-cp",
+      "C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-main;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-review-47dece72-5uuv0ziw\\classes-contrast;C:\\Users\\2299004\\AppData\\Local\\Temp\\spendwise-kotlin-audit-9zk27_xv\\audit-tooling\\kotlin-stdlib.jar",
+      "MoneyPrecisionProbeKt"
+    ],
+    "exit_code": 0,
+    "output": "0.1+0.2=0.30000000000000004; shown=\u20b90\n12.34 shown=\u20b912\n"
+  }
+]

@@ -1,0 +1,1276 @@
+test_account_shape_and_repeated_suffix (__main__.RedactionTests.test_account_shape_and_repeated_suffix) ... ERROR
+test_amount_and_balance (__main__.RedactionTests.test_amount_and_balance) ... ERROR
+test_business_names_reviewed (__main__.RedactionTests.test_business_names_reviewed) ... ERROR
+test_dates_times_and_bank_header (__main__.RedactionTests.test_dates_times_and_bank_header) ... ERROR
+test_different_people_get_different_ids (__main__.RedactionTests.test_different_people_get_different_ids) ... ERROR
+test_distinct_accounts (__main__.RedactionTests.test_distinct_accounts) ... ERROR
+test_explicit_person_paths (__main__.RedactionTests.test_explicit_person_paths) ... ERROR
+test_greeting (__main__.RedactionTests.test_greeting) ... ERROR
+test_large_amount_not_phone (__main__.RedactionTests.test_large_amount_not_phone) ... ERROR
+test_merchant_paths (__main__.RedactionTests.test_merchant_paths) ... ERROR
+test_names_and_known_merchants (__main__.RedactionTests.test_names_and_known_merchants) ... ERROR
+test_output_separates_review_and_drops_metadata (__main__.RedactionTests.test_output_separates_review_and_drops_metadata) ... ERROR
+test_phone_prefix_and_shape (__main__.RedactionTests.test_phone_prefix_and_shape) ... ERROR
+test_plaintext_process_and_utf16_xml (__main__.RedactionTests.test_plaintext_process_and_utf16_xml) ... ERROR
+test_reference_shared_between_messages (__main__.RedactionTests.test_reference_shared_between_messages) ... ERROR
+test_refno_and_alphanumeric_shape (__main__.RedactionTests.test_refno_and_alphanumeric_shape) ... ERROR
+test_sbi_currency_free_amount (__main__.RedactionTests.test_sbi_currency_free_amount) ... ERROR
+test_state_persistence_without_original_values (__main__.RedactionTests.test_state_persistence_without_original_values) ... ERROR
+test_unicode_digits (__main__.RedactionTests.test_unicode_digits) ... ERROR
+test_unknown_email_is_masked_and_reviewed (__main__.RedactionTests.test_unknown_email_is_masked_and_reviewed) ... ERROR
+test_unknown_merchant_conservative_then_allowlist (__main__.RedactionTests.test_unknown_merchant_conservative_then_allowlist) ... ERROR
+test_unknown_numeric_identifier (__main__.RedactionTests.test_unknown_numeric_identifier) ... ERROR
+test_upi_handles_consistent (__main__.RedactionTests.test_upi_handles_consistent) ... ERROR
+test_url_redacted (__main__.RedactionTests.test_url_redacted) ... ERROR
+test_xml_attributes_sms_backup_restore_layout (__main__.RedactionTests.test_xml_attributes_sms_backup_restore_layout) ... ERROR
+test_xml_child_elements_and_namespace (__main__.RedactionTests.test_xml_child_elements_and_namespace) ... ERROR
+test_xml_entities_rejected (__main__.RedactionTests.test_xml_entities_rejected) ... ok
+test_xml_unknown_layout_fails_closed (__main__.RedactionTests.test_xml_unknown_layout_fails_closed) ... ok
+
+======================================================================
+ERROR: test_account_shape_and_repeated_suffix (__main__.RedactionTests.test_account_shape_and_repeated_suffix)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 12, in test_account_shape_and_repeated_suffix
+    x=self.r.redact("A/c XX1234 debited. Card **1234 used. Account 987654321098 credited.")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_amount_and_balance (__main__.RedactionTests.test_amount_and_balance)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 29, in test_amount_and_balance
+    x=self.r.redact("INR 1,200.50 debited. Avl Bal: Rs.9,876.54")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_business_names_reviewed (__main__.RedactionTests.test_business_names_reviewed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 71, in test_business_names_reviewed
+    x=self.r.redact("INR 50 paid to CORNER BAKERY on 18-Nov-2026")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_dates_times_and_bank_header (__main__.RedactionTests.test_dates_times_and_bank_header)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 34, in test_dates_times_and_bank_header
+    x=self.r.redact(text)
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_different_people_get_different_ids (__main__.RedactionTests.test_different_people_get_different_ids)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 82, in test_different_people_get_different_ids
+    a=self.r.redact("Paid to Rahul Sharma on 18-Nov-2026")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_distinct_accounts (__main__.RedactionTests.test_distinct_accounts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 17, in test_distinct_accounts
+    a=self.r.redact("A/c XX1234");b=self.r.redact("A/c XX5678")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_explicit_person_paths (__main__.RedactionTests.test_explicit_person_paths)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 61, in test_explicit_person_paths
+    x=self.r.redact("UPI/P2P/123456789012/Rahul Sharma/UPI")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_greeting (__main__.RedactionTests.test_greeting)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 86, in test_greeting
+    self.assertNotIn("Priya Rao",self.r.redact("Dear Priya Rao, INR 50 credited"))
+                                 ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_large_amount_not_phone (__main__.RedactionTests.test_large_amount_not_phone)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 37, in test_large_amount_not_phone
+    x=self.r.redact("INR 9876543210.25 debited from account XX1234")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_merchant_paths (__main__.RedactionTests.test_merchant_paths)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 64, in test_merchant_paths
+    x=self.r.redact("UPI/P2M/123456789012/NEW SHOP/UPI")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_names_and_known_merchants (__main__.RedactionTests.test_names_and_known_merchants)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 56, in test_names_and_known_merchants
+    a=self.r.redact("INR 200 sent to Rahul Sharma on 18-Nov-2026 via UPI.")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_output_separates_review_and_drops_metadata (__main__.RedactionTests.test_output_separates_review_and_drops_metadata)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 113, in test_output_separates_review_and_drops_metadata
+    out,review,rep=mod.process(p,root,m)
+                   ~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 263, in process
+    rows=xml_records(text,redactor);root=ET.Element("messages",{"redacted":"true","format":"SpendWise-review-v1"})
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 238, in xml_records
+    if dest=="sender":sender=redactor.sender(value,index) if value else ""
+                             ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 218, in sender
+    if re.fullmatch(r"[+\d ()-]+",value):return self.redact(value,index)
+                                                ~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_phone_prefix_and_shape (__main__.RedactionTests.test_phone_prefix_and_shape)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 52, in test_phone_prefix_and_shape
+    x=self.r.redact("Call +91 9876543210 or 9123456789")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_plaintext_process_and_utf16_xml (__main__.RedactionTests.test_plaintext_process_and_utf16_xml)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 123, in test_plaintext_process_and_utf16_xml
+    out,_,rep=mod.process(p,root,self.mapper);self.assertEqual(rep["messages"],2);self.assertIn("AMAZON",out.read_text())
+              ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 269, in process
+    lines=text.splitlines();rows=[redactor.redact(x,i+1) for i,x in enumerate(lines)]
+                                  ~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_reference_shared_between_messages (__main__.RedactionTests.test_reference_shared_between_messages)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 20, in test_reference_shared_between_messages
+    a=self.r.redact("UPI Ref 123456789012")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_refno_and_alphanumeric_shape (__main__.RedactionTests.test_refno_and_alphanumeric_shape)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 25, in test_refno_and_alphanumeric_shape
+    x=self.r.redact("Refno AB123456CD UTR 987654321000")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_sbi_currency_free_amount (__main__.RedactionTests.test_sbi_currency_free_amount)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 40, in test_sbi_currency_free_amount
+    x=self.r.redact("A/C X9218 debited by 199.0 on date 08Jul26 trf to SWIGGY")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_state_persistence_without_original_values (__main__.RedactionTests.test_state_persistence_without_original_values)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 91, in test_state_persistence_without_original_values
+    a=mod.Redactor(m).redact("Paid to Rahul Sharma on 18-Nov-2026 Ref 123456789012");m.save()
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_unicode_digits (__main__.RedactionTests.test_unicode_digits)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 79, in test_unicode_digits
+    x=self.r.redact("INR ???.?? debited from A/c XX???? on ??-Nov-????")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_unknown_email_is_masked_and_reviewed (__main__.RedactionTests.test_unknown_email_is_masked_and_reviewed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 48, in test_unknown_email_is_masked_and_reviewed
+    x=self.r.redact("Email person.name@example.com")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_unknown_merchant_conservative_then_allowlist (__main__.RedactionTests.test_unknown_merchant_conservative_then_allowlist)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 68, in test_unknown_merchant_conservative_then_allowlist
+    self.assertIn("PERSON_1",self.r.redact(text))
+                             ~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_unknown_numeric_identifier (__main__.RedactionTests.test_unknown_numeric_identifier)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 75, in test_unknown_numeric_identifier
+    x=self.r.redact("Tracking 123456789012 and OTP 123456")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_upi_handles_consistent (__main__.RedactionTests.test_upi_handles_consistent)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 43, in test_upi_handles_consistent
+    a=self.r.redact("to rahul.sharma@okicici.")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_url_redacted (__main__.RedactionTests.test_url_redacted)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 118, in test_url_redacted
+    x=self.r.redact("Details https://example.com/Rahul?account=1234")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_xml_attributes_sms_backup_restore_layout (__main__.RedactionTests.test_xml_attributes_sms_backup_restore_layout)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 97, in test_xml_attributes_sms_backup_restore_layout
+    rows=mod.xml_records(text,self.r);self.assertEqual(len(rows),1)
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 250, in xml_records
+    records.append({"sender":sender,"date":stamp,"body":redactor.redact(body,index)})
+                                                        ~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+======================================================================
+ERROR: test_xml_child_elements_and_namespace (__main__.RedactionTests.test_xml_child_elements_and_namespace)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\test_redact_sms.py", line 102, in test_xml_child_elements_and_namespace
+    rows=mod.xml_records(text,self.r);self.assertEqual(rows[0]["sender"],"AD-ICICIB")
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 250, in xml_records
+    records.append({"sender":sender,"date":stamp,"body":redactor.redact(body,index)})
+                                                        ~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\2299004\Downloads\Jeevs\fun\spendwise-handoff\sol-harness\redact_sms.py", line 138, in redact
+    bal=re.compile(r"(?P<label>\b(?:(?:avl|avail(?:able)?|closing|current|ledger|total)\.?\s*)?bal(?:ance)?\.?\s*(?:is|:|-)?\s*(?:(?:rs\.?|inr|?)\s*)?)(?P<val>[+-]?\d[\d,]*(?:\.\d+)?)",re.I)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 289, in compile
+    return _compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\__init__.py", line 350, in _compile
+    p = _compiler.compile(pattern, flags)
+  File "C:\Program Files\Python314\Lib\re\_compiler.py", line 762, in compile
+    p = _parser.parse(p, flags)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 973, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 856, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 460, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+                ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       not nested and not items))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\re\_parser.py", line 687, in _parse
+    raise source.error("nothing to repeat",
+                       source.tell() - here + len(this))
+re.PatternError: nothing to repeat at position 122
+
+----------------------------------------------------------------------
+Ran 28 tests in 0.475s
+
+FAILED (errors=26)

@@ -1,0 +1,1101 @@
+1: package com.jeevavibeapp.spendwise.ui
+2: 
+3: import androidx.compose.foundation.clickable
+4: import androidx.compose.foundation.rememberScrollState
+5: import androidx.compose.foundation.verticalScroll
+6: import androidx.compose.foundation.layout.*
+7: import androidx.compose.foundation.lazy.LazyColumn
+8: import androidx.compose.foundation.selection.selectable
+9: import androidx.compose.foundation.selection.selectableGroup
+10: import androidx.compose.foundation.shape.RoundedCornerShape
+11: import androidx.compose.foundation.text.KeyboardOptions
+12: import androidx.compose.material3.*
+13: import androidx.compose.runtime.*
+14: import androidx.compose.ui.Alignment
+15: import androidx.compose.ui.Modifier
+16: import androidx.compose.ui.graphics.Color
+17: import androidx.compose.ui.semantics.Role
+18: import androidx.compose.ui.semantics.clearAndSetSemantics
+19: import androidx.compose.ui.semantics.collapse
+20: import androidx.compose.ui.semantics.expand
+21: import androidx.compose.ui.semantics.semantics
+22: import androidx.compose.ui.semantics.stateDescription
+23: import androidx.compose.ui.text.font.FontFamily
+24: import androidx.compose.ui.text.input.KeyboardType
+25: import androidx.compose.ui.unit.dp
+26: import com.jeevavibeapp.spendwise.core.Insights
+27: import com.jeevavibeapp.spendwise.core.ManualEntry
+28: import com.jeevavibeapp.spendwise.core.ParseMisses
+29: import java.util.Locale
+30: import kotlin.math.roundToInt
+31: 
+32: /**
+33:  * Settings, privacy, help, and the first-run introduction.
+34:  *
+35:  * These four screens are the ones that have to be *true*. Everywhere else a
+36:  * wrong word costs a moment of confusion; here it costs the user's trust in
+37:  * an app that reads their bank messages. Two rules follow from that, and both
+38:  * are load-bearing:
+39:  *
+40:  *  - Say what is never read, not only what is. "Never personal messages,
+41:  *    never OTPs" is the sentence people are actually looking for, and it is
+42:  *    on screen before the permission is asked for rather than after.
+43:  *  - Never offer a control that cannot work. An "Allow SMS access" button in
+44:  *    the no-SMS flavour asks for a permission this APK does not declare: the
+45:  *    request is denied instantly by the system, and the user is left tapping
+46:  *    a button that will never do anything.
+47:  */
+48: 
+49: /**
+50:  * Three genuinely different situations, not two.
+51:  *
+52:  * [UNAVAILABLE] is the no-SMS flavour, where the permission is not in the
+53:  * manifest at all. Collapsing it into [DENIED] would put an Allow button in
+54:  * front of a user who has nothing to allow.
+55:  */
+56: enum class SmsAccess { GRANTED, DENIED, UNAVAILABLE }
+57: 
+58: /** The same three states in :core's terms, for asking it what to offer. */
+59: val SmsAccess.capture: ManualEntry.Capture
+60:     get() = when (this) {
+61:         SmsAccess.GRANTED -> ManualEntry.Capture.AUTOMATIC
+62:         SmsAccess.DENIED -> ManualEntry.Capture.OFF
+63:         SmsAccess.UNAVAILABLE -> ManualEntry.Capture.NONE
+64:     }
+65: 
+66: /** Everything the settings and help screens need to say about capture. */
+67: data class SmsStatus(
+68:     val access: SmsAccess,
+69:     val captured: Int = 0,
+70:     val queued: Int = 0,
+71:     /** Already formatted for display; these screens do no date arithmetic. */
+72:     val lastCapture: String? = null,
+73:     val unreadableKinds: Int = 0,
+74:     val unreadableTotal: Int = 0,
+75:     val unreviewed: Int = 0,
+76: )
+77: 
+78: data class AppPrefs(
+79:     /** Stored and backed up, never edited: no screen offers a currency,
+80:      *  because nothing in the app can render one. */
+81:     val currency: String = "INR",
+82:     val theme: String = THEME_SYSTEM,
+83:     // 80 and 50 because Pipeline.ingest defaults to exactly those, and the
+84:     // JVM tests describe an untouched install in terms of them. A different
+85:     // number here would only ever be reached by a caller that forgot to pass
+86:     // the stored row, and would silently ingest on a gate nothing tests.
+87:     val autoSaveThreshold: Int = 80,
+88:     val confirmThreshold: Int = 50,
+89:     val highValueAmount: Double? = null,
+90: )
+91: 
+92: const val THEME_SYSTEM = "system"
+93: const val THEME_LIGHT = "light"
+94: const val THEME_DARK = "dark"
+95: 
+96: /**
+97:  * One scrollable screen rather than a swipeable carousel. A carousel lets
+98:  * people flick past the only page that explains what will be read from their
+99:  * phone, and it is the hardest pattern on this screen to use with TalkBack.
+100:  */
+101: @Composable
+102: fun WelcomeScreen(
+103:     sms: SmsStatus,
+104:     onAllowSms: () -> Unit,
+105:     onPrivacy: () -> Unit,
+106:     onDone: () -> Unit,
+107: ) {
+108:     LazyColumn(
+109:         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 32.dp),
+110:         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
+111:     ) {
+112:         item {
+113:             PageCard {
+114:                 Text("SPENDWISE", style = MicroLabel,
+115:                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+116:                 Spacer(Modifier.height(8.dp))
+117:                 Text("Your money, tracked on your phone.",
+118:                     style = MaterialTheme.typography.headlineLarge)
+119:                 Spacer(Modifier.height(10.dp))
+120:                 Text("No account. No cloud. No ads. Nothing about your spending is " +
+121:                      "sent anywhere, because there is nowhere for it to go.",
+122:                     style = MaterialTheme.typography.bodyMedium,
+123:                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+124:             }
+125:         }
+126: 
+127:         item { GroupHeader("How it works") }
+128:         item {
+129:             PageCard {
+130:                 HairlineList(
+131:                     "It reads your bank SMS" to
+132:                         "Bank and UPI messages already arrive on your phone. SpendWise " +
+133:                         "reads the amount, the merchant and the date out of them, so you " +
+134:                         "do not type anything in.",
+135:                     "It learns your merchants" to
+136:                         "Correct a category once and it remembers. The learning happens " +
+137:                         "on this device, from your corrections only.",
+138:                     "It flags what looks wrong" to
+139:                         "Messages from senders your bank never uses, or with the shape of " +
+140:                         "a scam, are held aside for you instead of being added silently.",
+141:                 )
+142:             }
+143:         }
+144: 
+145:         // Before the permission card, never after it. Someone deciding whether
+146:         // to grant SMS access needs the "never" list at the moment they
+147:         // decide, not on a screen they can reach afterwards.
+148:         item { GroupHeader("What SpendWise reads") }
+149:         item {
+150:             PageCard {
+151:                 Note("Being specific here matters more than being reassuring, so here " +
+152:                      "is exactly what the SMS permission is used for.")
+153:                 Spacer(Modifier.height(12.dp))
+154:                 Mark(true, "Messages from bank and UPI sender IDs — the amount, " +
+155:                     "merchant, date and reference number in them.")
+156:                 Spacer(Modifier.height(8.dp))
+157:                 Mark(true, "Kept in a database on this phone, which only this app can open.")
+158:                 Spacer(Modifier.height(8.dp))
+159:                 Mark(false, "Never messages from people. Never OTPs.")
+160:                 Spacer(Modifier.height(8.dp))
+161:                 Mark(false, "Never uploaded, never analysed off the device, never " +
+162:                     "shared — there is no server and no analytics in this app at all.")
+163:                 Spacer(Modifier.height(12.dp))
+164:                 OutlinedButton(
+165:                     onClick = onPrivacy,
+166:                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+167:                 ) { Text("Read the full privacy note") }
+168:             }
+169:         }
+170: 
+171:         when (sms.access) {
+172:             SmsAccess.UNAVAILABLE -> item {
+173:                 PageCard {
+174:                     Text("About this build", style = MaterialTheme.typography.titleMedium)
+175:                     Spacer(Modifier.height(6.dp))
+176:                     Note("This copy was built without SMS access, so nothing is read " +
+177:                          "from your messages at all. Add transactions yourself, or paste " +
+178:                          "a bank message in and SpendWise will read the amount out of it.")
+179:                 }
+180:             }
+181:             // Nothing is granted yet on a genuine first run, so this is the
+182:             // ordinary path. It is skipped once the permission is held —
+183:             // asking again for something already given reads as a bug.
+184:             SmsAccess.DENIED -> item {
+185:                 PageCard {
+186:                     Text("Turn on SMS capture", style = MaterialTheme.typography.titleMedium)
+187:                     Spacer(Modifier.height(6.dp))
+188:                     Note("Without it SpendWise still works — you can add transactions " +
+189:                          "yourself or paste a message in. With it, the ledger fills itself.")
+190:                     Spacer(Modifier.height(12.dp))
+191:                     Button(
+192:                         onClick = onAllowSms,
+193:                         modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+194:                     ) { Text("Allow SMS access") }
+195:                 }
+196:             }
+197:             SmsAccess.GRANTED -> Unit
+198:         }
+199: 
+200:         item {
+201:             Button(
+202:                 onClick = onDone,
+203:                 modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+204:             ) { Text("Start using SpendWise") }
+205:         }
+206:         item { Footnote("You can read this again any time from Settings.") }
+207:     }
+208: }
+209: 
+210: @Composable
+211: fun SettingsScreen(
+212:     prefs: AppPrefs,
+213:     sms: SmsStatus,
+214:     onSavePrefs: (AppPrefs) -> Unit,
+215:     onAllowSms: () -> Unit,
+216:     onBackup: () -> Unit,
+217:     onRestore: () -> Unit,
+218:     onExportCsv: () -> Unit,
+219:     onExportUnreadable: () -> Unit,
+220:     onClearUnreviewed: () -> Unit,
+221:     onPrivacy: () -> Unit,
+222:     onHelp: () -> Unit,
+223:     onHowItWorks: () -> Unit,
+224:     onImport: (() -> Unit)? = null,
+225:     flash: String? = null,
+226:     /** The parser's misses, one per format per sender, as :core folded them. */
+227:     unreadable: List<ParseMisses.Group> = emptyList(),
+228:     onClearUnreadable: () -> Unit = {},
+229: ) {
+230:     // Re-seeded whenever the stored preferences change, so the fields show
+231:     // what is saved rather than what was last typed into them.
+232:     var draft by remember(prefs) { mutableStateOf(prefs) }
+233:     var amountText by remember(prefs) { mutableStateOf(amountField(prefs.highValueAmount)) }
+234:     var amountRejected by remember(prefs) { mutableStateOf(false) }
+235:     var confirmingPurge by remember { mutableStateOf(false) }
+236:     var viewingUnreadable by remember { mutableStateOf(false) }
+237: 
+238:     val savedAmountText = amountField(prefs.highValueAmount)
+239:     val dirty = draft != prefs || amountText != savedAmountText
+240: 
+241:     LazyColumn(
+242:         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 96.dp),
+243:         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
+244:     ) {
+245:         flash?.let { item { PageCard { Text(it, style = MaterialTheme.typography.bodyMedium) } } }
+246: 
+247:         item { GroupHeader("Preferences") }
+248:         item {
+249:             PageCard {
+250:                 // No currency field. Every amount in the app is written by
+251:                 // Insights.money, which is rupees, and the parser only reads
+252:                 // rupee amounts out of a bank message — so a currency the
+253:                 // user could type would change nothing on any screen, which
+254:                 // is the one thing a setting must never do.
+255:                 Text("Appearance", style = MicroLabel,
+256:                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+257:                 Spacer(Modifier.height(4.dp))
+258:                 ThemeChoice(draft.theme) { draft = draft.copy(theme = it) }
+259:             }
+260:         }
+261: 
+262:         item {
+263:             PageCard {
+264:                 Text("Smart engine", style = MaterialTheme.typography.titleMedium)
+265:                 Spacer(Modifier.height(4.dp))
+266:                 Note("How confident the engine must be to auto-save vs ask you.")
+267:                 Spacer(Modifier.height(14.dp))
+268:                 ThresholdSlider(
+269:                     label = "Auto-save at ${draft.autoSaveThreshold}% confidence",
+270:                     value = draft.autoSaveThreshold,
+271:                     tint = Income,
+272:                 ) { draft = draft.copy(autoSaveThreshold = it) }
+273:                 Spacer(Modifier.height(14.dp))
+274:                 ThresholdSlider(
+275:                     label = "Ask to confirm above ${draft.confirmThreshold}%",
+276:                     value = draft.confirmThreshold,
+277:                     tint = Warn,
+278:                 ) { draft = draft.copy(confirmThreshold = it) }
+279:             }
+280:         }
+281: 
+282:         item {
+283:             PageCard {
+284:                 Text("Fraud protection", style = MaterialTheme.typography.titleMedium)
+285:                 Spacer(Modifier.height(10.dp))
+286:                 OutlinedTextField(
+287:                     value = amountText,
+288:                     onValueChange = { amountText = it; amountRejected = false },
+289:                     label = { Text("High-value alert amount (optional)") },
+290:                     placeholder = { Text("e.g. 25000") },
+291:                     singleLine = true,
+292:                     isError = amountRejected,
+293:                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+294:                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+295:                 )
+296:                 Spacer(Modifier.height(6.dp))
+297:                 val parsed = positiveAmount(amountText)
+298:                 when {
+299:                     amountRejected -> Text(
+300:                         "Enter an amount above zero, or leave it empty for no alert.",
+301:                         style = MaterialTheme.typography.bodySmall, color = Expense)
+302:                     parsed != null -> Note(
+303:                         "Transactions at ${Insights.money(parsed)} or above raise an alert.")
+304:                     else -> Note("Transactions at or above this raise an alert.")
+305:                 }
+306:             }
+307:         }
+308: 
+309:         item {
+310:             Button(
+311:                 onClick = {
+312:                     val amount = positiveAmount(amountText)
+313:                     if (amountText.isNotBlank() && amount == null) amountRejected = true
+314:                     else onSavePrefs(draft.copy(highValueAmount = amount))
+315:                 },
+316:                 enabled = dirty,
+317:                 modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+318:             ) { Text("Save changes") }
+319:         }
+320: 
+321:         item { GroupHeader("SMS capture") }
+322:         item {
+323:             PageCard {
+324:                 Row(verticalAlignment = Alignment.CenterVertically) {
+325:                     Text("Status", style = MaterialTheme.typography.titleMedium,
+326:                         modifier = Modifier.weight(1f))
+327:                     StatusPill(sms)
+328:                 }
+329:                 Spacer(Modifier.height(14.dp))
+330:                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+331:                     StatCell("CAPTURED", sms.captured.toString(), Modifier.weight(1f))
+332:                     StatCell("IN QUEUE", sms.queued.toString(), Modifier.weight(1f))
+333:                     StatCell("LAST", sms.lastCapture ?: "–", Modifier.weight(1f))
+334:                 }
+335:                 Spacer(Modifier.height(14.dp))
+336: 
+337:                 when {
+338:                     sms.access == SmsAccess.UNAVAILABLE -> {
+339:                         // The no-SMS flavour. An Allow button here would ask
+340:                         // the user to grant something this APK never requests.
+341:                         Note("This copy of SpendWise was built without SMS access, so " +
+342:                              "bank messages can't be captured automatically. Everything " +
+343:                              "else works — add a transaction yourself, or paste a bank " +
+344:                              "message in.")
+345:                         onImport?.let {
+346:                             Spacer(Modifier.height(10.dp))
+347:                             OutlinedButton(
+348:                                 onClick = it,
+349:                                 modifier = Modifier.fillMaxWidth()
+350:                                     .heightIn(min = Tokens.minTouchTarget),
+351:                             ) { Text("Paste a bank message") }
+352:                         }
+353:                     }
+354:                     sms.access == SmsAccess.DENIED -> {
+355:                         Note("SpendWise can't read bank messages. Tap Allow to turn " +
+356:                              "capture back on.")
+357:                         Spacer(Modifier.height(10.dp))
+358:                         Button(
+359:                             onClick = onAllowSms,
+360:                             modifier = Modifier.fillMaxWidth()
+361:                                 .heightIn(min = Tokens.minTouchTarget),
+362:                         ) { Text("Allow SMS access") }
+363:                     }
+364:                     sms.captured == 0 -> Note(
+365:                         "Nothing captured yet. SpendWise scans your inbox for bank and " +
+366:                         "UPI messages each time it opens. If this stays at 0, your phone " +
+367:                         "may be blocking background messages — on Xiaomi, Redmi and POCO, " +
+368:                         "Oppo, Vivo or Realme, enable Autostart for SpendWise in " +
+369:                         "Settings → Apps, then reopen the app.")
+370:                     else -> Note(
+371:                         "Bank and UPI messages are captured automatically and parsed on " +
+372:                         "this device — they never leave your phone.")
+373:                 }
+374: 
+375:                 // Here as well as under "+", because this card is where someone
+376:                 // comes looking when a message did not arrive. A row, not a
+377:                 // button: in this build it is the exception, and Allow above
+378:                 // is the thing this card most wants tapped.
+379:                 if (sms.access != SmsAccess.UNAVAILABLE) onImport?.let {
+380:                     Spacer(Modifier.height(6.dp))
+381:                     NavRow(ManualEntry.Route.PASTE.label,
+382:                         "For one it missed: an older message, or one forwarded to you", it)
+383:                 }
+384: 
+385:                 if (sms.unreadableKinds > 0) {
+386:                     Spacer(Modifier.height(14.dp))
+387:                     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+388:                     Spacer(Modifier.height(14.dp))
+389:                     Text("${sms.unreadableTotal} bank " +
+390:                          plural(sms.unreadableTotal, "message", "messages") +
+391:                          " couldn't be read",
+392:                         style = MaterialTheme.typography.titleMedium)
+393:                     Spacer(Modifier.height(4.dp))
+394:                     Note("In ${sms.unreadableKinds} " +
+395:                          plural(sms.unreadableKinds, "format", "formats") +
+396:                          " — usually wording this build doesn't know yet. Only a masked " +
+397:                          "copy is kept: every number, amount, account, UPI ID and name is " +
+398:                          "replaced before it is saved, and nothing leaves your phone " +
+399:                          "unless you share it.")
+400:                     Spacer(Modifier.height(10.dp))
+401:                     OutlinedButton(
+402:                         onClick = { viewingUnreadable = true },
+403:                         modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+404:                     ) { Text("See what couldn't be read") }
+405:                 }
+406: 
+407:                 if (sms.unreviewed > 0) {
+408:                     Spacer(Modifier.height(14.dp))
+409:                     TextButton(
+410:                         onClick = { confirmingPurge = true },
+411:                         colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+412:                         modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+413:                     ) {
+414:                         Text("Clear ${sms.unreviewed} unreviewed " +
+415:                              plural(sms.unreviewed, "capture", "captures"))
+416:                     }
+417:                     Footnote("Use this to wipe junk captured before filtering improved. " +
+418:                              "Anything you already confirmed or categorised is kept.")
+419:                 }
+420:             }
+421:         }
+422: 
+423:         // Backup first, because it is the one thing in this app that no other
+424:         // screen can undo: there is no cloud copy, so a phone lost without a
+425:         // backup is a ledger lost for good.
+426:         item { GroupHeader("Your data") }
+427:         item {
+428:             PageCard {
+429:                 Note("Everything stays on this phone, which means the only copy is the " +
+430:                      "one you make.")
+431:                 Spacer(Modifier.height(12.dp))
+432:                 Button(
+433:                     onClick = onBackup,
+434:                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+435:                 ) { Text("Download a full backup") }
+436:                 Spacer(Modifier.height(4.dp))
+437:                 NavRow("Restore from a backup",
+438:                     "Moving to a new phone, or undoing a mistake", onRestore)
+439:                 NavRow("Export as CSV",
+440:                     "A report for a spreadsheet — not a backup", onExportCsv)
+441:             }
+442:         }
+443: 
+444:         item { GroupHeader("About") }
+445:         item {
+446:             PageCard {
+447:                 NavRow("Privacy", "What is stored, and what is never done", onPrivacy)
+448:                 NavRow("Help & troubleshooting",
+449:                     "Captures not arriving, duplicates, new phone", onHelp)
+450:                 NavRow("How SpendWise works", "The introduction, again", onHowItWorks)
+451:             }
+452:         }
+453: 
+454:         item { Footnote("SpendWise · on-device & offline") }
+455:     }
+456: 
+457:     if (confirmingPurge) {
+458:         AlertDialog(
+459:             onDismissRequest = { confirmingPurge = false },
+460:             title = { Text("Clear unreviewed captures?") },
+461:             text = {
+462:                 Text("This removes ${sms.unreviewed} SMS " +
+463:                      plural(sms.unreviewed, "capture", "captures") +
+464:                      " you have not reviewed. Anything you already confirmed or " +
+465:                      "categorised is kept.")
+466:             },
+467:             confirmButton = {
+468:                 TextButton(
+469:                     onClick = { confirmingPurge = false; onClearUnreviewed() },
+470:                     colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+471:                     modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+472:                 ) { Text("Clear them") }
+473:             },
+474:             dismissButton = {
+475:                 TextButton(
+476:                     onClick = { confirmingPurge = false },
+477:                     modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+478:                 ) { Text("Keep them") }
+479:             },
+480:         )
+481:     }
+482: 
+483:     // Closed by itself once the list is empty — after a clear, or when the
+484:     // last row ages out — rather than showing a dialog about nothing.
+485:     if (viewingUnreadable && unreadable.isNotEmpty()) {
+486:         UnreadableDialog(
+487:             groups = unreadable,
+488:             onShare = onExportUnreadable,
+489:             onClear = { viewingUnreadable = false; onClearUnreadable() },
+490:             onDismiss = { viewingUnreadable = false },
+491:         )
+492:     }
+493: }
+494: 
+495: /**
+496:  * The masked shapes, exactly as stored and exactly as Share sends them.
+497:  *
+498:  * Showing the very text that would be shared is the point: the person can
+499:  * check for themselves that no number or name of theirs is in it before
+500:  * deciding to send it anywhere.
+501:  *
+502:  * Clearing takes two taps. It only empties this list, but it is the list the
+503:  * user came here to send, and a stray tap on a scrolling dialog should not
+504:  * cost them it.
+505:  */
+506: @Composable
+507: private fun UnreadableDialog(
+508:     groups: List<ParseMisses.Group>,
+509:     onShare: () -> Unit,
+510:     onClear: () -> Unit,
+511:     onDismiss: () -> Unit,
+512: ) {
+513:     var confirmingClear by remember { mutableStateOf(false) }
+514:     AlertDialog(
+515:         onDismissRequest = onDismiss,
+516:         title = { Text("Couldn't be read") },
+517:         text = {
+518:             Column(Modifier.verticalScroll(rememberScrollState())) {
+519:                 Note("Masked on this phone. This is all that is kept, and all that " +
+520:                      "Share sends.")
+521:                 for (g in groups) {
+522:                     Spacer(Modifier.height(14.dp))
+523:                     Text(g.title, style = MaterialTheme.typography.titleMedium)
+524:                     Text("${g.messages} " + plural(g.messages, "message", "messages") +
+525:                          " · " + ParseMisses.reasonLabel(g.reason),
+526:                         style = MaterialTheme.typography.bodySmall,
+527:                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+528:                     Spacer(Modifier.height(4.dp))
+529:                     Text(g.shape, style = MaterialTheme.typography.bodySmall,
+530:                         fontFamily = FontFamily.Monospace)
+531:                 }
+532:                 Spacer(Modifier.height(14.dp))
+533:                 if (confirmingClear) {
+534:                     Note("Clear the list? Your ledger is not touched, and new messages " +
+535:                          "that can't be read will still be listed.")
+536:                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+537:                         TextButton(
+538:                             onClick = onClear,
+539:                             colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+540:                             modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+541:                         ) { Text("Clear it") }
+542:                         TextButton(
+543:                             onClick = { confirmingClear = false },
+544:                             modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+545:                         ) { Text("Keep it") }
+546:                     }
+547:                 } else {
+548:                     TextButton(
+549:                         onClick = { confirmingClear = true },
+550:                         colors = ButtonDefaults.textButtonColors(contentColor = Expense),
+551:                         modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+552:                     ) { Text("Clear this list") }
+553:                 }
+554:             }
+555:         },
+556:         confirmButton = {
+557:             TextButton(
+558:                 onClick = onShare,
+559:                 modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+560:             ) { Text("Share") }
+561:         },
+562:         dismissButton = {
+563:             TextButton(
+564:                 onClick = onDismiss,
+565:                 modifier = Modifier.heightIn(min = Tokens.minTouchTarget),
+566:             ) { Text("Close") }
+567:         },
+568:     )
+569: }
+570: 
+571: /**
+572:  * Written in the second person and in plain sentences on purpose. A privacy
+573:  * policy nobody reads protects the author, not the user.
+574:  */
+575: @Composable
+576: fun PrivacyScreen(onBackup: () -> Unit, onExportCsv: () -> Unit) {
+577:     LazyColumn(
+578:         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 32.dp),
+579:         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
+580:     ) {
+581:         item {
+582:             PageCard {
+583:                 Text("The short version", style = MaterialTheme.typography.titleMedium)
+584:                 Spacer(Modifier.height(8.dp))
+585:                 Text("Everything stays on this phone. SpendWise has no account, no " +
+586:                      "server and no analytics. It cannot send your spending anywhere " +
+587:                      "because there is nowhere for it to be sent.",
+588:                     style = MaterialTheme.typography.bodyMedium)
+589:             }
+590:         }
+591: 
+592:         item { GroupHeader("What is stored") }
+593:         item {
+594:             PageCard {
+595:                 HairlineList(
+596:                     "Your transactions" to
+597:                         "Amount, merchant, category, date, and the bank message a " +
+598:                         "transaction came from. In a SQLite file in this app's private " +
+599:                         "storage, which other apps on the phone cannot read.",
+600:                     "What you have corrected" to
+601:                         "When you recategorise a merchant, that correction is stored so " +
+602:                         "the next one is right. It is used only to categorise your own " +
+603:                         "transactions.",
+604:                     "Sender reputations" to
+605:                         "Which sender IDs your bank actually uses, learned from the " +
+606:                         "messages you have received, so a lookalike can be spotted.",
+607:                     "Messages SpendWise couldn't read" to
+608:                         "Never the message itself. Which bank sent it, and its wording " +
+609:                         "with every number, amount, account, UPI ID and name replaced — " +
+610:                         "the most recent 200, on this phone only, and not in backups.",
+611:                     "Your settings" to "Theme, and the two engine thresholds.",
+612:                 )
+613:             }
+614:         }
+615: 
+616:         item { GroupHeader("What is never done") }
+617:         item {
+618:             PageCard {
+619:                 // The Python build ran a web server on a loopback port and had
+620:                 // to explain it away here. There is no server now — not even a
+621:                 // local one — which is a shorter and much stronger sentence.
+622:                 Mark(false, "No network requests at all. There is no server to reach, " +
+623:                     "on this phone or anywhere else.")
+624:                 Spacer(Modifier.height(8.dp))
+625:                 Mark(false, "No analytics, no crash reporting, no advertising " +
+626:                     "identifiers, no third-party SDKs.")
+627:                 Spacer(Modifier.height(8.dp))
+628:                 Mark(false, "No account, no email address, no phone number.")
+629:                 Spacer(Modifier.height(8.dp))
+630:                 Mark(false, "Nothing is read from messages that are not from a bank or " +
+631:                     "UPI sender — personal messages and OTPs are ignored.")
+632:             }
+633:         }
+634: 
+635:         item { GroupHeader("Your copy of everything") }
+636:         item {
+637:             PageCard {
+638:                 Note("Because there is no cloud copy, keeping a backup is on you — and " +
+639:                      "it should be, but the app has to make it easy.")
+640:                 Spacer(Modifier.height(12.dp))
+641:                 Button(
+642:                     onClick = onBackup,
+643:                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+644:                 ) { Text("Download a full backup") }
+645:                 Spacer(Modifier.height(8.dp))
+646:                 OutlinedButton(
+647:                     onClick = onExportCsv,
+648:                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+649:                 ) { Text("Export transactions as CSV") }
+650:             }
+651:         }
+652: 
+653:         item { GroupHeader("Deleting your data") }
+654:         item {
+655:             PageCard {
+656:                 Text("Uninstalling SpendWise deletes the database with it. There is no " +
+657:                      "copy anywhere else, so an uninstall is permanent — take a backup " +
+658:                      "first if you want to keep the history.",
+659:                     style = MaterialTheme.typography.bodyMedium,
+660:                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+661:                 Spacer(Modifier.height(10.dp))
+662:                 Text("To clear only what SMS capture picked up, use “Clear unreviewed " +
+663:                      "captures” in Settings.",
+664:                     style = MaterialTheme.typography.bodyMedium,
+665:                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+666:             }
+667:         }
+668: 
+669:         item { Footnote("SpendWise · offline by design") }
+670:     }
+671: }
+672: 
+673: /**
+674:  * Ordered by how often each problem happens, not by topic. The first item is
+675:  * the one that brings people here.
+676:  *
+677:  * The old first entry — "Couldn't start SpendWise" — is gone, along with the
+678:  * embedded interpreter, the loopback port and the "Address already in use"
+679:  * failure it existed to explain. A native app has no engine to fail to start,
+680:  * and keeping the answer would be describing a symptom this build cannot
+681:  * produce.
+682:  */
+683: @Composable
+684: fun HelpScreen(
+685:     sms: SmsStatus,
+686:     onAllowSms: () -> Unit,
+687:     onExportUnreadable: () -> Unit,
+688:     onImport: (() -> Unit)? = null,
+689: ) {
+690:     // Only one open at a time. Several expanded answers turn the list into a
+691:     // wall the user has to scroll past to reach the next question.
+692:     var open by remember { mutableStateOf<String?>(null) }
+693: 
+694:     LazyColumn(
+695:         contentPadding = PaddingValues(Tokens.screenPadding, 8.dp, Tokens.screenPadding, 32.dp),
+696:         verticalArrangement = Arrangement.spacedBy(Tokens.gutter),
+697:     ) {
+698:         item { Footnote("Answers to what actually goes wrong") }
+699: 
+700:         when (sms.access) {
+701:             SmsAccess.UNAVAILABLE -> item {
+702:                 PageCard {
+703:                     Text("This build has no SMS access",
+704:                         style = MaterialTheme.typography.titleMedium)
+705:                     Spacer(Modifier.height(6.dp))
+706:                     Note("Nothing is read from your messages. Paste a bank message in, " +
+707:                          "or add transactions by hand. If you want automatic capture, " +
+708:                          "install the full build — see the install question below.")
+709:                     onImport?.let {
+710:                         Spacer(Modifier.height(10.dp))
+711:                         OutlinedButton(
+712:                             onClick = it,
+713:                             modifier = Modifier.fillMaxWidth()
+714:                                 .heightIn(min = Tokens.minTouchTarget),
+715:                         ) { Text("Paste a bank message") }
+716:                     }
+717:                 }
+718:             }
+719:             SmsAccess.DENIED -> item {
+720:                 PageCard {
+721:                     Text("SMS access is off", style = MaterialTheme.typography.titleMedium,
+722:                         color = Expense)
+723:                     Spacer(Modifier.height(6.dp))
+724:                     Note("Nothing can be captured automatically until it is on.")
+725:                     Spacer(Modifier.height(10.dp))
+726:                     Button(
+727:                         onClick = onAllowSms,
+728:                         modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+729:                     ) { Text("Allow SMS access") }
+730:                 }
+731:             }
+732:             SmsAccess.GRANTED -> Unit
+733:         }
+734: 
+735:         for (topic in HELP_TOPICS) {
+736:             item(key = topic.question) {
+737:                 PageCard {
+738:                     HelpEntry(
+739:                         topic = topic,
+740:                         expanded = open == topic.question,
+741:                         onToggle = { open = if (open == topic.question) null else topic.question },
+742:                     )
+743:                 }
+744:             }
+745:         }
+746: 
+747:         item {
+748:             PageCard {
+749:                 Text("Still stuck?", style = MaterialTheme.typography.titleMedium)
+750:                 Spacer(Modifier.height(6.dp))
+751:                 Note("Nothing is sent from this app automatically. If your bank sends " +
+752:                      "messages SpendWise cannot read, you can share a masked copy of " +
+753:                      "them — every number, amount, account, UPI ID and name replaced — " +
+754:                      "with whoever you choose. Sharing is something only you can start.")
+755:                 Spacer(Modifier.height(12.dp))
+756:                 OutlinedButton(
+757:                     onClick = onExportUnreadable,
+758:                     modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+759:                 ) { Text("Share unreadable messages") }
+760:             }
+761:         }
+762:     }
+763: }
+764: 
+765: @Composable
+766: private fun HelpEntry(topic: HelpTopic, expanded: Boolean, onToggle: () -> Unit) {
+767:     Column(
+768:         Modifier
+769:             .fillMaxWidth()
+770:             .clickable(
+771:                 onClickLabel = if (expanded) "Collapse answer" else "Expand answer",
+772:                 onClick = onToggle,
+773:             )
+774:             // Real expand/collapse, not a chevron that only looks like one:
+775:             // TalkBack announces the state and offers the matching action.
+776:             .semantics(mergeDescendants = true) {
+777:                 stateDescription = if (expanded) "Expanded" else "Collapsed"
+778:                 if (expanded) collapse { onToggle(); true } else expand { onToggle(); true }
+779:             },
+780:     ) {
+781:         Row(
+782:             Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+783:             verticalAlignment = Alignment.CenterVertically,
+784:         ) {
+785:             Text(topic.question, style = MaterialTheme.typography.titleMedium,
+786:                 modifier = Modifier.weight(1f))
+787:             Spacer(Modifier.width(12.dp))
+788:             // The row already announces expanded or collapsed, so a screen
+789:             // reader saying "plus sign" after it is the same state told worse.
+790:             Text(if (expanded) "−" else "+", style = MoneyMedium,
+791:                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+792:                 modifier = Modifier.clearAndSetSemantics {})
+793:         }
+794:         if (expanded) {
+795:             Spacer(Modifier.height(4.dp))
+796:             for (block in topic.body) {
+797:                 when (block) {
+798:                     is Para -> Text(block.text,
+799:                         style = MaterialTheme.typography.bodyMedium,
+800:                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+801:                     is Steps -> block.items.forEachIndexed { i, line ->
+802:                         Row(Modifier.padding(top = if (i == 0) 0.dp else 6.dp)) {
+803:                             Text(if (block.ordered) "${i + 1}." else "·",
+804:                                 style = MaterialTheme.typography.bodyMedium,
+805:                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+806:                                 modifier = Modifier.width(20.dp))
+807:                             Text(line, style = MaterialTheme.typography.bodyMedium,
+808:                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+809:                         }
+810:                     }
+811:                 }
+812:                 Spacer(Modifier.height(10.dp))
+813:             }
+814:         }
+815:     }
+816: }
+817: 
+818: private sealed interface HelpBlock
+819: private data class Para(val text: String) : HelpBlock
+820: private data class Steps(val items: List<String>, val ordered: Boolean = true) : HelpBlock
+821: private data class HelpTopic(val question: String, val body: List<HelpBlock>)
+822: 
+823: private val HELP_TOPICS: List<HelpTopic> = listOf(
+824:     HelpTopic("Android refused to install the app", listOf(
+825:         Para("Two different refusals, with two different causes."),
+826:         Para("“App blocked to protect your device” (Play Protect), or " +
+827:              "INSTALL_FAILED_VERIFICATION_FAILURE. SpendWise asks to read bank SMS, " +
+828:              "and Play Protect blocks any app that requests SMS access unless it came " +
+829:              "from the Play Store. It is not reacting to anything found in the app — it " +
+830:              "is reacting to the permission being requested at all."),
+831:         Steps(listOf(
+832:             "Play Store → your profile picture → Play Protect",
+833:             "The gear icon → turn off Scan apps with Play Protect",
+834:             "Install SpendWise",
+835:             "Turn it back on. It protects you from everything else.",
+836:         )),
+837:         Para("On Xiaomi, Redmi and POCO there is a second gate: Settings → Privacy " +
+838:              "protection → Special permissions → Install unknown apps, and if it still " +
+839:              "refuses, turn off MIUI optimization in Developer options."),
+840:         Para("From a computer, adb install app-release.apk avoids the prompt entirely."),
+841:         Para("In India, Singapore, Thailand and Brazil this is Google's enhanced fraud " +
+842:              "protection, which refuses any sideloaded app declaring SMS, " +
+843:              "notification-listener or accessibility permissions — usually with no " +
+844:              "“install anyway”. Turning Play Protect off does not always help there."),
+845:         Para("Two things that do work:"),
+846:         Steps(listOf(
+847:             "adb install from a computer. The ADB route is not subject to this check.",
+848:             "Install the no-SMS build. It never asks for the permission, so there is " +
+849:                 "nothing to block. You add transactions yourself or paste bank " +
+850:                 "messages in.",
+851:         )),
+852:         Para("Apps like this one on the Play Store are not built differently — they " +
+853:              "arrive by a route that is not scanned."),
+854:         Para("INSTALL_PARSE_FAILED_NO_CERTIFICATES is a different thing: that APK was " +
+855:              "never signed and no setting will let it install. Use a signed build."),
+856:     )),
+857: 
+858:     HelpTopic("My transactions are not being captured", listOf(
+859:         Para("SpendWise scans the inbox for bank and UPI messages each time it opens, " +
+860:              "and listens for new ones while it runs."),
+861:         Para("If nothing is being captured, in order of likelihood:"),
+862:         Steps(listOf(
+863:             "SMS permission is off. Settings → SMS capture will say so, with a button " +
+864:                 "to turn it back on.",
+865:             "Your phone is killing the app in the background. On Xiaomi, Redmi and " +
+866:                 "POCO, Oppo, Vivo and Realme this is the usual cause. Enable Autostart " +
+867:                 "for SpendWise in your phone's Settings → Apps, and set its battery " +
+868:                 "mode to No restrictions.",
+869:             "Your bank's message format is not recognised yet. Settings shows how " +
+870:                 "many bank messages could not be read; you can see their masked " +
+871:                 "wording there and share it, so the format can be supported.",
+872:         )),
+873:         Para("A message missed while capture was off, or one older than the inbox " +
+874:              "scan reaches, can still go in: tap + on Home, then Paste a bank " +
+875:              "message instead."),
+876:     )),
+877: 
+878:     HelpTopic("A message was held instead of being added", listOf(
+879:         Para("That happens when the sender is not one your bank has used before, or " +
+880:              "the message has the shape of a scam — a payment link, an urgent deadline, " +
+881:              "a request to call a number."),
+882:         Para("Held messages are never deleted and never added on their own. Open " +
+883:              "Alerts to see each one with the reason, the original text, and buttons to " +
+884:              "add it or discard it."),
+885:     )),
+886: 
+887:     HelpTopic("A transaction got the wrong category", listOf(
+888:         Para("Tap the transaction and change it. That correction is remembered for that " +
+889:              "merchant, and the next one arrives already correct."),
+890:         Para("How eager the app is to categorise without asking is yours to set: " +
+891:              "Settings → Smart engine has the two confidence thresholds. Raise " +
+892:              "auto-save to be asked more often; lower it to be asked less."),
+893:     )),
+894: 
+895:     HelpTopic("The same purchase appears twice", listOf(
+896:         Para("Some banks send both an SMS and a UPI confirmation for one payment. " +
+897:              "SpendWise removes exact duplicates automatically, but a pair that differs " +
+898:              "in wording or timing can slip through."),
+899:         Para("Open the row and delete it. Deletes are soft — an undo appears, and " +
+900:              "nothing is really gone until the app is reinstalled."),
+901:     )),
+902: 
+903:     HelpTopic("I am getting a new phone", listOf(
+904:         Para("Nothing is stored anywhere except this phone, so a copy has to be made " +
+905:              "deliberately."),
+906:         Steps(listOf(
+907:             "Settings → Download a full backup. Save the file somewhere off the phone.",
+908:             "Install SpendWise on the new phone.",
+909:             "Settings → Restore from a backup, and pick that file.",
+910:         )),
+911:         Para("The CSV export is a report for a spreadsheet, not a backup — it cannot " +
+912:              "rebuild your merchants, budgets or learned categories."),
+913:     )),
+914: 
+915:     HelpTopic("The numbers do not look right", listOf(
+916:         Para("Two corrections are applied automatically and explain most surprises:"),
+917:         Steps(listOf(
+918:             "A transfer between your own accounts is not spending, so a matching debit " +
+919:                 "and credit within a few minutes is excluded from totals.",
+920:             "A refund reduces the original spending instead of counting as income.",
+921:         ), ordered = false),
+922:         Para("If a total still looks wrong, searching Activity for the merchant is the " +
+923:              "fastest way to find what is behind it."),
+924:     )),
+925: 
+926:     HelpTopic("Does this work without internet?", listOf(
+927:         Para("Yes, always — that is the whole design. There is no server to reach, so " +
+928:              "aeroplane mode changes nothing about how the app behaves."),
+929:     )),
+930: )
+931: 
+932: @Composable
+933: private fun PageCard(content: @Composable ColumnScope.() -> Unit) {
+934:     Surface(
+935:         color = MaterialTheme.colorScheme.surface,
+936:         shape = RoundedCornerShape(Tokens.cardRadius),
+937:         modifier = Modifier.fillMaxWidth(),
+938:     ) { Column(Modifier.padding(18.dp), content = content) }
+939: }
+940: 
+941: @Composable
+942: private fun GroupHeader(text: String) {
+943:     Text(
+944:         text.uppercase(),
+945:         style = SectionHeading,
+946:         color = MaterialTheme.colorScheme.onSurfaceVariant,
+947:         modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 2.dp),
+948:     )
+949: }
+950: 
+951: @Composable
+952: private fun Note(text: String) {
+953:     Text(text, style = MaterialTheme.typography.bodySmall,
+954:         color = MaterialTheme.colorScheme.onSurfaceVariant)
+955: }
+956: 
+957: @Composable
+958: private fun Footnote(text: String) {
+959:     Text(text, style = MaterialTheme.typography.bodySmall,
+960:         color = MaterialTheme.colorScheme.onSurfaceVariant,
+961:         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp))
+962: }
+963: 
+964: /** A ✓/✗ line. The mark carries the meaning, so it is the only thing here
+965:  *  allowed a colour of its own. */
+966: @Composable
+967: private fun Mark(included: Boolean, text: String) {
+968:     Row(verticalAlignment = Alignment.Top) {
+969:         Text(if (included) "✓" else "✗",
+970:             style = MaterialTheme.typography.bodyMedium,
+971:             color = if (included) Income else Expense,
+972:             modifier = Modifier.width(22.dp))
+973:         Text(text, style = MaterialTheme.typography.bodySmall,
+974:             color = MaterialTheme.colorScheme.onSurfaceVariant)
+975:     }
+976: }
+977: 
+978: /** Title-and-explanation rows in one card separated by hairlines, rather than
+979:  *  one card each: the same pattern the dashboard uses for its insights. */
+980: @Composable
+981: private fun HairlineList(vararg rows: Pair<String, String>) {
+982:     rows.forEachIndexed { i, (title, detail) ->
+983:         if (i > 0) HorizontalDivider(
+984:             color = MaterialTheme.colorScheme.outline,
+985:             modifier = Modifier.padding(vertical = 14.dp))
+986:         Text(title, style = MaterialTheme.typography.titleMedium)
+987:         Spacer(Modifier.height(4.dp))
+988:         Text(detail, style = MaterialTheme.typography.bodySmall,
+989:             color = MaterialTheme.colorScheme.onSurfaceVariant)
+990:     }
+991: }
+992: 
+993: @Composable
+994: private fun NavRow(title: String, detail: String, onClick: () -> Unit) {
+995:     Row(
+996:         Modifier.fillMaxWidth()
+997:             .clickable(role = Role.Button, onClick = onClick)
+998:             .heightIn(min = Tokens.minTouchTarget)
+999:             .padding(vertical = 10.dp),
+1000:         verticalAlignment = Alignment.CenterVertically,
+1001:     ) {
+1002:         Column(Modifier.weight(1f)) {
+1003:             Text(title, style = MaterialTheme.typography.titleMedium)
+1004:             Text(detail, style = MaterialTheme.typography.bodySmall,
+1005:                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+1006:         }
+1007:         Spacer(Modifier.width(12.dp))
+1008:         Text("›", style = MoneyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+1009:             modifier = Modifier.clearAndSetSemantics {})
+1010:     }
+1011: }
+1012: 
+1013: @Composable
+1014: private fun StatusPill(sms: SmsStatus) {
+1015:     val (label, tint) = when {
+1016:         sms.access == SmsAccess.UNAVAILABLE ->
+1017:             "Not in this build" to MaterialTheme.colorScheme.onSurfaceVariant
+1018:         sms.access == SmsAccess.DENIED -> "Permission off" to Warn
+1019:         sms.captured > 0 -> "Working" to Income
+1020:         else -> "No captures yet" to MaterialTheme.colorScheme.onSurfaceVariant
+1021:     }
+1022:     Surface(
+1023:         color = Color.Transparent,
+1024:         shape = RoundedCornerShape(999.dp),
+1025:         border = androidx.compose.foundation.BorderStroke(
+1026:             1.dp, MaterialTheme.colorScheme.outline),
+1027:     ) {
+1028:         Text(label.uppercase(), style = MicroLabel, color = tint,
+1029:             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+1030:     }
+1031: }
+1032: 
+1033: @Composable
+1034: private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
+1035:     Surface(
+1036:         color = Color.Transparent,
+1037:         shape = RoundedCornerShape(12.dp),
+1038:         border = androidx.compose.foundation.BorderStroke(
+1039:             1.dp, MaterialTheme.colorScheme.outline),
+1040:         modifier = modifier,
+1041:     ) {
+1042:         Column(Modifier.padding(11.dp, 10.dp)) {
+1043:             Text(label, style = MicroLabel,
+1044:                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+1045:             Spacer(Modifier.height(3.dp))
+1046:             Text(value, style = MoneyMedium, maxLines = 1)
+1047:         }
+1048:     }
+1049: }
+1050: 
+1051: @Composable
+1052: private fun ThemeChoice(selected: String, onSelect: (String) -> Unit) {
+1053:     val options = listOf(THEME_SYSTEM to "System", THEME_LIGHT to "Light", THEME_DARK to "Dark")
+1054:     Row(Modifier.fillMaxWidth().selectableGroup()) {
+1055:         options.forEach { (value, label) ->
+1056:             Row(
+1057:                 Modifier.weight(1f)
+1058:                     .heightIn(min = Tokens.minTouchTarget)
+1059:                     .selectable(
+1060:                         selected = selected == value,
+1061:                         role = Role.RadioButton,
+1062:                         onClick = { onSelect(value) },
+1063:                     ),
+1064:                 verticalAlignment = Alignment.CenterVertically,
+1065:             ) {
+1066:                 // onClick = null: the whole row is the target, and a second
+1067:                 // clickable inside it would halve the touch area.
+1068:                 RadioButton(selected = selected == value, onClick = null)
+1069:                 Text(label, style = MaterialTheme.typography.bodyMedium)
+1070:             }
+1071:         }
+1072:     }
+1073: }
+1074: 
+1075: @Composable
+1076: private fun ThresholdSlider(label: String, value: Int, tint: Color, onValue: (Int) -> Unit) {
+1077:     Text(label, style = MaterialTheme.typography.bodyMedium, color = tint)
+1078:     Slider(
+1079:         value = value.toFloat(),
+1080:         onValueChange = { onValue(it.roundToInt()) },
+1081:         valueRange = 0f..100f,
+1082:         modifier = Modifier.fillMaxWidth().heightIn(min = Tokens.minTouchTarget),
+1083:     )
+1084: }
+1085: 
+1086: private fun plural(count: Int, one: String, many: String): String =
+1087:     if (count == 1) one else many
+1088: 
+1089: /** What goes in the field: a plain number, not a formatted amount. Grouping
+1090:  *  separators and a currency symbol are things the user would have to delete
+1091:  *  before they could type. */
+1092: private fun amountField(value: Double?): String = when {
+1093:     value == null -> ""
+1094:     value % 1.0 == 0.0 -> value.toLong().toString()
+1095:     else -> String.format(Locale.US, "%.2f", value)
+1096: }
+1097: 
+1098: private fun positiveAmount(raw: String): Double? =
+1099:     raw.filter { it.isDigit() || it == '.' }
+1100:         .toDoubleOrNull()
+1101:         ?.takeIf { it > 0 && it.isFinite() }

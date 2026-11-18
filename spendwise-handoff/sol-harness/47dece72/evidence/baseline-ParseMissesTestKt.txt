@@ -1,0 +1,14 @@
+=== a bank message the parser cannot read is a miss ===
+=== an unlisted bank still counts ===
+=== what is never a miss ===
+=== pasted: the person pasting vouches for the sender ===
+=== redaction keeps the format ===
+=== redaction under attack ===
+=== every shape a miss stores is clean ===
+=== the de-duplication key ===
+=== storage stays bounded ===
+=== what the screen shows ===
+=== what sharing sends ===
+
+============================================================
+538 passed, 0 failed

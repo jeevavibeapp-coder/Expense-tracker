@@ -1,0 +1,9 @@
+VM-HDFCBK: INR 1,200.50 debited from A/c XX1234 to AMAZON on 18-Nov-2026 at 12:30:45. UTR 123456789012. Avl Bal Rs 9,876.54.
+VM-HDFCBK: INR 1,200.50 credited to A/c XX1234 on 18-Nov-2026 at 12:35. Ref 123456789012.
+AD-ICICIB: Rs 500.00 sent to Rahul Sharma at rahul.sharma@okicici on 18-11-2026 13:10. UPI Ref 223456789012.
+VM-SBI: A/c XX1234 debited by 199.00 on 08Jul26. Ref 323456789012. Available balance INR 10,001.20.
+AD-AXISBK: INR 750.00 debited from A/c XX4321 UPI/P2M/423456789012/SWIGGY on 18/11/2026 14:20.
+VM-KOTAKB: Rs 250 paid to SWIGGY at swiggy8@ybl on 18-Nov-2026. Ref AB1234567890CD.
+AD-ICICIB: Rs 700 received from Rahul Sharma +91 98765 43210 on 18-Nov-2026 15:22.
+VM-HDFCBK: Rs 899 spent at CORNER BAKERY using card **4321 on 18-Nov-2026 16:05. Avl Bal Rs 8,000.25.
+AD-AXISBK: INR 200 credited UPI/CR/523456789012/Priya Rao on 18-Nov-2026 18:15.

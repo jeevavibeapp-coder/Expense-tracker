@@ -1,0 +1,17 @@
+{
+  "command": [
+    "C:\\Program Files\\Python314\\python.exe",
+    "-B",
+    "-X",
+    "utf8",
+    "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\redact_sms.py",
+    "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\redaction-tests\\synthetic-input\\synthetic-bank-messages.txt",
+    "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\redaction-tests\\synthetic-input\\synthetic-attributes.xml",
+    "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\redaction-tests\\synthetic-input\\synthetic-child-elements.xml",
+    "C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\sol-harness\\redaction-tests\\synthetic-input\\synthetic-direct-text.xml"
+  ],
+  "exit_code": 0,
+  "stdout": "9 messages -> C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\redacted\\sms-ae3563d105.redacted.txt\nPrivate review list (6 items): C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\private\\synthetic-bank-messages.txt.review.txt\n2 messages -> C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\redacted\\sms-27435b20cf.redacted.xml\nPrivate review list (5 items): C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\private\\synthetic-attributes.xml.review.txt\n1 messages -> C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\redacted\\sms-69cd912425.redacted.xml\nPrivate review list (1 items): C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\private\\synthetic-child-elements.xml.review.txt\n1 messages -> C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\redacted\\sms-6760731ca3.redacted.xml\nPrivate review list (0 items): C:\\Users\\2299004\\Downloads\\Jeevs\\fun\\spendwise-handoff\\real-sms\\private\\synthetic-direct-text.xml.review.txt\nHUMAN REVIEW REQUIRED: inspect every output before sharing. Share only reviewed redacted copies; never share private/.\n",
+  "stderr": "",
+  "inputs": "synthetic only; no real SMS supplied"
+}

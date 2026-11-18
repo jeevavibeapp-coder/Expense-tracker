@@ -1,0 +1,33 @@
+test_account_shape_and_repeated_suffix (__main__.RedactionTests.test_account_shape_and_repeated_suffix) ... ok
+test_amount_and_balance (__main__.RedactionTests.test_amount_and_balance) ... ok
+test_business_names_reviewed (__main__.RedactionTests.test_business_names_reviewed) ... ok
+test_dates_times_and_bank_header (__main__.RedactionTests.test_dates_times_and_bank_header) ... ok
+test_different_people_get_different_ids (__main__.RedactionTests.test_different_people_get_different_ids) ... ok
+test_distinct_accounts (__main__.RedactionTests.test_distinct_accounts) ... ok
+test_explicit_person_paths (__main__.RedactionTests.test_explicit_person_paths) ... ok
+test_greeting (__main__.RedactionTests.test_greeting) ... ok
+test_large_amount_not_phone (__main__.RedactionTests.test_large_amount_not_phone) ... ok
+test_merchant_paths (__main__.RedactionTests.test_merchant_paths) ... ok
+test_names_and_known_merchants (__main__.RedactionTests.test_names_and_known_merchants) ... ok
+test_output_separates_review_and_drops_metadata (__main__.RedactionTests.test_output_separates_review_and_drops_metadata) ... ok
+test_phone_prefix_and_shape (__main__.RedactionTests.test_phone_prefix_and_shape) ... ok
+test_plaintext_process_and_utf16_xml (__main__.RedactionTests.test_plaintext_process_and_utf16_xml) ... ok
+test_reference_shared_between_messages (__main__.RedactionTests.test_reference_shared_between_messages) ... ok
+test_refno_and_alphanumeric_shape (__main__.RedactionTests.test_refno_and_alphanumeric_shape) ... ok
+test_sbi_currency_free_amount (__main__.RedactionTests.test_sbi_currency_free_amount) ... ok
+test_state_persistence_without_original_values (__main__.RedactionTests.test_state_persistence_without_original_values) ... ok
+test_unicode_digits (__main__.RedactionTests.test_unicode_digits) ... ok
+test_unknown_email_is_masked_and_reviewed (__main__.RedactionTests.test_unknown_email_is_masked_and_reviewed) ... ok
+test_unknown_merchant_conservative_then_allowlist (__main__.RedactionTests.test_unknown_merchant_conservative_then_allowlist) ... ok
+test_unknown_numeric_identifier (__main__.RedactionTests.test_unknown_numeric_identifier) ... ok
+test_upi_handles_consistent (__main__.RedactionTests.test_upi_handles_consistent) ... ok
+test_url_redacted (__main__.RedactionTests.test_url_redacted) ... ok
+test_xml_attributes_sms_backup_restore_layout (__main__.RedactionTests.test_xml_attributes_sms_backup_restore_layout) ... ok
+test_xml_child_elements_and_namespace (__main__.RedactionTests.test_xml_child_elements_and_namespace) ... ok
+test_xml_entities_rejected (__main__.RedactionTests.test_xml_entities_rejected) ... ok
+test_xml_unknown_layout_fails_closed (__main__.RedactionTests.test_xml_unknown_layout_fails_closed) ... ok
+
+----------------------------------------------------------------------
+Ran 28 tests in 0.650s
+
+OK

@@ -1,0 +1,12 @@
+=== a clean message previews as the row Save would write ===
+=== the suggestion must be a chip the card can show ===
+=== previewing writes nothing ===
+=== committing stores exactly what was shown ===
+=== corrections are stored, the message keeps its identity ===
+=== naming the payee on the card is the confirmation ===
+=== the last check before storage ===
+=== a suspicious message is shown with the reason, never held ===
+=== not a transaction, and why ===
+
+============================================================
+95 passed, 0 failed

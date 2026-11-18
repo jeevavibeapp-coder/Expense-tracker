@@ -1,0 +1,12 @@
+=== bank corpus: every one must be captured ===
+=== junk corpus: none may reach the ledger ===
+=== amounts ===
+=== safeAmount rejects what is not money ===
+=== direction ===
+=== merchants ===
+=== references and dates ===
+=== normalisation ===
+=== never captured ===
+
+============================================================
+70 passed, 0 failed

@@ -1,0 +1,7 @@
+{
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS `parse_misses` (`id` TEXT NOT NULL, `bodyHash` TEXT NOT NULL, `sender` TEXT, `source` TEXT NOT NULL, `shape` TEXT NOT NULL, `reason` TEXT NOT NULL, `parserVersion` TEXT NOT NULL, `seenCount` INTEGER NOT NULL, `firstSeenAt` INTEGER NOT NULL, `lastSeenAt` INTEGER NOT NULL, `cleared` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+    "CREATE UNIQUE INDEX IF NOT EXISTS `index_parse_misses_bodyHash` ON `parse_misses` (`bodyHash`)"
+  ],
+  "equals_v4": true
+}

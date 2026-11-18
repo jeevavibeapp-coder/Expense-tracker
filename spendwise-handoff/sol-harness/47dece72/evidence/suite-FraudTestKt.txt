@@ -1,0 +1,11 @@
+=== a quiet ledger raises nothing ===
+=== duplicate charges ===
+=== high-value outliers against the user's own distribution ===
+=== the high-value amount the user typed ===
+=== abnormally heavy days ===
+=== payees never seen before ===
+=== keys, ordering and re-evaluation ===
+=== an alert nobody can act on is not raised ===
+
+============================================================
+46 passed, 0 failed
