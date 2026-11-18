@@ -77,6 +77,34 @@ fun main() {
         check("dedup key unchanged: ${sms.take(45)}", key(sms) == want, "want=$want got=${key(sms)}")
     }
 
+    println("=== #9: a refund that also says 'paid' is money coming in ===")
+    // The debit verb in these describes the original payment, not this
+    // message. Filed as an expense, a refund doubles the spend it undoes.
+    val refunds = listOf(
+        "Refund of Rs.500.00 for your order paid via UPI has been credited to your A/c XX1234 on 08-07-26. Ref 512345678901" to
+            "500.0|YOUR|512345678901|2026-07-08",
+        "Rs.250.00 credited to A/c XX1234 on 08-07-26 as refund of the amount paid to AMAZON. UPI Ref 512345678901" to
+            "250.0|A C XX1234|512345678901|2026-07-08",
+        "You have received a refund of Rs.120 for the bill paid at DMART. Credited to A/c XX1234 UPI Ref 512345678901" to
+            "120.0|DMART|512345678901|2026-07-08",
+    )
+    for ((sms, banked) in refunds) {
+        val p = Parsing.parse(sms)
+        check("captured: ${sms.take(50)}", p.matched)
+        check("income: ${sms.take(50)}", p.type == "income", "got=${p.type}")
+        check("dedup key unchanged: ${sms.take(45)}", key(sms) == banked, "want=$banked got=${key(sms)}")
+    }
+    check("the refund keeps its payee", Parsing.parse(refunds[2].first).rawMerchant == "DMART")
+    // The rule must not swallow debits that merely mention a credit.
+    check("ICICI 'debited …; SWIGGY credited' is still a debit",
+        Parsing.parse("ICICI Bank Acct XX823 debited for Rs 320.00 on 08-Jul-26; SWIGGY credited. UPI:519023481234").type == "expense")
+    check("a debit that mentions an earlier refund is still a debit",
+        Parsing.parse("Rs.300.00 debited from A/c XX1234 on 08-07-26 to MYNTRA, refund of Rs.300 credited earlier. UPI Ref 512345678901").type == "expense")
+    check("a plain payment is still a debit",
+        Parsing.parse("You paid Rs.150 to Ramesh Kumar using Google Pay. UPI transaction ID: 519023481234").type == "expense")
+    check("a refund with no 'paid' was already income",
+        Parsing.parse("Rs.599.00 credited to your A/c XX1234 on 08-07-26 from AMAZON refund. Ref 553201998877").type == "income")
+
     println("=== #11: times are the bank's wall clock, never shifted to UTC ===")
     val late = Parsing.parse("Rs.450.00 debited from A/c XX1234 on 08-07-26 00:30:15 to ZOMATO Ref 883120114455")
     check("00:30 on the 8th stays 00:30 on the 8th",

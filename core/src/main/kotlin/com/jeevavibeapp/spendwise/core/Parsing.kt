@@ -69,6 +69,12 @@ object Parsing {
     private val CREDIT = Regex("\\b(credited|received|deposit(?:ed)?)\\b", I)
     private val DEBIT = Regex("\\b(debited|spent|paid|sent|withdrawn|purchase(?:d)?)\\b", I)
 
+    /** A refund names the payment it undoes — "for your order paid via
+     *  UPI" — so it carries a debit verb that is about the past. Only these
+     *  two say money is leaving in this message. */
+    private val REFUND = Regex("\\brefund(?:ed)?\\b", I)
+    private val DEBITED_NOW = Regex("\\b(debited|withdrawn)\\b", I)
+
     /** The transactional gate: a money-movement verb must be present, or the
      *  message is promotional or informational and must never be captured. */
     internal val TXN_VERB = Regex(
@@ -302,8 +308,13 @@ object Parsing {
         if (normalized.isEmpty()) return ParsedSms()
 
         val amount = parseAmount(normalized)
-        val type = if (CREDIT.containsMatchIn(normalized) &&
-                       !DEBIT.containsMatchIn(normalized)) "income" else "expense"
+        val credited = CREDIT.containsMatchIn(normalized)
+        val debitVerb = DEBIT.containsMatchIn(normalized)
+        val refund = REFUND.containsMatchIn(normalized) && !DEBITED_NOW.containsMatchIn(normalized)
+        val type = if (credited && (!debitVerb || refund)) "income" else "expense"
+        // The direction parser 2026.1.0-kt chose, which decides the payee
+        // pattern order and so the dedup key's payee — see keyMerchant.
+        val keyType = if (credited && !debitVerb) "income" else "expense"
 
         // A real transaction needs ALL of: an amount, a money-movement verb,
         // no promo/request/pre-debit language, and positive account evidence.
@@ -328,7 +339,7 @@ object Parsing {
             // pre-debit and scam language.
             matched = looksTransactional && !NON_TXN.containsMatchIn(normalized),
             looksTransactional = looksTransactional,
-            keyMerchant = parseMerchant(normalized, type, forKey = true),
+            keyMerchant = parseMerchant(normalized, keyType, forKey = true),
         )
     }
 }
