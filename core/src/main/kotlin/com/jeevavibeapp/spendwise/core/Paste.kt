@@ -30,7 +30,7 @@ object Paste {
         val type: String,
         /** The payee as the bank wrote it. Not editable: it is what the next
          *  message from the same payee will carry, so it is the key the engine
-         *  learns under and part of the dedup key. */
+         *  learns under and part of the pre-K3 dedup key. */
         val rawMerchant: String?,
         val merchantName: String?,
         val categoryId: String?,
@@ -38,19 +38,24 @@ object Paste {
         val occurredAt: LocalDateTime,
         val confidence: Int,
         val status: String,
-        /** Unhashed. The caller hashes it exactly as it hashes a capture's. */
-        val dedupKey: String,
-        /** What the parser read. Kept because [commit] derives the dedup key
+        /** Unhashed. The caller hashes each key exactly as it hashes a
+         *  capture's. */
+        val identity: Dedup.Identity,
+        /** What the parser read. Kept because [commit] derives the identity
          *  from the message rather than from the corrections — see there. */
         val parsed: ParsedSms,
+        /** The message as pasted. An undated one with no reference is keyed
+         *  by its text and the day it is filed under, so [commit] rebuilds
+         *  its identity from this when the user picks another day. */
+        val body: String,
     ) {
         /** False when the message carried no date, so [occurredAt] is the
          *  moment it was pasted — a guess the screen should own up to. */
         val dated: Boolean get() = parsed.occurredAt != null
     }
 
-    /** A row the ledger already holds under the same dedup key. A deleted
-     *  row counts: the key is unique, so it refuses a second row either way,
+    /** A row the ledger already holds under a key the message answers to. A
+     *  deleted row counts: the key is unique, so it refuses a second row either way,
      *  and saying "already there" about a row the user cannot see would be a
      *  dead end without [deleted] to explain it. */
     data class Banked(
@@ -101,7 +106,9 @@ object Paste {
      *
      * @param resolve      name, category and confidence for a raw payee — a
      *   read of what the engine has learned, as the capture path uses
-     * @param banked       the ledger row already filed under a dedup key
+     * @param banked       the ledger row already filed under an unhashed key,
+     *   asked for each key in the message's [Dedup.Identity.all] in turn
+     *   until one answers
      * @param categoryType the side of the ledger ("expense" or "income") of a
      *   category the card can offer, or null for one it cannot show
      */
@@ -109,7 +116,7 @@ object Paste {
         body: String,
         now: LocalDateTime,
         resolve: (rawMerchant: String?, amount: Double?, at: LocalDateTime) -> Pipeline.Resolution,
-        banked: (dedupKey: String) -> Banked?,
+        banked: (key: String) -> Banked?,
         categoryType: (categoryId: String) -> String?,
         autoAt: Int = 80,
         confirmAt: Int = 50,
@@ -118,12 +125,15 @@ object Paste {
 
         // The capture path's own decision, given no sender: a paste has none,
         // and Senders reads a missing sender as no signal either way, so the
-        // message is judged on its words alone.
+        // message is judged on its words alone. Nor has it an SMS timestamp,
+        // so a message with no reference is identified by its text and day.
         val outcome = Pipeline.ingest(
             sender = null, body = body, now = now,
             lookupSender = { null }, resolve = resolve,
             autoAt = autoAt, confirmAt = confirmAt,
+            receivedAt = null,
         )
+        fun duplicate(identity: Dedup.Identity) = identity.all.firstNotNullOfOrNull(banked)
 
         return when (outcome) {
             Pipeline.Outcome.NotFinancial -> Preview.NotATransaction(whyNot(Parsing.parse(body)))
@@ -141,10 +151,11 @@ object Paste {
                     occurredAt = parsed.occurredAt ?: now,
                     confidence = outcome.confidence,
                     status = outcome.status,
-                    dedupKey = outcome.dedupKey,
+                    identity = outcome.identity,
                     parsed = parsed,
+                    body = body,
                 )
-                Preview.Transaction(draft, duplicate = banked(draft.dedupKey))
+                Preview.Transaction(draft, duplicate = duplicate(draft.identity))
             }
 
             is Pipeline.Outcome.Hold -> {
@@ -168,10 +179,11 @@ object Paste {
                     // the user overruling it is what makes this confirmed.
                     confidence = r.confidence,
                     status = Pipeline.STATUS_CONFIRMED,
-                    dedupKey = Pipeline.dedupKey(parsed, at),
+                    identity = Dedup.identity(parsed, body, null, null, at),
                     parsed = parsed,
+                    body = body,
                 )
-                Preview.Transaction(draft, caution(parsed, outcome.verdict), banked(draft.dedupKey))
+                Preview.Transaction(draft, caution(parsed, outcome.verdict), duplicate(draft.identity))
             }
         }
     }
@@ -218,7 +230,9 @@ object Paste {
         val occurredAt: LocalDateTime,
         val confidence: Int,
         val status: String,
-        val dedupKey: String,
+        /** Unhashed. Saved only when no key in [Dedup.Identity.all] is
+         *  banked, under [Dedup.Identity.key]. */
+        val identity: Dedup.Identity,
         val learn: Learning?,
     )
 
@@ -274,8 +288,11 @@ object Paste {
             // a corrected amount would let the misread copy in beside this
             // one. Only an undated message takes the chosen day: there the day
             // is not in the message, and the capture path uses the day it
-            // arrived — which is the day the user is choosing.
-            dedupKey = Pipeline.dedupKey(draft.parsed, draft.parsed.occurredAt ?: at),
+            // arrived — which is the day the user is choosing. It moves the
+            // keys that hold a day (a paste with no reference, and the pre-K3
+            // key), never a reference's.
+            identity = Dedup.identity(draft.parsed, draft.body, null, null,
+                                      draft.parsed.occurredAt ?: at),
             learn = confirmation?.let { c ->
                 Learning(
                     // A message with no payee in it has nothing an incoming

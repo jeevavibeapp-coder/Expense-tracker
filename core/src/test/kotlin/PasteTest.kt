@@ -13,6 +13,9 @@ private const val GENUINE =
     "Rs.450.00 debited from a/c **1234 on 05-Jan-24 to ZOMATO Ref 883120114455 UPI"
 private const val UNDATED =
     "Rs.450.00 debited from a/c **1234 to ZOMATO Ref 883120114455 UPI"
+/** Synthetic. Undated and with no reference: a paste of it is keyed by its
+ *  text and the day it is filed under. */
+private const val UNDATED_NO_REF = "Rs.20.00 debited from A/c XX1234 to CHAIPOINT"
 private const val SALARY =
     "INR 62,500.00 credited to A/c XX1234 on 01-07-26 towards SALARY JUL26. Ref 998877665544"
 private const val REFUND =
@@ -38,11 +41,13 @@ private class FakeLedger {
     var resolveCalls = 0
     var bankedCalls = 0
 
-    /** What Repo.savePaste does with a Commit: one row per dedup key, the
-     *  unique key refusing a second. */
+    /** What Repo.savePaste does with a Commit: one row per message. It is
+     *  refused when the ledger holds the message under ANY key it answers to
+     *  (its own, or one it was banked under before K3), and stored under its
+     *  own key. */
     fun store(c: Paste.Commit): Boolean {
-        if (c.dedupKey in rows) return false
-        rows[c.dedupKey] = Paste.Banked("t${rows.size}", c.amount, c.type,
+        if (c.identity.all.any { it in rows }) return false
+        rows[c.identity.key] = Paste.Banked("t${rows.size}", c.amount, c.type,
             c.merchantName ?: c.rawMerchant, c.occurredAt, deleted = false)
         return true
     }
@@ -90,7 +95,8 @@ fun main() {
     check("the same confidence and status", captured.confidence == d.confidence &&
         captured.status == d.status)
     check("the same dedup key, so a later inbox scan recognises it",
-        captured.dedupKey == d.dedupKey, "capture=${captured.dedupKey} paste=${d.dedupKey}")
+        captured.identity.key == d.identity.key,
+        "capture=${captured.identity.key} paste=${d.identity.key}")
 
     val undated = ledger.preview(UNDATED).tx()!!.draft
     check("an undated message is filed at the moment it was pasted", undated.occurredAt == NOW)
@@ -113,13 +119,17 @@ fun main() {
     val quiet = FakeLedger()
     val first = quiet.preview(GENUINE)
     val again = quiet.preview(GENUINE)
-    quiet.preview(PHISH)
+    val scam = quiet.preview(PHISH)
     quiet.preview("Your OTP is 4567")
     check("the ledger is untouched after four previews", quiet.rows.isEmpty())
     check("previewing twice gives the same answer", first == again)
-    check("it only asked about the payee and the dedup key",
-        quiet.resolveCalls == 3 && quiet.bankedCalls == 3,
-        "resolve=${quiet.resolveCalls} banked=${quiet.bankedCalls}")
+    // Since K3 a message answers to more than one key (its own and the one it
+    // may have been banked under before), and each is a lookup. Nothing is
+    // found in an empty ledger, so every one of them is asked.
+    val keysAsked = listOf(first, again, scam).sumOf { it.tx()?.draft?.identity?.all?.size ?: 0 }
+    check("it only asked about the payee and the keys the message answers to",
+        quiet.resolveCalls == 3 && keysAsked >= 3 && quiet.bankedCalls == keysAsked,
+        "resolve=${quiet.resolveCalls} banked=${quiet.bankedCalls} keys=$keysAsked")
     check("a scam paste is shown, not held — there is no quarantine outcome to write",
         quiet.preview(PHISH) is Paste.Preview.Transaction)
 
@@ -132,10 +142,10 @@ fun main() {
     check("reference", c.referenceNumber == d.referenceNumber)
     check("date and time", c.occurredAt == d.occurredAt, "got=${c.occurredAt}")
     check("confidence and status", c.confidence == d.confidence && c.status == d.status)
-    check("dedup key", c.dedupKey == d.dedupKey)
+    check("dedup key", c.identity.key == d.identity.key)
     check("an untouched card teaches the engine nothing", c.learn == null)
     check("it is stored", ledger.store(c))
-    val stored = ledger.rows[c.dedupKey]!!
+    val stored = ledger.rows[c.identity.key]!!
     check("and reads back as shown",
         stored.amount == 450.0 && stored.type == "expense" && stored.merchant == "Zomato" &&
         stored.occurredAt == d.occurredAt)
@@ -158,19 +168,44 @@ fun main() {
     val fixedAmount = Paste.commit(d, shown.copy(amount = 540.0))!!
     check("a corrected amount is what is stored", fixedAmount.amount == 540.0)
     check("but the key stays the message's, so the misread copy cannot come in beside it",
-        fixedAmount.dedupKey == d.dedupKey)
+        fixedAmount.identity.key == d.identity.key)
     check("correcting the amount is not naming the payee",
         fixedAmount.status == d.status && fixedAmount.learn == null)
     check("a flipped direction is stored", Paste.commit(d, shown.copy(type = "income"))!!.type == "income")
     val moved = Paste.commit(d, shown.copy(date = LocalDate.of(2024, 1, 6)))!!
     check("a corrected date is stored", moved.occurredAt.toLocalDate() == LocalDate.of(2024, 1, 6))
     check("with the time of day the message had", moved.occurredAt.toLocalTime() == d.occurredAt.toLocalTime())
-    check("a dated message keeps its own key when the date is corrected", moved.dedupKey == d.dedupKey)
+    check("a dated message keeps its own key when the date is corrected",
+        moved.identity.key == d.identity.key)
+    // Before K3 every key held a day, so an undated paste took the day the user
+    // chose. UNDATED carries a reference, and since K3 a referenced message is
+    // identified by that reference (with its account and direction), which no
+    // day is part of: choosing another day cannot make it another payment. The
+    // pre-K3 key is still answered to, and it still takes the chosen day,
+    // because a row pasted before the upgrade was stored under exactly that.
     val undatedMoved = Paste.commit(undated, Paste.fields(undated).copy(date = LocalDate.of(2026, 6, 15)))!!
-    check("an undated message is keyed by the day the user chose",
-        undatedMoved.dedupKey == Pipeline.dedupKey(undated.parsed, LocalDateTime.of(2026, 6, 15, 12, 34)),
-        "got=${undatedMoved.dedupKey}")
+    check("an undated message with a reference keeps its identity when the day is changed",
+        undatedMoved.identity.key == undated.identity.key,
+        "moved=${undatedMoved.identity.key} pasted=${undated.identity.key}")
+    check("and still answers to the pre-K3 key for the day the user chose",
+        Dedup.legacyKey(undated.parsed, LocalDateTime.of(2026, 6, 15, 12, 34)) in undatedMoved.identity.aliases,
+        "got=${undatedMoved.identity.aliases}")
     check("and keeps the paste's time of day", undatedMoved.occurredAt == LocalDateTime.of(2026, 6, 15, 12, 34))
+    // With no reference the message is its own identity, and a paste has no
+    // sender or SMS timestamp, so the day is what places it: the chosen day IS
+    // in the key (v2|paste|<hash>|<day>).
+    val bare = ledger.preview(UNDATED_NO_REF).tx()!!.draft
+    val bareMoved = Paste.commit(bare, Paste.fields(bare).copy(date = LocalDate.of(2026, 6, 15)))!!
+    check("an undated message with no reference is keyed by the day the user chose",
+        bareMoved.identity.key.startsWith("v2|paste|") && bareMoved.identity.key.endsWith("|2026-06-15"),
+        "got=${bareMoved.identity.key}")
+    check("not by the day it was pasted",
+        bare.identity.key.endsWith("|2026-06-17") && bareMoved.identity.key != bare.identity.key,
+        "pasted=${bare.identity.key} moved=${bareMoved.identity.key}")
+    check("the key a paste of it filed on that day has",
+        bareMoved.identity.key ==
+            Dedup.identity(bare.parsed, UNDATED_NO_REF, null, null, LocalDateTime.of(2026, 6, 15, 12, 34)).key,
+        "got=${bareMoved.identity.key}")
 
     println("=== naming the payee on the card is the confirmation ===")
     val unknown = ledger.preview(GENUINE, Pipeline.Resolution(null, null, 5)).tx()!!.draft

@@ -23,7 +23,9 @@ object Pipeline {
             val categoryId: String?,
             val confidence: Int,
             val status: String,
-            val dedupKey: String,
+            /** Unhashed. The row stores [Dedup.Identity.key]; the message is
+             *  already banked when any key in [Dedup.Identity.all] is. */
+            val identity: Dedup.Identity,
             val needsCategory: Boolean,
         ) : Outcome()
 
@@ -48,6 +50,9 @@ object Pipeline {
      * @param resolve      name/category/confidence for a raw payee string
      * @param autoAt       confidence at or above which we save without asking
      * @param confirmAt    confidence at or above which we ask rather than bury
+     * @param receivedAt   when the phone received the message, which identifies
+     *   a message with no reference (see [Dedup.identity]); null for a paste,
+     *   which has no SMS timestamp
      */
     fun ingest(
         sender: String?,
@@ -57,6 +62,7 @@ object Pipeline {
         resolve: (rawMerchant: String?, amount: Double?, at: LocalDateTime) -> Resolution,
         autoAt: Int = 80,
         confirmAt: Int = 50,
+        receivedAt: LocalDateTime? = now,
     ): Outcome {
         // 1. Parse FIRST, and judge the sender second. The parse gate is
         //    entirely generic on purpose: knowing the sender may enrich a
@@ -101,7 +107,7 @@ object Pipeline {
             categoryId = resolution.categoryId,
             confidence = confidence,
             status = status,
-            dedupKey = dedupKey(parsed, at),
+            identity = Dedup.identity(parsed, body, sender, receivedAt, at),
             needsCategory = resolution.categoryId == null,
         )
     }
@@ -160,20 +166,4 @@ object Pipeline {
                 !storedName.equals(clean, ignoreCase = true),
         )
     }
-
-    /**
-     * Identity of a payment, independent of how it was worded.
-     *
-     * Several banks send both an SMS and a UPI confirmation for one payment,
-     * and the app is launched repeatedly, rescanning the same inbox. Amount +
-     * folded merchant + reference + DAY is stable across all of that, while
-     * still separating two genuinely different coffees on the same morning
-     * once a reference number is present.
-     */
-    fun dedupKey(parsed: ParsedSms, at: LocalDateTime): String = listOf(
-        parsed.amount?.toString().orEmpty(),
-        Engine.normalizeMerchant(parsed.keyMerchant),
-        parsed.referenceNumber.orEmpty(),
-        at.toLocalDate().toString(),
-    ).joinToString("|")
 }

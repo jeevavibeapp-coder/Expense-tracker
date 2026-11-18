@@ -310,6 +310,23 @@ abstract class SpendDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insert(tx: TransactionEntity): Long
 
+    /**
+     * [tx], unless the ledger already holds any of [keyHashes] — the hashed
+     * keys its message answers to — or [tx]'s own dedupKey.
+     *
+     * One transaction, because the unique index is no longer enough on its
+     * own: it refuses only the key a row stores, and one SMS read by the live
+     * receiver and by the launch scan seconds apart can carry the keys of
+     * neighbouring buckets. Checked and inserted as two steps, both could find
+     * nothing and both insert. The IGNORE on [insert] stays as the backstop.
+     *
+     * @return true when [tx] was inserted.
+     */
+    @Transaction
+    open suspend fun insertUnlessBanked(tx: TransactionEntity, keyHashes: List<String>): Boolean =
+        (keyHashes + listOfNotNull(tx.dedupKey)).none { idByDedupKey(it) != null } &&
+            insert(tx) != -1L
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertTransactions(items: List<TransactionEntity>)
 
@@ -528,12 +545,18 @@ abstract class SpendDao {
      * and a cleared alert with no transaction silently loses the purchase the
      * user just vouched for.
      *
-     * Returns false when the dedup key was already present — the purchase is
-     * in the ledger either way, so the message is still marked approved.
+     * Returns false when any of [keyHashes] (the hashed keys the message
+     * answers to) or the row's own dedup key was already present — the
+     * purchase is in the ledger either way, so the message is still marked
+     * approved. Checked inside this transaction, for the reason
+     * [insertUnlessBanked] gives; written out here rather than calling it, so
+     * there is one transaction and not one nested in another.
      */
     @Transaction
-    open suspend fun bankHeldMessage(tx: TransactionEntity, quarantineId: String): Boolean {
-        val inserted = insert(tx) != -1L
+    open suspend fun bankHeldMessage(tx: TransactionEntity, quarantineId: String,
+                                     keyHashes: List<String>): Boolean {
+        val inserted = (keyHashes + listOfNotNull(tx.dedupKey))
+            .none { idByDedupKey(it) != null } && insert(tx) != -1L
         setQuarantineStatus(quarantineId, "approved")
         return inserted
     }

@@ -156,6 +156,23 @@ object Parsing {
     /** Axis card/UPI path: "UPI/P2M/519023481234/ZOMATO/…". */
     private val UPI_PATH = Regex("UPI/(?:P2[MA]/)?\\d{6,}/([A-Za-z0-9 &._-]{2,40})", I)
 
+    /** The reference inside an Axis path: "UPI/P2M/519023481234/…" and
+     *  "UPI/P2A/519023481234/…". [REF] never read it, so it only ever fills a
+     *  missing [ParsedSms.referenceNumber] — see [ParsedSms.keyReference]. */
+    private val UPI_PATH_REF = Regex("UPI/P2[MA]/(\\d{6,})/", I)
+
+    /** The account or card the money moved through, as its masked digits:
+     *  "a/c XX1234", "a/c **1234", "A/C X1234", "Card xx5566",
+     *  "A/c ending 7788", "a/c no. 1234". The first group needs a word that
+     *  names an account or card, so it can take bare digits; the second takes
+     *  a mask on its own ("debited from XX1234"), never a bare number, which
+     *  would be an amount, a date or a reference. */
+    private val ACCOUNT_MASK = Regex(
+        "\\b(?:a/c|acct|account|ac|card)" +
+        "(?:\\s*(?:no|number)\\b\\.?|\\s+ending(?:\\s+(?:with|in))?)?" +
+        "\\s*[:.#-]?\\s*[xX*]*(\\d{3,})\\b" +
+        "|(?<![A-Za-z0-9])[xX*]+(\\d{3,})\\b", I)
+
     /** ICICI style: "…; SWIGGY credited." names the payee before the verb. */
     private val PAYEE_CREDITED = Regex(
         "[;.]\\s*([A-Za-z0-9][A-Za-z0-9 &._-]{1,40}?)\\s+credited", I)
@@ -329,17 +346,24 @@ object Parsing {
             TXN_VERB.containsMatchIn(normalized) &&
             ACCOUNT_EVIDENCE.containsMatchIn(normalized)
 
+        // The reference parser 2026.1.0-kt read, which the dedup key holds —
+        // see keyReference.
+        val keyReference = REF.find(normalized)?.groupValues?.get(1)
+
         return ParsedSms(
             amount = amount,
             type = type,
             rawMerchant = parseMerchant(normalized, type),
-            referenceNumber = REF.find(normalized)?.groupValues?.get(1),
+            referenceNumber = keyReference ?: UPI_PATH_REF.find(normalized)?.groupValues?.get(1),
             occurredAt = parseDate(normalized),
             // A real transaction ALSO has to be free of promo, request,
             // pre-debit and scam language.
             matched = looksTransactional && !NON_TXN.containsMatchIn(normalized),
             looksTransactional = looksTransactional,
             keyMerchant = parseMerchant(normalized, keyType, forKey = true),
+            account = ACCOUNT_MASK.find(normalized)
+                ?.let { m -> m.groupValues[1].ifEmpty { m.groupValues[2] } }.orEmpty(),
+            keyReference = keyReference,
         )
     }
 }
@@ -369,4 +393,13 @@ data class ParsedSms(
      * that moved with every payee fix would stop matching the rows a phone
      * already holds, and the next scan would file each of them again. */
     val keyMerchant: String? = rawMerchant,
+    /** The digits of the first account or card mask the message names —
+     *  "XX1234", "**1234", "ending 1234" and "a/c no. 1234" all give "1234" —
+     *  or "" when it names none. [Dedup.identity] scopes a reference by it:
+     *  two accounts can carry the same reference, and those are two payments. */
+    val account: String = "",
+    /** The reference as the dedup key reads it: parser 2026.1.0-kt's reading,
+     *  kept even where [referenceNumber] has since learned to read more (the
+     *  Axis "UPI/P2M/<ref>/" path), for the reason [keyMerchant] is kept. */
+    val keyReference: String? = referenceNumber,
 )

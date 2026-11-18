@@ -45,9 +45,9 @@ import java.util.Locale
  * @param preview reads a message and stores nothing — normally
  *   `repo.previewPaste`. It suspends onto the IO dispatcher, so reading never
  *   runs on the main thread.
- * @param banked the row already filed under an unhashed dedup key. Asked
- *   again only when an undated message's day is changed, the one correction
- *   that moves its key.
+ * @param banked the row already filed under one unhashed dedup key. Asked
+ *   again, for each key the message answers to, only when an undated
+ *   message's day is changed, the one correction that moves its keys.
  * @param onSave store the commit. The host runs it on a scope that outlives
  *   this page, so leaving straight after Save cannot cancel the write.
  * @param onRestore bring back the deleted row a message was filed as.
@@ -178,12 +178,15 @@ private fun TransactionCard(
         else -> "That is more than any one payment can be. Check it against the message."
     }
 
-    val key = commit?.dedupKey ?: draft.dedupKey
+    val identity = commit?.identity ?: draft.identity
     var duplicate by remember { mutableStateOf(found.duplicate) }
-    LaunchedEffect(key) {
-        // Only an undated message's key moves, when its day is changed, so
-        // this asks nothing new on an amount or a name being typed.
-        duplicate = if (key == draft.dedupKey) found.duplicate else banked(key)
+    LaunchedEffect(identity) {
+        // Only an undated message's keys move, when its day is changed, so
+        // this asks nothing new on an amount or a name being typed. Every key
+        // is asked, as the preview asked them: a row banked before K3 answers
+        // only to the legacy one.
+        duplicate = if (identity == draft.identity) found.duplicate
+                    else identity.all.firstNotNullOfOrNull { banked(it) }
     }
     val dup = duplicate
 

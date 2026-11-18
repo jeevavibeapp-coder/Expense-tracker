@@ -20,8 +20,16 @@ private val NOW = LocalDateTime.of(2026, 7, 8, 12, 0)
 private fun ingest(body: String, now: LocalDateTime = NOW) = Pipeline.ingest(
     "AD-HDFCBK", body, now, { null }, { _, _, _ -> Pipeline.Resolution("Payee", "food", 90) })
 
-private fun key(body: String, now: LocalDateTime = NOW): String? =
-    (ingest(body, now) as? Pipeline.Outcome.Capture)?.dedupKey
+private fun identity(body: String, now: LocalDateTime = NOW): Dedup.Identity? =
+    (ingest(body, now) as? Pipeline.Outcome.Capture)?.identity
+
+/** The key parser 2026.1.0-kt (6bd77fb5) banked [body] under. Since K3 it is
+ *  an alias rather than the key a new row stores, but rows a phone already
+ *  holds are stored under it, so the string must not move. */
+private fun legacyKey(body: String, now: LocalDateTime = NOW): String {
+    val p = Parsing.parse(body)
+    return Dedup.legacyKey(p, p.occurredAt ?: now)
+}
 
 fun main() {
     println("=== OTP / failed / reversed / declined: money that did not move ===")
@@ -74,7 +82,9 @@ fun main() {
             "62500.0|A C XX1234|998877665544|2026-07-01",
     )
     for ((sms, want) in bankedBefore) {
-        check("dedup key unchanged: ${sms.take(45)}", key(sms) == want, "want=$want got=${key(sms)}")
+        check("dedup key unchanged: ${sms.take(45)}", legacyKey(sms) == want, "want=$want got=${legacyKey(sms)}")
+        check("and the capture still answers to it: ${sms.take(45)}",
+            identity(sms)?.all?.contains(want) == true, "all=${identity(sms)?.all}")
     }
 
     println("=== #9: a refund that also says 'paid' is money coming in ===")
@@ -92,7 +102,10 @@ fun main() {
         val p = Parsing.parse(sms)
         check("captured: ${sms.take(50)}", p.matched)
         check("income: ${sms.take(50)}", p.type == "income", "got=${p.type}")
-        check("dedup key unchanged: ${sms.take(45)}", key(sms) == banked, "want=$banked got=${key(sms)}")
+        check("dedup key unchanged: ${sms.take(45)}", legacyKey(sms) == banked,
+            "want=$banked got=${legacyKey(sms)}")
+        check("and the capture still answers to it: ${sms.take(45)}",
+            identity(sms)?.all?.contains(banked) == true, "all=${identity(sms)?.all}")
     }
     check("the refund keeps its payee", Parsing.parse(refunds[2].first).rawMerchant == "DMART")
     // The rule must not swallow debits that merely mention a credit.
@@ -109,9 +122,11 @@ fun main() {
     val late = Parsing.parse("Rs.450.00 debited from A/c XX1234 on 08-07-26 00:30:15 to ZOMATO Ref 883120114455")
     check("00:30 on the 8th stays 00:30 on the 8th",
         late.occurredAt == LocalDateTime.of(2026, 7, 8, 0, 30), "got=${late.occurredAt}")
+    // Since K3 a referenced message's own key holds no day; the day-bearing
+    // key is the 6bd77fb5 one it still answers to.
     check("and its dedup key is filed under the 8th",
-        key("Rs.450.00 debited from A/c XX1234 on 08-07-26 00:30:15 to ZOMATO Ref 883120114455")
-            ?.endsWith("2026-07-08") == true)
+        legacyKey("Rs.450.00 debited from A/c XX1234 on 08-07-26 00:30:15 to ZOMATO Ref 883120114455")
+            .endsWith("2026-07-08"))
     val firstOfMonth = Tx("t1", 100.0, "expense", LocalDateTime.of(2026, 7, 1, 0, 10), "Zomato", "food")
     check("a spend at 00:10 on the 1st counts toward the new month",
         Budgets.monthCategorySpend(listOf(firstOfMonth), YearMonth.of(2026, 7),

@@ -270,6 +270,12 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
 
         val at = parsed.occurredAt ?: row.occurredAt?.let { localTime(it) }
             ?: localTime(row.createdAt)
+        // The identity the capture path would have built. The quarantine table
+        // keeps no receipt time, so the moment the message was first held
+        // stands in for it: the same moment for a live message, the scan's for
+        // one the inbox scan held — and a rescan of that one is answered by
+        // its body hash before it could be captured again.
+        val identity = Dedup.identity(parsed, row.body, row.sender, localTime(row.createdAt), at)
         val resolved = resolveMerchant(parsed.rawMerchant, amount, at)
         val tx = TransactionEntity(
             id = newId(),
@@ -283,11 +289,16 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
             source = "sms",
             confidence = resolved.confidence,
             status = "confirmed",
-            dedupKey = sha256(Pipeline.dedupKey(parsed, at)),
+            dedupKey = sha256(identity.key),
             smsSender = row.sender,
             createdAt = System.currentTimeMillis(),
         )
-        val banked = dao.bankHeldMessage(tx, id)
+        // Every key, not only identity.key, which is all the unique index
+        // refuses: the same payment can already be banked under an alias —
+        // the pre-K3 key, or the bucket beside this one. The DAO checks and
+        // inserts in one transaction, and marks the message approved either
+        // way: the purchase is in the ledger.
+        val banked = dao.bankHeldMessage(tx, id, keyHashes(identity))
         if (banked) raiseFraudAlerts(tx)
         // Senders.assess reads confirmedCount back as evidence, so vouching
         // for a message is what stops the next one from the same sender
@@ -346,10 +357,12 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
      *   anything a first pass already decided: without this the same held
      *   scam reports "Seen 6 times" after six launches, and every sender's
      *   message counts drift upward on their own.
-     * @param receivedAt when the message reached the phone. Used only where
-     *   the message itself carries no date — and there it is load-bearing,
-     *   because the dedup key falls back to it. Reading the clock instead
-     *   would give the same undated purchase a new key every day.
+     * @param receivedAt when the message reached the phone. Stands in for the
+     *   date where the message carries none, and identifies a message with no
+     *   reference (see [Dedup.identity]) — so it is load-bearing: the
+     *   receiver passes the moment onReceive ran, the inbox scan the
+     *   provider's own date for the same SMS. Reading the clock at scan time
+     *   would give the same purchase a new key on every launch.
      * @param pasted the user pasted this into "Paste a bank message". It has
      *   no sender, and the person pasting is the one saying a bank sent it —
      *   which is what decides whether an unreadable one is worth logging.
@@ -366,7 +379,7 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
             // for a full merchant resolution — which retrains the categoriser
             // over the whole ledger — once per already-captured message, on
             // every launch.
-            alreadyBanked(body, receivedAt)?.let { return@withContext Ingest.Duplicate(it) }
+            alreadyBanked(sender, body, receivedAt)?.let { return@withContext Ingest.Duplicate(it) }
             dao.quarantineByHash(sha256(body))?.let { seen ->
                 return@withContext Ingest.Held(
                     seen.reason ?: "Held for you to check.", seen.risk)
@@ -418,6 +431,10 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
             },
             autoAt = prefs.autoSaveThreshold,
             confirmAt = prefs.confirmThreshold,
+            // Explicit, though the default (`now`) is the same value here: it
+            // is what identifies a message with no reference, and must stay
+            // the receipt time if `now` ever stops being it.
+            receivedAt = receivedAt,
         )
 
         when (outcome) {
@@ -452,13 +469,19 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
                     source = "sms",
                     confidence = outcome.confidence,
                     status = outcome.status,
-                    dedupKey = sha256(outcome.dedupKey),
+                    dedupKey = sha256(outcome.identity.key),
                     smsSender = sender,
                     createdAt = System.currentTimeMillis(),
                 )
-                // insert returns -1 when the unique dedupKey already exists,
-                // which is what makes rescanning the inbox harmless.
-                if (dao.insert(tx) == -1L) Ingest.Duplicate(tx.dedupKey!!)
+                // Every key the message answers to, not only identity.key,
+                // which is all the unique index refuses: the same SMS can
+                // already be banked under an alias — the pre-K3 key, or the
+                // bucket beside this one when the live receiver and the inbox
+                // row read it seconds apart. Live receipt too: a network
+                // re-delivery lands inside the window. Checked and inserted in
+                // one transaction, so those two readings cannot both land.
+                if (!dao.insertUnlessBanked(tx, keyHashes(outcome.identity)))
+                    Ingest.Duplicate(tx.dedupKey!!)
                 else {
                     raiseFraudAlerts(tx)
                     Ingest.Captured(tx.id, outcome.needsCategory)
@@ -508,20 +531,42 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
         Tx(t.id, t.amount, t.type, localTime(t.occurredAt), t.merchantName, t.categoryId)
 
     /**
-     * The dedup key this message would be filed under, if the ledger already
+     * The stored key this message is already banked under, if the ledger
      * holds it.
      *
      * Derived exactly as the capture path derives it — the same parse, the
-     * same fallback to `now` for an undated message, the same hash — because
-     * a key computed even slightly differently would answer "no" to a message
-     * that is already there and hand back a duplicate.
+     * same sender and receipt time, the same fallback to receivedAt for an
+     * undated message, the same hash — because a key computed even slightly
+     * differently would answer "no" to a message that is already there and
+     * hand back a duplicate.
      */
-    private suspend fun alreadyBanked(body: String, receivedAt: LocalDateTime): String? {
+    private suspend fun alreadyBanked(sender: String?, body: String,
+                                      receivedAt: LocalDateTime): String? {
         val parsed = Parsing.parse(body)
         if (parsed.amount == null || !parsed.matched) return null
-        val key = sha256(Pipeline.dedupKey(parsed, parsed.occurredAt ?: receivedAt))
-        return if (dao.idByDedupKey(key) != null) key else null
+        return bankedKey(Dedup.identity(parsed, body, sender, receivedAt,
+                                        parsed.occurredAt ?: receivedAt))
     }
+
+    /**
+     * The first of [identity]'s keys the ledger already holds, hashed as a
+     * row stores it, or null.
+     *
+     * All of them, not only the one a new row would store: a row banked
+     * before K3 answers only to the legacy key, and a reading a few seconds
+     * across a bucket edge only to a neighbouring bucket. Missing either is
+     * the inbox scan filing a second copy of something already there.
+     */
+    private suspend fun bankedKey(identity: Dedup.Identity): String? {
+        for (hashed in keyHashes(identity)) {
+            if (dao.idByDedupKey(hashed) != null) return hashed
+        }
+        return null
+    }
+
+    /** Every key [identity] answers to, hashed as a row stores it — what the
+     *  DAO's insert-unless-banked writes check inside their transaction. */
+    private fun keyHashes(identity: Dedup.Identity): List<String> = identity.all.map { sha256(it) }
 
     /**
      * What saving a pasted message would store, with nothing stored.
@@ -589,12 +634,15 @@ class Repo(private val dao: SpendDao, private val misses: ParseMissDao) {
             // The card had a category picker on it, so the question
             // CategoryPrompt exists to raise has already been asked.
             categoryPrompted = true,
-            dedupKey = sha256(commit.dedupKey),
+            dedupKey = sha256(commit.identity.key),
             createdAt = System.currentTimeMillis(),
         )
-        // IGNORE on the unique key: the same message already captured by the
-        // receiver, or saved twice from two cards, lands once.
-        if (dao.insert(tx) == -1L) return@withContext Ingest.Duplicate(tx.dedupKey!!)
+        // Every key the message answers to, not only identity.key, which is
+        // all the unique index refuses: the same message can already be
+        // banked under its pre-K3 key. One transaction with the insert, so
+        // two cards saved at once land once.
+        if (!dao.insertUnlessBanked(tx, keyHashes(commit.identity)))
+            return@withContext Ingest.Duplicate(tx.dedupKey!!)
         raiseFraudAlerts(tx)
         commit.learn?.let { l ->
             recordConfirmation(

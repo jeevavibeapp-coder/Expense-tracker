@@ -142,20 +142,20 @@ fun main() {
     val a = run("AD-HDFCBK", GENUINE)
     val b = run("AD-HDFCBK", GENUINE)
     check("the same message twice yields the same key",
-        (a as Pipeline.Outcome.Capture).dedupKey == (b as Pipeline.Outcome.Capture).dedupKey)
+        (a as Pipeline.Outcome.Capture).identity.key == (b as Pipeline.Outcome.Capture).identity.key)
     // The same payment, worded differently by two rails.
     val viaUpi = run("AD-HDFCBK",
         "Rs.450.00 debited from a/c **1234 on 05-Jan-24 to ZOMATO Ref 883120114455 UPI")
     val viaSms = run("AD-HDFCBK",
         "Rs.450.00 debited to ZOMATO from a/c **1234 on 05-Jan-24. Ref 883120114455")
     check("two rails describing one payment share a key",
-        (viaUpi as Pipeline.Outcome.Capture).dedupKey ==
-        (viaSms as Pipeline.Outcome.Capture).dedupKey,
-        "upi=${viaUpi.dedupKey} sms=${viaSms.dedupKey}")
+        (viaUpi as Pipeline.Outcome.Capture).identity.key ==
+        (viaSms as Pipeline.Outcome.Capture).identity.key,
+        "upi=${viaUpi.identity.key} sms=${viaSms.identity.key}")
     val other = run("AD-HDFCBK",
         "Rs.450.00 debited from a/c **1234 on 05-Jan-24 to SWIGGY Ref 999999999999 UPI")
     check("a different purchase does not collide",
-        (other as Pipeline.Outcome.Capture).dedupKey != viaUpi.dedupKey)
+        (other as Pipeline.Outcome.Capture).identity.key != viaUpi.identity.key)
 
     println()
     println("=".repeat(60))

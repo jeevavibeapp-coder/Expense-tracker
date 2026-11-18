@@ -25,6 +25,12 @@ import java.time.LocalDateTime
 class SmsIntakeReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        // Read first, before goAsync hands the work to a pool that may be
+        // busy: for a message with no reference this moment is part of its
+        // identity, and the launch scan meets the same SMS under the
+        // provider's own timestamp. Dedup lets the two be a couple of minutes
+        // apart, and none of that should be spent waiting for a thread.
+        val receivedAt = LocalDateTime.now()
         if (intent.action != "android.provider.Telephony.SMS_RECEIVED") return
         val bundle = intent.extras ?: return
 
@@ -50,7 +56,7 @@ class SmsIntakeReceiver : BroadcastReceiver() {
         val app = context.applicationContext
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                AppGraph.repo(app).ingestSms(sender, body.toString())
+                AppGraph.repo(app).ingestSms(sender, body.toString(), receivedAt = receivedAt)
             } catch (t: Throwable) {
                 Log.e("SpendWiseSms", "ingest failed", t)
             } finally {
@@ -102,11 +108,12 @@ class InboxScanner(private val context: Context, private val repo: Repo) {
                     if (body.isNullOrEmpty()) continue
                     val addr = if (iAddr >= 0) cur.getString(iAddr) else null
                     // When the bank did not put a date in the message, the
-                    // time it was delivered is the transaction's time — and,
-                    // because the dedup key falls back to it, the only thing
-                    // that keeps that key the same on the next rescan.
-                    // Reading the clock instead would file the same purchase
-                    // again every day the app was opened.
+                    // time it was delivered is the transaction's time. And a
+                    // message with no reference is identified by it (see
+                    // Dedup.identity), so it is the only thing that keeps that
+                    // identity the same on the next rescan. Reading the clock
+                    // instead would file the same purchase again every time
+                    // the app was opened.
                     val at = if (iDate >= 0) cur.getLong(iDate) else 0L
                     val result = repo.ingestSms(
                         sender = addr,
