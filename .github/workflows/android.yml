@@ -22,8 +22,8 @@ jobs:
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Build React App
-        run: npm run build
+      # NOTE: no web build step. The APK bundles only webshell/ (a static
+      # loading screen); the real UI is served by the embedded Flask app.
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -41,6 +41,15 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default list starts with 'tools', the SDK Tools
+          # package Google retired. sdkmanager in current runner images no
+          # longer knows it, exits 1, and every step after this is skipped —
+          # so no APK at all was built while this went unnoticed.
+          packages: 'platform-tools'
+          # Logging accepted licences printed a thousand lines of legal text
+          # directly above that error, which is how it stayed hidden.
+          log-accepted-android-sdk-licenses: false
 
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
@@ -53,16 +62,118 @@ jobs:
           npx cap sync android
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug assembleRelease
+          # :app is the shipping Capacitor + Chaquopy build.
+          ./gradlew :app:assembleSmsRelease :app:assembleNosmsRelease :app:assembleSmsDebug
+        env:
+          # Empty unless configured as repository secrets; the build then
+          # produces an unsigned release rather than signing with a repo key.
+          SPENDWISE_KEYSTORE_FILE: ${{ secrets.SPENDWISE_KEYSTORE_FILE }}
+          SPENDWISE_KEYSTORE_PASSWORD: ${{ secrets.SPENDWISE_KEYSTORE_PASSWORD }}
+          SPENDWISE_KEY_ALIAS: ${{ secrets.SPENDWISE_KEY_ALIAS }}
+          SPENDWISE_KEY_PASSWORD: ${{ secrets.SPENDWISE_KEY_PASSWORD }}
 
-      - name: Upload Debug APK
+      # The Kotlin rewrite gets its own step so its result is visible on its
+      # own: this is the only place it is compiled against the REAL Compose,
+      # Room and KSP rather than the hand-written stubs in tools/. Non-blocking
+      # until proven green — an error here must cost a red step, never the
+      # only installable APK.
+      - name: Build native rewrite (preview)
+        id: native
+        continue-on-error: true
+        working-directory: android
+        # One variant per invocation. Each variant's Room processor writes the
+        # same exported schema file; built in one invocation they run at the
+        # same time, and one reads the other's half-written file and dies
+        # with "Empty schema file" before any Kotlin is compiled.
+        run: |
+          ./gradlew :nativeapp:assembleSmsRelease
+          ./gradlew :nativeapp:assembleNosmsRelease
+
+      # Also printed into the log, between markers: artifacts live in blob
+      # storage that not every environment working on this repo can reach,
+      # and the schema is small, plain metadata (table definitions, no data).
+      - name: Show exported Room schema
+        if: always()
+        run: |
+          for f in android/nativeapp/schemas/*/*.json; do
+            [ -f "$f" ] || continue
+            echo "SCHEMA-BEGIN ${f#android/nativeapp/}"
+            cat "$f"; echo
+            echo "SCHEMA-END"
+          done
+
+      # The schema Room exported, so it can be committed: migrations are then
+      # reviewable as a diff, and a build that finds an identical file just
+      # compares it instead of rewriting it.
+      - name: Upload native Room schema
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: nativeapp-room-schema
+          if-no-files-found: ignore
+          path: android/nativeapp/schemas/
 
-      - name: Upload Release APK
+      # Two APKs, because Play Protect blocks the sideload of any app that
+      # requests READ_SMS — in India/Singapore/Thailand/Brazil with no
+      # override. That block is about the permission being in the manifest,
+      # not about signing or the debuggable flag, so the only build that
+      # installs on those devices is one that never asks for it.
+      - name: Upload no-SMS APK (installs anywhere)
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: app-NOSMS-installs-anywhere
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/nosms/release/app-nosms-release.apk
+
+      - name: Upload full APK (needs Play Protect allowances)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-FULL-sms-autocapture
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/sms/release/app-sms-release.apk
+
+      # Debuggable. For `adb install` during development only — Play Protect
+      # blocks debuggable builds hardest of all.
+      - name: Upload debug APK (adb only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-for-adb-only
+          if-no-files-found: warn
+          path: android/app/build/outputs/apk/sms/debug/app-sms-debug.apk
+
+      - name: Upload native rewrite (preview)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nativeapp-PREVIEW-kotlin-rewrite
+          if-no-files-found: ignore
+          path: |
+            android/nativeapp/build/outputs/apk/nosms/release/nativeapp-nosms-release.apk
+            android/nativeapp/build/outputs/apk/sms/release/nativeapp-sms-release.apk
+
+      - name: Report what was built
+        if: always()
+        run: |
+          find android/app/build/outputs/apk -name '*.apk' -printf '%f  %s bytes\n' \
+            2>/dev/null | sort || true
+          echo "nativeapp build: ${{ steps.native.outcome }}"
+          # Which key signed each APK. It must be the same on every build, or
+          # an update cannot install over the previous one.
+          for apk in android/app/build/outputs/apk/*/release/*.apk \
+                     android/nativeapp/build/outputs/apk/*/release/*.apk; do
+            [ -f "$apk" ] || continue
+            echo "$(basename "$apk") signer: $("$ANDROID_HOME/build-tools/36.0.0/apksigner" \
+              verify --print-certs "$apk" 2>&1 | grep -m1 'SHA-256' || echo 'NOT VERIFIABLE')"
+          done
+          if [ "${{ steps.native.outcome }}" = "failure" ]; then
+            echo "::warning::nativeapp did not build; :app artifacts are unaffected"
+          fi
+          if ls android/app/build/outputs/apk/*/release/*unsigned*.apk >/dev/null 2>&1; then
+            echo "::error::An UNSIGNED release APK was produced. It cannot be"\
+                 "installed. build.gradle should fall back to the committed key."
+            exit 1
+          fi
+          echo "::notice::Play Protect blocks sideloaded apps that request"\
+               "READ_SMS. If 'app-FULL-sms-autocapture' is refused with"\
+               "INSTALL_FAILED_VERIFICATION_FAILURE, install"\
+               "'app-NOSMS-installs-anywhere' instead — same app, no automatic"\
+               "capture, paste bank messages into the Import screen."

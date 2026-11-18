@@ -1,38 +1,339 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}Dashboard · {{ app_name }}{% endblock %}
-{% block heading %}Dashboard{% endblock %}
+{% block title %}Home · {{ app_name }}{% endblock %}
+{% block heading %}Hi, {{ user['full_name'].split()[0] }}{% endblock %}
+{% block subhead %}<div class="sub">Here's your money today</div>{% endblock %}
 {% block content %}
-{% set cur = d.currency %}
-<div class="grid cards">
-  <div class="card stat"><span class="label">Balance</span><span class="value">{{ cur }} {{ m.money(d.balance) }}</span></div>
-  <div class="card stat"><span class="label">Income</span><span class="value income">{{ cur }} {{ m.money(d.total_income) }}</span></div>
-  <div class="card stat"><span class="label">Expense</span><span class="value expense">{{ cur }} {{ m.money(d.total_expense) }}</span></div>
-  <div class="card stat"><span class="label">This month</span><span class="value">{{ cur }} {{ m.money(d.monthly_spend) }}</span></div>
+{% set cur = d.currency|symbol %}
+<div class="screen stack">
+
+  {# Balance hero — premium card #}
+  <div class="hero reveal">
+    <div class="hero-top"><span class="label">Total balance</span><span class="card-chip"></span></div>
+    <div class="balance num"><span class="cur">{{ cur }}</span><span data-countup>{{ m.money(d.balance) }}</span></div>
+    <div class="hero-row">
+      <div class="hero-pill"><div class="k">↓ Income</div><div class="v num">{{ cur }}{{ m.money_k(d.total_income) }}</div></div>
+      <div class="hero-pill"><div class="k">↑ Spent</div><div class="v num">{{ cur }}{{ m.money_k(d.total_expense) }}</div></div>
+    </div>
+  </div>
+
+  {# First-run: compact setup checklist instead of empty widgets #}
+  {% if d.tx_count == 0 %}
+  <div class="card reveal stack" style="gap:12px">
+    <div style="font-weight:700; font-size: 0.875rem">Get set up</div>
+    <div style="display:flex; gap:10px; align-items:center">
+      <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex:0 0 34px;
+            background:{{ 'var(--expense-soft)' if sms_denied else 'rgba(54,211,154,.12)' }};
+            color:{{ 'var(--expense)' if sms_denied else 'var(--income)' }}">{{ m.icon('sms') }}</span>
+      <div style="flex:1; font-size: 0.8125rem">Auto-capture bank &amp; UPI SMS</div>
+      {% if sms_denied %}
+      <button class="btn btn-sm" type="button"
+              onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">Allow</button>
+      {% else %}<span class="pill pill-ok">On</span>{% endif %}
+    </div>
+    <a href="#add" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
+      <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('plus') }}</span>
+      <div style="flex:1; font-size: 0.8125rem">Add your first transaction</div>
+      <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
+    </a>
+    <a href="/categories" style="display:flex; gap:10px; align-items:center; text-decoration:none; color:inherit">
+      <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('grid') }}</span>
+      <div style="flex:1; font-size: 0.8125rem">Set a monthly budget</div>
+      <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
+    </a>
+  </div>
+  {% endif %}
+
+  {# Money health score #}
+  {% if d.total_income > 0 %}
+  {% set rate = ((d.total_income - d.total_expense) / d.total_income * 100) %}
+  {% set rate = [[rate, 0]|max, 100]|min %}
+  {% set arc = rate / 100 * 263.894 %}
+  {% set tag = ('Healthy','var(--income)') if rate >= 30 else (('On track','var(--warn)') if rate >= 10 else ('Watch spending','var(--expense)')) %}
+  <div class="card score-row reveal">
+    <svg class="ring" viewBox="0 0 120 120" width="90" height="90" style="flex:0 0 90px">
+      <defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#36d39a"/><stop offset="1" stop-color="#5b8cff"/></linearGradient></defs>
+      <circle class="track" cx="60" cy="60" r="42" fill="none" stroke-width="12"/>
+      <circle cx="60" cy="60" r="42" fill="none" stroke="url(#g2)" stroke-width="12" stroke-linecap="round"
+        transform="rotate(-90 60 60)" stroke-dasharray="{{ '%.2f'|format(arc) }} {{ '%.2f'|format(263.894 - arc) }}"/>
+      <text class="ring-center" x="60" y="58" text-anchor="middle">{{ rate|round|int }}%</text>
+      <text class="ring-sub" x="60" y="71" text-anchor="middle">SAVED</text>
+    </svg>
+    <div style="flex:1">
+      <div style="font-weight:700; font-size: 0.9375rem">Money health</div>
+      <span class="score-tag" style="background:{{ tag[1] }}22; color:{{ tag[1] }}; margin-top:6px">{{ tag[0] }}</span>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:8px">You keep {{ rate|round|int }}% of your income. Aim for 20%+.</div>
+    </div>
+  </div>
+  {% elif d.tx_count > 0 %}
+  <div class="card score-row reveal">
+    <span class="ai" style="width:48px;height:48px;border-radius:15px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 48px">{{ m.icon('sparkles') }}</span>
+    <div style="flex:1">
+      <div style="font-weight:700; font-size: 0.9375rem">Money health</div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:6px">Add an income transaction and SpendWise will start tracking how much of it you keep each month.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Period strip #}
+  <div class="card stat-strip reveal">
+    {% for k, v in [('Today', d.daily_spend), ('This week', d.weekly_spend), ('This month', d.monthly_spend)] %}
+    {# Symbol included: this strip was the only money on the dashboard rendered
+       bare, so an empty state read "0  0  0" while every other figure read
+       "₹0" — the same quantity presented two ways on one screen. #}
+    <div class="stat"><div class="k">{{ k }}</div><div class="v num">{{ cur }}{{ m.money_k(v) }}</div></div>
+    {% endfor %}
+  </div>
+
+  {# Transfers / refunds excluded from real spending — otherwise the headline
+     numbers are simply wrong (a self-transfer counts as both spend and income). #}
+  {% if d.flow and (d.flow.transfer_total > 0 or d.flow.refund_total > 0) %}
+  <div class="card reveal" style="display:flex; gap:10px; align-items:flex-start">
+    <span class="ai" style="width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--surface-3);color:var(--primary-2);flex:0 0 34px">{{ m.icon('repeat') }}</span>
+    <div style="flex:1">
+      <div style="font-weight:700; font-size: 0.8438rem">Not counted as spending</div>
+      <div class="mut" style="font-size: 0.7812rem; margin-top:4px">
+        {% if d.flow.transfer_total > 0 %}{{ cur }}{{ m.money_k(d.flow.transfer_total) }} moved between your own accounts{% endif %}
+        {%- if d.flow.transfer_total > 0 and d.flow.refund_total > 0 %} · {% endif %}
+        {%- if d.flow.refund_total > 0 %}{{ cur }}{{ m.money_k(d.flow.refund_total) }} refunded{% endif %}.
+        Real spending: <b class="num">{{ cur }}{{ m.money_k(d.flow.expense_net) }}</b>.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Streak + monthly report tiles #}
+  {% if d.tx_count > 0 %}
+  <div class="tile-row reveal">
+    <div class="tile">
+      <span class="ti" style="background:rgba(251,191,36,.15); color:var(--warn)">{{ m.icon('flame') }}</span>
+      <div style="min-width:0">
+        <div class="tt num">{{ d.streak.streak }}-day</div>
+        <div class="td">no-spend streak · {{ d.streak.month_free }} free day{{ '' if d.streak.month_free == 1 else 's' }} this month</div>
+      </div>
+    </div>
+    <a class="tile" href="/report">
+      <span class="ti" style="background:var(--grad); color:#fff">{{ m.icon('calendar') }}</span>
+      <div style="min-width:0; flex:1">
+        <div class="tt">Monthly report</div>
+        <div class="td">Full breakdown & trends</div>
+      </div>
+      <span class="faint" style="display:flex">{{ m.icon('chevron') }}</span>
+    </a>
+  </div>
+  {% endif %}
+
+  {# Last 14 days sparkline #}
+  {% if d.daily_series and d.total_expense > 0 %}
+  {% set smax = d.daily_series | map(attribute='v') | max %}
+  <div class="card reveal">
+    <div style="display:flex; align-items:baseline; margin-bottom:10px">
+      <div style="flex:1; font-weight:700; font-size: 0.875rem">Last 14 days</div>
+      <div class="mut num" style="font-size: 0.75rem">{{ cur }}{{ m.money_k(d.daily_series | sum(attribute='v')) }} total</div>
+    </div>
+    <div class="spark">
+      {% for p in d.daily_series %}
+      <i class="{{ 'zero' if p.v == 0 }}" style="height:{{ [(p.v / smax * 100)|round|int, 5]|max if smax else 5 }}%"
+         title="{{ p.d }} · {{ m.money(p.v) }}"></i>
+      {% endfor %}
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px" class="faint">
+      <span style="font-size: 0.6562rem">{{ d.daily_series[0].d[8:] }}/{{ d.daily_series[0].d[5:7] }}</span>
+      <span style="font-size: 0.6562rem">Today</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Upcoming bills / subscriptions #}
+  {% if d.recurring %}
+  <div class="section-h"><h2>Upcoming bills</h2></div>
+  <div class="tx-list reveal">
+    {% for r in d.recurring[:4] %}
+    <div class="tx">
+      <span class="tx-ava" style="background:var(--surface-3); color:var(--primary-2)">{{ m.icon('repeat') }}</span>
+      <div class="tx-main">
+        <div class="tx-name">{{ r.name }}</div>
+        <div class="tx-meta"><span style="text-transform:capitalize">{{ r.cadence }}</span></div>
+      </div>
+      <div style="text-align:right">
+        <div class="tx-amt num">{{ cur }}{{ m.money_k(r.amount) }}</div>
+        {% if r.days_left < 0 %}
+        <span class="due-pill" style="background:var(--expense-soft); color:var(--expense)">overdue</span>
+        {% elif r.days_left == 0 %}
+        <span class="due-pill" style="background:var(--expense-soft); color:var(--expense)">due today</span>
+        {% elif r.days_left <= 5 %}
+        <span class="due-pill" style="background:rgba(251,191,36,.15); color:var(--warn)">in {{ r.days_left }}d</span>
+        {% else %}
+        <span class="due-pill" style="background:var(--surface-3); color:var(--text-2)">in {{ r.days_left }}d</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Review queue teaser #}
+  {% if d.pending_confirmations %}
+  <a href="/transactions" class="queue" style="display:block">
+    <div style="display:flex; align-items:center; gap:12px">
+      <span class="ai" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 42px">{{ m.icon('sparkles') }}</span>
+      <div style="flex:1">
+        <h3>{{ d.pending_confirmations }} to review</h3>
+        <div class="mut" style="font-size: 0.8125rem">Confirm merchants so the engine learns them</div>
+      </div>
+      <span class="faint">{{ m.icon('chevron') }}</span>
+    </div>
+  </a>
+  {% endif %}
+
+  {# Fraud teaser #}
+  {% if d.open_fraud_alerts %}
+  <a href="/fraud" class="alert high" style="text-decoration:none">
+    <span class="ai" style="background:var(--expense-soft); color:var(--expense)">{{ m.icon('shield') }}</span>
+    <div class="am"><div class="at">{{ d.open_fraud_alerts }} security alert{{ '' if d.open_fraud_alerts == 1 else 's' }}</div>
+      <div class="ad">Unusual activity needs your attention</div></div>
+    <span class="faint">{{ m.icon('chevron') }}</span>
+  </a>
+  {% endif %}
+
+  {# Insights #}
+  {% if d.insights %}
+  <div class="section-h"><h2>Insights</h2></div>
+  <div class="card reveal stack" style="gap:0">
+    {% for line in d.insights[:4] %}
+    <div class="insight-row"><span class="dot" aria-hidden="true"></span><p>{{ line }}</p></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Monthly budgets #}
+  {% if d.budgets %}
+  <div class="section-h"><h2>Budgets</h2><a href="/categories">Manage</a></div>
+  <div class="card reveal stack" style="gap:12px">
+    {% for b in d.budgets[:4] %}
+    <div>
+      <div style="display:flex; align-items:baseline; gap:8px">
+        <span style="width:9px;height:9px;border-radius:50%;background:{{ b.color }};flex:0 0 9px;align-self:center"></span>
+        <span style="flex:1; font-size: 0.8438rem; font-weight:600">{{ b.name }}</span>
+        <span class="num" style="font-size: 0.7812rem; font-weight:700; color:{{ 'var(--expense)' if b.pct > 100 else 'var(--text-2)' }}">
+          {{ m.money_k(b.spent) }} / {{ m.money_k(b.budget) }}</span>
+      </div>
+      <div class="cat-bar" style="margin-top:6px">
+        <i style="width:{{ [b.pct, 100]|min }}%; background:{{ 'var(--expense)' if b.pct > 100 else b.color }}"></i>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Spending by category — donut (hidden until there's anything to show) #}
+  {% if d.tx_count > 0 %}
+  <div class="section-h"><h2>Where your money goes</h2></div>
+  <div class="card reveal">
+    {% if d.category_breakdown %}
+    {% set total = d.category_breakdown | sum(attribute='value') %}
+    {% set circ = 263.894 %}
+    {% set ns = namespace(off=0) %}
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 120 120" width="112" height="112">
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#8b5cff"/><stop offset="1" stop-color="#5b8cff"/></linearGradient></defs>
+        <circle class="track" cx="60" cy="60" r="42" fill="none" stroke-width="15"/>
+        <g transform="rotate(-90 60 60)">
+        {% for c in d.category_breakdown[:6] %}
+          {% set seg = (c.value / total * circ) if total else 0 %}
+          <circle cx="60" cy="60" r="42" fill="none" stroke-width="15" stroke-linecap="round"
+            stroke="{{ c.name|avatar_color }}"
+            stroke-dasharray="{{ '%.2f'|format([seg-2,0.1]|max) }} {{ '%.2f'|format(circ-[seg-2,0.1]|max) }}"
+            stroke-dashoffset="{{ '%.2f'|format(-ns.off) }}"/>
+          {% set ns.off = ns.off + seg %}
+        {% endfor %}
+        </g>
+        <text class="ring-center" x="60" y="57" text-anchor="middle">{{ m.money_k(total) }}</text>
+        <text class="ring-sub" x="60" y="71" text-anchor="middle">spent</text>
+      </svg>
+      <div style="flex:1">
+        {% for c in d.category_breakdown[:6] %}
+        <div style="display:flex; align-items:center; gap:8px; padding:5px 0">
+          <span style="width:9px;height:9px;border-radius:50%;background:{{ c.name|avatar_color }};flex:0 0 9px"></span>
+          <span style="flex:1; font-size: 0.8125rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.name }}</span>
+          <span class="num mut" style="font-size: 0.7812rem; font-weight:700">{{ (c.value/total*100)|round|int if total else 0 }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-inline">
+      <p>Nothing categorised yet.</p>
+      <a class="btn-soft btn-sm" href="/categories">Set up categories</a></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# Top merchants #}
+  {% if d.top_merchants %}
+  <div class="section-h"><h2>Top merchants</h2><a href="/transactions">See all</a></div>
+  {% set mmax = d.top_merchants[0].value %}
+  <div class="tx-list reveal">
+    {% for mch in d.top_merchants[:5] %}
+    <a class="tx" href="/merchant?n={{ mch.name|urlencode }}" style="text-decoration:none; color:inherit">
+      {{ m.avatar(mch.name) }}
+      {# The share used to be a bar sitting directly under the name, where it
+         read as an underline rather than as a proportion — and it made this
+         the only row in the app shaped differently from every other one.
+         The same number as text, in the standard meta line. #}
+      <div class="tx-main">
+        <div class="tx-name">{{ mch.name|merchant }}</div>
+        {# Share of ALL spending, not of the biggest merchant: measured against
+           the biggest merchant the top row always reads "100%", which is a
+           tautology dressed up as an insight. #}
+        <div class="tx-meta">{{ (mch.value / d.total_expense * 100)|round|int
+                                if d.total_expense else 0 }}% of all spending</div>
+      </div>
+      <div class="tx-amt num">{{ cur }}{{ m.money_k(mch.value) }}</div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Trend bars #}
+  {% if d.trend and d.trend|length > 1 %}
+  <div class="section-h"><h2>Income vs spending</h2></div>
+  <div class="card reveal">
+    {% set tmax = (d.trend | map(attribute='income') | max, d.trend | map(attribute='expense') | max) | max %}
+    <div class="bars">
+      {% for t in d.trend %}
+      <div class="bar-col">
+        <div style="display:flex; gap:3px; align-items:flex-end; width:100%; height:100%; justify-content:center">
+          <span class="bar" style="height:{{ (t.income/tmax*100)|round|int if tmax else 0 }}%; max-width:11px"></span>
+          <span class="bar exp" style="height:{{ (t.expense/tmax*100)|round|int if tmax else 0 }}%; max-width:11px"></span>
+        </div>
+        <span class="bar-lbl">{{ t.period[5:] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:16px; justify-content:center; margin-top:10px; font-size: 0.75rem" class="mut">
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--income);vertical-align:middle"></span> Income</span>
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--expense);vertical-align:middle"></span> Spending</span>
+    </div>
+  </div>
+  {% endif %}
+
 </div>
-<div class="grid cards" style="margin-top:16px">
-  <div class="card stat"><span class="label">Today</span><span class="value">{{ cur }} {{ m.money(d.daily_spend) }}</span></div>
-  <div class="card stat"><span class="label">This week</span><span class="value">{{ cur }} {{ m.money(d.weekly_spend) }}</span></div>
-  <div class="card stat"><span class="label">Pending confirmations</span><span class="value">{{ d.pending_confirmations }}</span></div>
-  <div class="card stat"><span class="label">Open fraud alerts</span><span class="value {{ 'expense' if d.open_fraud_alerts else '' }}">{{ d.open_fraud_alerts }}</span></div>
-</div>
-<div class="grid cols-2" style="margin-top:16px">
-  <div class="card"><h3>Insights</h3>
-    <ul class="insights">{% for line in d.insights %}<li>{{ line }}</li>{% endfor %}</ul></div>
-  <div class="card"><h3>Top merchants</h3>
-    {% if d.top_merchants %}<table>
-      {% for mch in d.top_merchants %}<tr><td>{{ mch.name }}</td><td class="amt">{{ cur }} {{ m.money(mch.value) }}</td></tr>{% endfor %}
-    </table>{% else %}<p class="muted">No spending yet.</p>{% endif %}</div>
-</div>
-<div class="grid cols-2" style="margin-top:16px">
-  <div class="card"><h3>By category</h3>
-    {% if d.category_breakdown %}<table>
-      {% for c in d.category_breakdown %}<tr><td>{{ c.name }}</td><td class="amt">{{ cur }} {{ m.money(c.value) }}</td></tr>{% endfor %}
-    </table>{% else %}<p class="muted">No categorised spending yet.</p>{% endif %}</div>
-  <div class="card"><h3>Monthly trend</h3>
-    {% if d.trend %}<table>
-      <tr><th>Month</th><th class="amt">Income</th><th class="amt">Expense</th></tr>
-      {% for t in d.trend %}<tr><td>{{ t.period }}</td><td class="amt income">{{ m.money(t.income) }}</td><td class="amt expense">{{ m.money(t.expense) }}</td></tr>{% endfor %}
-    </table>{% else %}<p class="muted">Not enough history yet.</p>{% endif %}</div>
-</div>
+
+  {# Optional personalisation. Deliberately LAST: it used to sit between
+     the balance and Money health, interrupting the one screen people open
+     to check a number. Nothing depends on it. #}
+  {% if single_user and user['full_name'] == 'You' %}
+  <div class="card reveal" style="display:flex; gap:12px; align-items:center">
+    <span class="ai" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--grad);color:#fff;flex:0 0 42px">{{ m.icon('user') }}</span>
+    <form method="post" action="/profile" style="flex:1; display:flex; gap:8px; align-items:center">
+      <input name="full_name" placeholder="What should we call you?" maxlength="40" required
+             style="flex:1; padding:10px 12px; font-size: 0.8438rem" aria-label="Your name">
+      <button class="btn btn-sm" type="submit">Save</button>
+    </form>
+  </div>
+  {% endif %}
+
+
 {% endblock %}

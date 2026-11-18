@@ -1,91 +1,177 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block title %}Transactions · {{ app_name }}{% endblock %}
-{% block heading %}Transactions{% endblock %}
+{% block title %}Activity · {{ app_name }}{% endblock %}
+{% block heading %}Activity{% endblock %}
 {% block content %}
-<div class="grid cols-2">
-  <div class="card">
-    <h3>Add transaction</h3>
-    <form method="post" action="/transactions">
-      <div class="row">
-        <div class="field"><label>Amount</label><input id="amt" name="amount" type="number" step="0.01" min="0" required></div>
-        <div class="field"><label>Type</label>
-          <select name="type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
-      </div>
-      <div class="field"><label>Merchant / payee</label>
-        <input id="merchant" name="merchant" autocomplete="off">
-        <div id="resolve-preview"></div></div>
-      <div class="row">
-        <div class="field"><label>Category</label>
-          <select name="category_id"><option value="">— none —</option>
-            {% for c in categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}</select></div>
-        <div class="field"><label>Date</label><input name="occurred_at" type="date"></div>
-      </div>
-      <div class="field"><label>Notes</label><input name="notes"></div>
-      <button class="btn" type="submit">Add</button>
-    </form>
-  </div>
-  <div class="card">
-    <h3>Search</h3>
-    <form method="get" action="/transactions">
-      <div class="field"><input name="q" value="{{ q }}" placeholder="Search merchant, notes, reference…"></div>
-      <button class="btn-ghost" type="submit">Search</button>
-      {% if q %}<a class="btn-ghost" href="/transactions">Clear</a>{% endif %}
-    </form>
-    <p class="muted" style="margin-top:14px">Pending and review items show a confirm box — confirming teaches the engine so it resolves that merchant automatically next time.</p>
-  </div>
-</div>
+{% set today = now().strftime('%Y-%m-%d') %}
+{% set months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+{% set pending = transactions | selectattr('status', 'in', ['pending_confirmation','needs_review']) | list %}
+<div class="screen stack">
 
-<h2 class="section-title">{{ total }} transaction{{ '' if total == 1 else 's' }}</h2>
-<div class="card">
+  {% if request.args.get('error') == 'amount' %}
+  <div class="card" style="display:flex;gap:10px;align-items:center;background:var(--expense-soft);border-color:var(--expense)">
+    <span style="color:var(--expense);display:flex">{{ m.icon('x') }}</span>
+    <span style="font-size: 0.8125rem">Enter a valid amount to add a transaction.</span>
+  </div>
+  {% endif %}
+
+  {# Undo-delete bar #}
+  {% if undo_tx %}
+  <div class="card" style="display:flex; gap:10px; align-items:center; padding:12px 14px">
+    <span class="faint" style="display:flex">{{ m.icon('trash') }}</span>
+    <span style="flex:1; font-size: 0.8125rem">Deleted “{{ (undo_tx['merchant_name'] or undo_tx['raw_merchant'])|merchant or 'transaction' }}”.</span>
+    <form method="post" action="/transactions/{{ undo_tx['id'] }}/restore">
+      <button class="btn btn-sm" type="submit">Undo</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if request.args.get('restored') %}
+  <div class="flash">Transaction restored.</div>
+  {% endif %}
+  {% if request.args.get('edited') %}
+  <div class="flash">Transaction updated.</div>
+  {% endif %}
+
+  {# Search #}
+  <form method="get" action="/transactions" class="card" style="display:flex; gap:10px; align-items:center; padding:10px 12px">
+    <span class="faint" style="display:flex">{{ m.icon('search') }}</span>
+    <input name="q" value="{{ q }}" placeholder="Search merchant, notes, reference"
+           style="border:none; background:transparent; padding:6px 0; box-shadow:none">
+    {% if f %}<input type="hidden" name="f" value="{{ f }}">{% endif %}
+    {% if q %}<a class="btn-ghost btn-sm" href="/transactions{{ '?f=' ~ f if f }}">Clear</a>{% endif %}
+  </form>
+
+  {# Filter chips #}
+  {% set qs = ('&q=' ~ (q|urlencode)) if q else '' %}
+  <div class="chips">
+    <a class="chip {{ 'active' if not f }}" href="/transactions?{{ qs[1:] }}">All</a>
+    <a class="chip {{ 'active' if f == 'expense' }}" href="/transactions?f=expense{{ qs }}">Spent</a>
+    <a class="chip {{ 'active' if f == 'income' }}" href="/transactions?f=income{{ qs }}">Received</a>
+    <a class="chip {{ 'active' if f == 'sms' }}" href="/transactions?f=sms{{ qs }}">From SMS</a>
+    <a class="chip {{ 'active' if f == 'review' }}" href="/transactions?f=review{{ qs }}">Needs review</a>
+  </div>
+
+  {# Merchant confirmation queue — the signature workflow #}
+  {% if pending %}
+  {# Was: one expanded confirmation FORM per pending transaction, stacked above
+     the ledger. With a normal SMS week that is seven text inputs and seven
+     buttons between the user and their own transaction list — the list stopped
+     being a list. The work itself is unchanged and lives on /review, which
+     groups by merchant so one decision clears many rows. #}
+  <a class="queue-lite" href="/review"
+     aria-label="{{ nav_review or pending|length }} transactions to review. Open the review queue.">
+    <span class="ql-ic">{{ m.icon('sparkles') }}</span>
+    <span class="ql-txt">
+      <b>{{ nav_review or pending|length }} to review</b>
+      <span>{{ (pending|map(attribute='raw_merchant')|select|list|unique|list|length) or 1 }}
+        merchant{{ '' if (pending|map(attribute='raw_merchant')|select|list|unique|list|length) == 1 else 's' }}
+        · one tap each</span>
+    </span>
+    <span class="ql-go">Review</span>
+  </a>
+  {% endif %}
+
+  {# Timeline #}
   {% if transactions %}
-  <table>
-    <tr><th>Date</th><th>Merchant</th><th>Notes</th><th>Status</th><th>Conf.</th><th class="amt">Amount</th><th></th></tr>
-    {% for t in transactions %}
-    <tr>
-      <td>{{ t['occurred_at'][:10] }}</td>
-      <td><strong>{{ t['merchant_name'] or t['raw_merchant'] or '—' }}</strong>
-        {% if t['raw_merchant'] and t['merchant_name'] and t['raw_merchant'] != t['merchant_name'] %}<br><small>from “{{ t['raw_merchant'] }}”</small>{% endif %}
-        {% if t['status'] in ('pending_confirmation', 'needs_review') %}
-        <form method="post" action="/transactions/{{ t['id'] }}/confirm" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-          <input name="merchant" placeholder="Real merchant" value="{{ t['merchant_name'] or '' }}" style="max-width:160px" required>
-          <button class="btn-ghost btn-sm" type="submit">Confirm</button>
-        </form>{% endif %}
-      </td>
-      <td class="muted">{{ t['notes'] or '' }}</td>
-      <td>{{ m.status_pill(t['status']) }}</td>
-      <td>{{ m.confidence_badge(t['confidence']) }}</td>
-      <td class="amt {{ t['type'] }}">{{ '+' if t['type'] == 'income' else '-' }}{{ m.money(t['amount']) }}</td>
-      <td><form class="inline-form" method="post" action="/transactions/{{ t['id'] }}/delete"
-              onsubmit="return confirm('Delete this transaction?')">
-          <button class="btn-ghost btn-sm btn-danger" type="submit">✕</button></form></td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}<div class="empty">No transactions yet. Add one above, or import an SMS.</div>{% endif %}
+  {% set ns = namespace(day=None) %}
+  {% for t in transactions %}
+    {% set day = t['occurred_at'][:10] %}
+    {% if day != ns.day %}
+      {% if ns.day is not none %}</div>{% endif %}
+      <div class="tx-group-h"><span class="d">{{ 'Today' if day == today else (day[8:10] ~ ' ' ~ months[day[5:7]|int] ~ ' ' ~ day[:4]) }}</span>
+        {% if day_totals.get(day) %}<span class="t num">{{ currency|symbol }}{{ m.money_k(day_totals[day]) }} spent</span>{% endif %}</div>
+      <div class="tx-list">
+      {% set ns.day = day %}
+    {% endif %}
+    {# data-tx-id lets the swipe handler in app.js find the matching delete
+       form without duplicating the endpoint in JS. #}
+    <details class="tx-item {{ 'tx-focus' if focus_tx == t['id'] }}" {{ 'open' if focus_tx == t['id'] }}
+             data-tx-id="{{ t['id'] }}"
+             data-tx-name="{{ (t['merchant_name'] or t['raw_merchant'])|merchant or 'this transaction' }}">
+      <span class="tx-swipe-bg" aria-hidden="true">{{ m.icon('trash') }} Delete</span>
+      <summary class="tx">
+        {{ m.avatar((t['merchant_name'] or t['raw_merchant'])|merchant or '?') }}
+        <div class="tx-main">
+          <div class="tx-name">{{ (t['merchant_name'] or t['raw_merchant'])|merchant or 'Unknown' }}</div>
+          {# Only ONE badge, and only when it is actionable.
+             Before, nearly every row carried something: "Review", "Confirm?"
+             or a "90%" confidence score. When almost everything is flagged,
+             the flag stops meaning anything — and a model-confidence
+             percentage is engine internals, not information a person can act
+             on. The category is what actually helps someone scan a ledger. #}
+          <div class="tx-meta">
+            {% if t['status'] in ('pending_confirmation', 'needs_review') %}
+              <span class="pill pill-review">Needs a name</span>
+            {% elif t['category_name'] %}<span>{{ t['category_name'] }}</span>
+            {% endif %}
+            {% if t['notes'] %}<span>{{ t['notes'] }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="tx-amt num {{ t['type'] }}">{{ '+' if t['type']=='income' else '–' }}{{ currency|symbol }}{{ m.money(t['amount']) }}</div>
+        <span class="tx-chev">{{ m.icon('chevron') }}</span>
+      </summary>
+      <div style="padding:12px 16px 14px; background:var(--surface-2)">
+        {# Inline edit — every field of the transaction #}
+        <form method="post" action="/transactions/{{ t['id'] }}/edit" class="stack" style="gap:10px">
+          <div class="row">
+            <div class="field" style="margin:0"><label class="lbl">Amount</label>
+              <input name="amount" type="number" step="0.01" min="0.01" inputmode="decimal"
+                     value="{{ '%.2f'|format(t['amount']) }}" required
+                     aria-label="Amount"></div>
+            <div class="field" style="margin:0"><label class="lbl">Date</label>
+              <input name="occurred_at" type="date" value="{{ t['occurred_at'][:10] }}" aria-label="Date"></div>
+          </div>
+          <div class="row">
+            <div class="field" style="margin:0"><label class="lbl">Merchant</label>
+              <input name="merchant" value="{{ t['merchant_name'] or t['raw_merchant'] or '' }}"
+                     aria-label="Merchant"></div>
+            <div class="field" style="margin:0"><label class="lbl">Category</label>
+              <select name="category_id" aria-label="Category"><option value="">None</option>
+                {% for c in categories %}
+                <option value="{{ c['id'] }}" {{ 'selected' if c['id'] == t['category_id'] }}>{{ c['name'] }}</option>
+                {% endfor %}</select></div>
+          </div>
+          <div class="field" style="margin:0"><label class="lbl">Notes</label>
+            <input name="notes" value="{{ t['notes'] or '' }}" placeholder="Optional"></div>
+          <input type="hidden" name="type" value="{{ t['type'] }}">
+          <div style="display:flex; gap:8px; align-items:center">
+            {% if t['merchant_name'] %}
+            <a class="btn-ghost btn-sm" href="/merchant?n={{ t['merchant_name']|urlencode }}">{{ m.icon('search') }} Merchant</a>
+            {% endif %}
+            <span style="flex:1"></span>
+            <button class="btn btn-sm" type="submit">Save</button>
+          </div>
+        </form>
+        <form method="post" action="/transactions/{{ t['id'] }}/delete" style="margin-top:8px; text-align:right">
+          <button class="btn-ghost btn-sm" type="submit" aria-label="Delete transaction" style="color:var(--expense)">{{ m.icon('trash') }} Delete</button>
+        </form>
+      </div>
+    </details>
+  {% endfor %}
+  </div>
+  {% else %}
+  {# Two different situations were sharing one message. Searching for
+     something with no matches printed "No transactions yet — your bank SMS
+     are captured automatically" to someone with a full ledger: it claims
+     their data is gone, hides the fact that a filter is applied, and offers
+     to add a transaction when what they want is to clear the search. #}
+  {% if q or f %}
+  <div class="empty"><div class="ei">{{ m.icon('search') }}</div>
+    <h2 class="empty-h">No matches</h2>
+    <p>Nothing here matches
+      {%- if q %} “{{ q }}”{% endif %}
+      {%- if q and f %} in{% endif %}
+      {%- if f %} {{ f|replace('_', ' ') }}{% endif %}. Your other
+      transactions are still there.</p>
+    <a class="btn btn-sm" href="/transactions" style="margin-top:14px">Clear search</a></div>
+  {% else %}
+  <div class="empty"><div class="ei">{{ m.icon('activity') }}</div><h2 class="empty-h">No transactions yet</h2>
+    <p>Your bank SMS are captured automatically — or add one yourself.</p>
+    <a class="btn btn-sm" href="#add" style="margin-top:14px">Add a transaction</a>
+    <a class="btn-ghost btn-sm" href="/import" style="margin-top:8px">Import from SMS</a></div>
+  {% endif %}
+  {% endif %}
 </div>
 
-<script>
-// Live confidence preview (same-origin; works offline inside the app).
-(function () {
-  var merchant = document.getElementById('merchant');
-  var amt = document.getElementById('amt');
-  var out = document.getElementById('resolve-preview');
-  if (!merchant) return;
-  var timer = null;
-  function preview() {
-    var name = merchant.value.trim();
-    if (!name) { out.innerHTML = ''; return; }
-    var body = new URLSearchParams({ merchant: name, amount: (amt.value || '') });
-    fetch('/transactions/resolve', { method: 'POST', body: body,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
-      .then(function (r) { return r.text(); })
-      .then(function (html) { out.innerHTML = html; })
-      .catch(function () {});
-  }
-  merchant.addEventListener('input', function () {
-    clearTimeout(timer); timer = setTimeout(preview, 400);
-  });
-})();
-</script>
+{# The add-transaction sheet is app-wide in base.html (FAB → #add). #}
 {% endblock %}

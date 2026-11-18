@@ -1,13 +1,20 @@
 {% import "_macros.html" as m %}
 {% if best %}
-<div class="card" style="margin-top:10px; padding:12px; background:var(--surface-2)">
+<div style="margin-top:10px; padding:12px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:var(--r-sm)">
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
-    <span class="muted">Engine suggests</span><strong>{{ best.merchant_name }}</strong>
+    <span class="faint" style="font-size: 0.75rem">Engine suggests</span>
+    <strong style="font-size: 0.875rem">{{ best.merchant_name }}</strong>
     {{ m.confidence_badge(best.confidence) }}{{ m.decision_label(decision) }}
   </div>
+  {% if best.reasons %}
+  <ul style="margin:8px 0 0; padding:0 0 0 4px; list-style:none">
+    {% for r in best.reasons %}
+    <li style="font-size: 0.75rem; color:var(--text-2); padding:2px 0">• {{ r }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   {{ m.breakdown_bars(breakdown) }}
-  <small class="muted">The engine learns from every confirmation.</small>
 </div>
 {% else %}
-<div class="muted" style="margin-top:8px"><small>New payee — no prior data yet. It’ll be learned once you save it.</small></div>
+<div class="faint" style="margin-top:8px; font-size: 0.75rem">✨ New payee — it'll be learned once you save it.</div>
 {% endif %}

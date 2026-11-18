@@ -1,1 +1,6 @@
+# Runtime dependencies. Both are pure Python (py3-none-any) so they install
+# under Chaquopy for on-device use — no compiled extensions, no NDK build.
 Flask==3.1.0
+# Production WSGI server. Werkzeug's dev server has no connection limit or
+# timeouts, which is a DoS/resource-exhaustion risk even on loopback.
+waitress==3.0.2

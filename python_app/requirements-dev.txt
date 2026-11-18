@@ -1,0 +1,7 @@
+# Test-only dependencies. Never installed on-device — Chaquopy pulls from
+# requirements.txt alone, so nothing here affects APK size or runtime.
+-r requirements.txt
+pytest==9.1.1
+# Property-based testing for the SMS parser: generates adversarial inputs
+# (Unicode digits, invisible chars, huge amounts) that hand-written cases miss.
+hypothesis==6.161.6

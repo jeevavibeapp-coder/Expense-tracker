@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Help · {{ app_name }}{% endblock %}
+{% block heading %}Help{% endblock %}
+{% block subhead %}<div class="sub">Answers to what actually goes wrong</div>{% endblock %}
+{% block content %}
+{# Ordered by how often each problem happens, not by topic. The first item is
+   the one that brings people here. Native <details> so a screen reader gets
+   real expand/collapse semantics with no JavaScript. #}
+<div class="screen stack">
+
+  {% if sms.permission == 'unavailable' %}
+  <div class="card stack" style="gap:8px">
+    <div style="font-weight:700; font-size: var(--t-sm)">This build has no SMS access</div>
+    <div class="mut" style="font-size: var(--t-xs)">
+      Nothing is read from your messages. Use <a href="/import">Import</a> to
+      paste a bank message, or add transactions by hand. If you want automatic
+      capture, install the full build — see the install question below.
+    </div>
+  </div>
+  {% elif sms.permission == 'denied' %}
+  <div class="alert high">
+    <span class="ai" style="background:var(--expense)22; color:var(--expense)">{{ m.icon('shield') }}</span>
+    <div class="am">
+      <div class="at">SMS access is off</div>
+      <div class="ad">Nothing can be captured automatically until it is on.</div>
+      <button class="btn btn-sm" type="button" style="margin-top:8px"
+              onclick="if(window.AndroidSms&amp;&amp;AndroidSms.requestPermission){AndroidSms.requestPermission();}">
+        Allow SMS access</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card stack" style="gap:0">
+    <details class="faq">
+      <summary>“Couldn't start SpendWise”</summary>
+      <div class="faq-b">
+        <p>The app runs a small Python engine on the phone and waits for it to
+          answer before showing anything. This screen means it did not answer
+          in time.</p>
+        <p>On the <b>first</b> launch that engine has a lot to do: unpack
+          Python, load the app, and build the database. On a slower phone that
+          can take a while, so tapping <b>Retry</b> once is worth doing before
+          anything else — the second launch is much faster because the work is
+          already done.</p>
+        <p>If it keeps failing, the grey box on that screen carries the actual
+          error. That line is what identifies the problem; a screenshot of it
+          is more useful than any description.</p>
+        <p>One of those lines used to be <b>“Address already in use”</b>. That
+          meant the previous copy of the engine had not let go of its port
+          yet — the app was fine and simply refused to notice. It now checks
+          whether the engine is already running before trying to start a
+          second one. If you see that message on a current build, something
+          other than SpendWise is using the port, and restarting the phone
+          clears it.</p>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>Android refused to install the app</summary>
+      <div class="faq-b">
+        <p>Two different refusals, with two different causes.</p>
+        <p><b>“App blocked to protect your device” (Play Protect)</b>, or
+          <b>INSTALL_FAILED_VERIFICATION_FAILURE</b>. SpendWise asks to read
+          bank SMS, and Play Protect blocks any app that requests SMS access
+          unless it came from the Play Store. It is not reacting to anything
+          found in the app — it is reacting to the permission being requested
+          at all.</p>
+        <ol>
+          <li>Play Store → your profile picture → <b>Play Protect</b></li>
+          <li>The gear icon → turn off <b>Scan apps with Play Protect</b></li>
+          <li>Install SpendWise</li>
+          <li><b>Turn it back on.</b> It protects you from everything else.</li>
+        </ol>
+        <p>On Xiaomi, Redmi and POCO there is a second gate: Settings →
+          Privacy protection → Special permissions → Install unknown apps,
+          and if it still refuses, turn off <b>MIUI optimization</b> in
+          Developer options.</p>
+        <p>From a computer, <code>adb install app-release.apk</code> avoids
+          the prompt entirely.</p>
+        <p>In India, Singapore, Thailand and Brazil this is Google's
+          <b>enhanced fraud protection</b>, which refuses any sideloaded app
+          declaring SMS, notification-listener or accessibility permissions —
+          usually with no “install anyway”. Turning Play Protect off does not
+          always help there.</p>
+        <p>Two things that do work:</p>
+        <ol>
+          <li><b>adb install</b> from a computer. The ADB route is not subject
+            to this check.</li>
+          <li>Install the <b>no-SMS build</b>. It never asks for the
+            permission, so there is nothing to block. You add transactions
+            yourself or paste bank messages into
+            <a href="/import">Import</a>.</li>
+        </ol>
+        <p>Apps like this one on the Play Store are not built differently —
+          they arrive by a route that is not scanned.</p>
+        <p><b>INSTALL_PARSE_FAILED_NO_CERTIFICATES</b> is a different thing:
+          that APK was never signed and no setting will let it install. Use a
+          signed build.</p>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>My transactions are not being captured</summary>
+      <div class="faq-b">
+        <p>SpendWise scans the inbox for bank and UPI messages each time it
+          opens, and listens for new ones while it runs.</p>
+        <p>If nothing is being captured, in order of likelihood:</p>
+        <ol>
+          <li><b>SMS permission is off.</b> Settings → SMS auto-capture will say
+            so, with a button to turn it back on.</li>
+          <li><b>Your phone is killing the app in the background.</b> On
+            Xiaomi, Redmi and POCO, Oppo, Vivo and Realme this is the usual
+            cause. Enable <b>Autostart</b> for SpendWise in your phone's
+            Settings → Apps, and set its battery mode to
+            <b>No restrictions</b>.</li>
+          <li><b>Your bank's message format is not recognised yet.</b> Settings
+            shows a count of messages that looked financial but could not be
+            read; you can export them from there to see what was missed.</li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>A message was held instead of being added</summary>
+      <div class="faq-b">
+        <p>That happens when the sender is not one your bank has used before,
+          or the message has the shape of a scam — a payment link, an urgent
+          deadline, a request to call a number.</p>
+        <p>Held messages are never deleted and never added on their own. Open
+          <b>Alerts → Held messages</b> to see each one with the reason, the
+          original text, and buttons to add it, discard it, or block the
+          sender for good.</p>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>A transaction got the wrong category</summary>
+      <div class="faq-b">
+        <p>Tap the transaction and change it. That correction is remembered
+          for that merchant, and the next one arrives already correct.</p>
+        <p>How eager the app is to categorise without asking is yours to set:
+          Settings → Smart engine has the two confidence thresholds. Raise
+          <b>auto-save</b> to be asked more often; lower it to be asked less.</p>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>The same purchase appears twice</summary>
+      <div class="faq-b">
+        <p>Some banks send both an SMS and a UPI confirmation for one payment.
+          SpendWise removes exact duplicates automatically, but a pair that
+          differs in wording or timing can slip through.</p>
+        <p>Swipe the row left, or open it and delete it. Deletes are soft — an
+          undo bar appears, and nothing is really gone until the app is
+          reinstalled.</p>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>I am getting a new phone</summary>
+      <div class="faq-b">
+        <p>Nothing is stored anywhere except this phone, so a copy has to be
+          made deliberately.</p>
+        <ol>
+          <li>Settings → <b>Download a full backup</b>. Save the file
+            somewhere off the phone.</li>
+          <li>Install SpendWise on the new phone.</li>
+          <li>Settings → <b>Restore from a backup</b> and pick that file.</li>
+        </ol>
+        <p>The CSV export is a report for a spreadsheet, not a backup — it
+          cannot rebuild your merchants, budgets or learned categories.</p>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>The numbers do not look right</summary>
+      <div class="faq-b">
+        <p>Two corrections are applied automatically and explain most
+          surprises:</p>
+        <ul>
+          <li>A transfer between your own accounts is not spending, so a
+            matching debit and credit within a few minutes is excluded from
+            totals.</li>
+          <li>A refund reduces the original spending instead of counting as
+            income.</li>
+        </ul>
+        <p>If a total still looks wrong, Activity → search for the merchant is
+          the fastest way to find what is behind it.</p>
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>Does this work without internet?</summary>
+      <div class="faq-b">
+        <p>Yes, always — that is the whole design. There is no server to
+          reach, so aeroplane mode changes nothing about how the app behaves.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="card stack" style="gap:10px">
+    <div style="font-weight:700; font-size: var(--t-sm)">Still stuck?</div>
+    <div class="mut" style="font-size: var(--t-xs)">
+      Nothing is sent from this app automatically. If you want to report a
+      message your bank sends that SpendWise cannot read, exporting it is an
+      explicit action you take, and the file stays on your phone until you
+      choose to share it.
+    </div>
+    <a class="btn-soft btn-sm" href="/sms/misses.csv" download
+       style="display:block; text-align:center">Export unreadable messages</a>
+  </div>
+</div>
+{% endblock %}
